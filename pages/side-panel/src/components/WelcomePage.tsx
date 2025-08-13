@@ -38,11 +38,11 @@ const WelcomePage: React.FC<WelcomePageProps> = ({
       {/* Header */}
       <div className="flex items-center justify-center h-[80px] sm:h-[90px] md:h-[100px] border-b border-philonet-border px-4 sm:px-6 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 bg-white rounded-lg p-1">
             <img 
               src={chrome.runtime.getURL('philonet.png')} 
               alt="Philonet" 
-              className="w-full h-full object-contain opacity-80"
+              className="w-full h-full object-contain"
             />
           </div>
           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-light tracking-philonet-wide text-philonet-text-secondary">
@@ -60,7 +60,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
           >
-            <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 lg:w-48 lg:h-48 mx-auto">
+            <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 lg:w-48 lg:h-48 mx-auto bg-white rounded-2xl p-4 sm:p-6 md:p-8">
               <img 
                 src={chrome.runtime.getURL('philonet.png')} 
                 alt="Philonet Logo" 
@@ -138,13 +138,13 @@ const WelcomePage: React.FC<WelcomePageProps> = ({
               <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl">
                 {isAuthenticating 
                   ? 'Setting up your account...' 
-                  : 'Continue with Google'
+                  : 'Sign in with Google'
                 }
               </span>
             </button>
             
             <p className="text-philonet-text-subtle text-base sm:text-lg md:text-xl leading-relaxed px-4 sm:px-6">
-              Sign in to save your progress and unlock personalized features
+              New to Philonet? We'll create your account automatically when you sign in
             </p>
           </motion.div>
         </div>
