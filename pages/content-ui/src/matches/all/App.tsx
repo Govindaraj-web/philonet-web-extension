@@ -144,6 +144,69 @@ export default function App() {
     console.log(`[CEB] ${action} action failed - user should use extension icon or Ctrl+Shift+P`);
   };
 
+  const handleListenToPage = () => {
+    try {
+      // Get page content for TTS
+      const title = document.title || "Current Page";
+      const description = document.querySelector('meta[name="description"]')?.getAttribute('content') || 
+                         document.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
+      
+      // Extract main content from common article selectors
+      const contentSelectors = [
+        'article',
+        '[role="main"]',
+        'main',
+        '.content',
+        '.post-content',
+        '.article-content',
+        '.entry-content',
+        'h1, h2, h3, p'
+      ];
+      
+      let articleText = '';
+      for (const selector of contentSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          articleText = Array.from(elements)
+            .slice(0, 20) // Limit to first 20 elements to avoid too much content
+            .map(el => el.textContent?.trim())
+            .filter(text => text && text.length > 10)
+            .join('. ');
+          break;
+        }
+      }
+      
+      const contentToRead = [title, description, articleText]
+        .filter(Boolean)
+        .join('. ')
+        .slice(0, 8000); // Limit to reasonable length for TTS
+      
+      if ('speechSynthesis' in window) {
+        // Stop any current speech
+        window.speechSynthesis.cancel();
+        
+        if (contentToRead.trim()) {
+          // Create and configure speech
+          const utterance = new SpeechSynthesisUtterance(contentToRead);
+          utterance.rate = 0.9;
+          utterance.pitch = 1;
+          utterance.volume = 0.8;
+          
+          // Speak the content
+          window.speechSynthesis.speak(utterance);
+          
+          console.log('[CEB] Started text-to-speech for page content');
+        } else {
+          console.log('[CEB] No content found to read');
+        }
+      } else {
+        alert('Text-to-speech is not supported in your browser');
+      }
+    } catch (error) {
+      console.error('[CEB] Error in text-to-speech:', error);
+    }
+  };
+
   return (
     <>
       {/* Floating trigger button with enhanced visibility */}

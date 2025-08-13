@@ -18,6 +18,10 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  Volume2,
+  VolumeX,
+  Pause,
+  Play,
 } from "lucide-react";
 import MarkdownIt from "markdown-it";
 import { withErrorBoundary, withSuspense } from '@extension/shared';
@@ -171,6 +175,13 @@ const SidePanel = () => {
   const [dockOpen, setDockOpen] = useState(true);
   const [dockActiveIndex, setDockActiveIndex] = useState(0);
   const [dockMinimized, setDockMinimized] = useState(false);
+  
+  // Text-to-speech states
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speechUtterance, setSpeechUtterance] = useState<SpeechSynthesisUtterance | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
 
   const markdownContent = SAMPLE_MARKDOWNS[sampleIdx].md;
   console.log('📝 Markdown content loaded:', markdownContent.substring(0, 100) + '...');
@@ -269,6 +280,212 @@ const SidePanel = () => {
 
   const sections = parseSections(meta.body);
   console.log('📋 Parsed sections:', sections);
+
+  // Check for speech synthesis support
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      setSpeechSupported(true);
+      
+      // Load available voices
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        setAvailableVoices(voices);
+        
+        // Find the best voice for English content
+        const preferredVoice = findBestVoice(voices);
+        setSelectedVoice(preferredVoice);
+        console.log('🎤 Available voices:', voices.length, 'Selected:', preferredVoice?.name);
+      };
+
+      // Load voices immediately if available
+      loadVoices();
+      
+      // Also load when voices change (some browsers load them asynchronously)
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  // Find the best voice for reading
+  function findBestVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+    if (voices.length === 0) return null;
+
+    // Priority order for voice selection
+    const preferredVoices = [
+      // High-quality neural voices (if available)
+      'Microsoft Aria Online (Natural) - English (United States)',
+      'Microsoft Jenny Online (Natural) - English (United States)', 
+      'Google UK English Female',
+      'Google US English Female',
+      'Microsoft Zira - English (United States)',
+      'Microsoft David - English (United States)',
+      'Alex', // macOS
+      'Samantha', // macOS
+      'Karen', // macOS
+      'Moira', // macOS
+      'Ava', // iOS
+      'Allison', // iOS
+    ];
+
+    // Try to find a preferred voice
+    for (const preferredName of preferredVoices) {
+      const voice = voices.find(v => v.name.includes(preferredName) || v.name === preferredName);
+      if (voice) return voice;
+    }
+
+    // Fallback: find any high-quality English voice
+    const englishVoices = voices.filter(v => 
+      v.lang.startsWith('en') && 
+      (v.name.toLowerCase().includes('premium') || 
+       v.name.toLowerCase().includes('enhanced') ||
+       v.name.toLowerCase().includes('natural') ||
+       v.name.toLowerCase().includes('neural'))
+    );
+
+    if (englishVoices.length > 0) {
+      // Prefer female voices for better clarity
+      const femaleVoice = englishVoices.find(v => 
+        v.name.toLowerCase().includes('female') ||
+        v.name.toLowerCase().includes('aria') ||
+        v.name.toLowerCase().includes('jenny') ||
+        v.name.toLowerCase().includes('zira') ||
+        v.name.toLowerCase().includes('samantha') ||
+        v.name.toLowerCase().includes('karen')
+      );
+      if (femaleVoice) return femaleVoice;
+      
+      return englishVoices[0];
+    }
+
+    // Final fallback: any English voice
+    const anyEnglishVoice = voices.find(v => v.lang.startsWith('en'));
+    return anyEnglishVoice || voices[0];
+  }
+
+  // Text-to-speech functions
+  function getArticleText() {
+    let text = '';
+    if (meta.title) text += meta.title + '. ';
+    if (meta.description) text += meta.description + '. ';
+    if (sections.introduction) text += 'Introduction. ' + sections.introduction + ' ';
+    if (sections.details) text += 'Details. ' + sections.details + ' ';
+    if (sections.conclusion) text += 'Conclusion. ' + sections.conclusion + ' ';
+    if (sections.rest) {
+      // Enhanced text cleaning for better speech
+      const cleanText = sections.rest
+        .replace(/#{1,6}\s+/g, '') // Remove markdown headers
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+        .replace(/\*(.*?)\*/g, '$1') // Remove italic
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+        .replace(/`([^`]+)`/g, '$1') // Remove code formatting
+        .replace(/\|.+\|/g, '') // Remove table rows
+        .replace(/[-*]\s+/g, '') // Remove list markers
+        .replace(/\n+/g, ' ') // Replace newlines with spaces
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .replace(/([.!?])\s*([A-Z])/g, '$1 $2') // Ensure space after sentences
+        .trim();
+      text += cleanText;
+    }
+    
+    // Final text enhancement for natural speech
+    return text
+      .replace(/\b(URL|API|UI|UX|CSS|HTML|JS)\b/g, (match) => {
+        // Spell out common acronyms for better pronunciation
+        const acronyms: { [key: string]: string } = {
+          'URL': 'U R L',
+          'API': 'A P I', 
+          'UI': 'U I',
+          'UX': 'U X',
+          'CSS': 'C S S',
+          'HTML': 'H T M L',
+          'JS': 'JavaScript'
+        };
+        return acronyms[match] || match;
+      })
+      .replace(/\b(\d+)px\b/g, '$1 pixels') // Convert px to pixels
+      .replace(/\b(\d+)ms\b/g, '$1 milliseconds') // Convert ms to milliseconds
+      .replace(/\be\.g\./g, 'for example') // Replace e.g.
+      .replace(/\bi\.e\./g, 'that is') // Replace i.e.
+      .replace(/\betc\./g, 'etcetera') // Replace etc.
+      .replace(/\bvs\./g, 'versus') // Replace vs.
+      .trim();
+  }
+
+  function toggleSpeech() {
+    if (!speechSupported) return;
+
+    if (isPlaying) {
+      // Stop current speech
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      setSpeechUtterance(null);
+    } else {
+      // Start speech
+      const text = getArticleText();
+      if (!text) return;
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      // Enhanced voice settings for better quality
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        console.log('🎤 Using voice:', selectedVoice.name);
+      }
+      
+      // Optimized speech parameters for article reading
+      utterance.rate = 0.85; // Slightly slower for better comprehension
+      utterance.pitch = 1.0; // Natural pitch
+      utterance.volume = 0.9; // Slightly lower volume for comfort
+      
+      // Add natural pauses for better flow
+      const enhancedText = text
+        .replace(/\. /g, '. ') // Ensure space after periods
+        .replace(/\! /g, '! ') // Ensure space after exclamations
+        .replace(/\? /g, '? ') // Ensure space after questions
+        .replace(/\, /g, ', ') // Ensure space after commas
+        .replace(/: /g, ': ') // Ensure space after colons
+        .replace(/; /g, '; '); // Ensure space after semicolons
+      
+      utterance.text = enhancedText;
+      
+      utterance.onstart = () => {
+        setIsPlaying(true);
+        console.log('🔊 Speech started with voice:', selectedVoice?.name || 'default');
+      };
+      
+      utterance.onend = () => {
+        setIsPlaying(false);
+        setSpeechUtterance(null);
+        console.log('🔊 Speech ended');
+      };
+      
+      utterance.onerror = (event) => {
+        setIsPlaying(false);
+        setSpeechUtterance(null);
+        console.error('🔊 Speech error:', event.error);
+      };
+
+      // Add pause and resume handlers for better control
+      utterance.onpause = () => {
+        console.log('🔊 Speech paused');
+      };
+      
+      utterance.onresume = () => {
+        console.log('🔊 Speech resumed');
+      };
+
+      setSpeechUtterance(utterance);
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
+  // Clean up speech on unmount
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Comment actions
   function submitComment() {
@@ -473,9 +690,41 @@ If you want, I can focus on introduction, details, or conclusion.`;
               )}
 
               {meta.title && (
-                <h2 className="font-light tracking-philonet-wider text-philonet-text-primary text-2xl md:text-4xl lg:text-5xl">
-                  {meta.title}
-                </h2>
+                <div className="flex items-start gap-3 md:gap-4">
+                  <h2 className="flex-1 font-light tracking-philonet-wider text-philonet-text-primary text-2xl md:text-4xl lg:text-5xl leading-tight">
+                    {meta.title}
+                  </h2>
+                  {speechSupported && (
+                    <button
+                      onClick={toggleSpeech}
+                      className="flex-shrink-0 group mt-1 transition-all duration-200 ease-out hover:scale-105 focus:outline-none focus:scale-105"
+                      title={isPlaying ? "Stop listening" : "Listen to article"}
+                      aria-label={isPlaying ? "Stop reading article aloud" : "Read article aloud"}
+                    >
+                      <div className="relative">
+                        <div className={cn(
+                          "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 ease-out",
+                          "backdrop-blur-sm border border-philonet-border-light/40",
+                          isPlaying 
+                            ? "bg-philonet-blue-500/20 border-philonet-blue-500/60 text-philonet-blue-400 shadow-lg shadow-philonet-blue-500/10" 
+                            : "bg-philonet-card/60 text-philonet-text-muted hover:bg-philonet-card/80 hover:text-philonet-blue-400 hover:border-philonet-blue-500/40"
+                        )}>
+                          {isPlaying ? (
+                            <Pause className="w-4 h-4 md:w-5 md:h-5" />
+                          ) : (
+                            <Volume2 className="w-4 h-4 md:w-5 md:h-5" />
+                          )}
+                        </div>
+                        {isPlaying && (
+                          <div className="absolute -inset-1 rounded-full border border-philonet-blue-500/30 animate-pulse" />
+                        )}
+                      </div>
+                      <div className="mt-1 text-[10px] md:text-[11px] text-philonet-text-subtle font-light tracking-philonet-wide text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        {isPlaying ? "Stop" : "Listen"}
+                      </div>
+                    </button>
+                  )}
+                </div>
               )}
 
               {meta.description && (
