@@ -54,7 +54,15 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, any>(({ className = "", r
 ));
 
 const ScrollArea = React.forwardRef<HTMLDivElement, any>(({ className = "", children, ...props }, ref) => (
-  <div ref={ref} {...props} className={cn("overflow-y-auto", className)}>
+  <div 
+    ref={ref} 
+    {...props} 
+    className={cn("overflow-y-auto philonet-scrollbar", className)}
+    style={{
+      scrollbarWidth: 'thin',
+      scrollbarColor: '#374151 #1f2937'
+    }}
+  >
     {children}
   </div>
 ));
@@ -384,9 +392,6 @@ If you want, I can focus on introduction, details, or conclusion.`;
   try {
     return (
       <div className="relative w-full h-screen bg-philonet-black text-white overflow-hidden font-inter">
-        <div className="absolute top-4 left-4 z-50 text-xs text-green-400 bg-black/50 px-2 py-1 rounded">
-          SidePanel Loaded ✓
-        </div>
         {/* Main Panel - always visible */}
         <motion.aside
         initial={false}
@@ -842,6 +847,38 @@ If you want, I can focus on introduction, details, or conclusion.`;
           </div>
         )}
       </motion.aside>
+      
+      {/* Custom Scrollbar Styles */}
+      <style>{`
+        .philonet-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .philonet-scrollbar::-webkit-scrollbar-track {
+          background: #1f2937;
+          border-radius: 4px;
+        }
+        
+        .philonet-scrollbar::-webkit-scrollbar-thumb {
+          background: #374151;
+          border-radius: 4px;
+          border: 1px solid #1f2937;
+        }
+        
+        .philonet-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #4b5563;
+        }
+        
+        .philonet-scrollbar::-webkit-scrollbar-corner {
+          background: #1f2937;
+        }
+        
+        /* For Firefox */
+        .philonet-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: #374151 #1f2937;
+        }
+      `}</style>
     </div>
   );
   } catch (error) {

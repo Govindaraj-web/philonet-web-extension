@@ -150,7 +150,7 @@ export default function App() {
       <div 
         style={{
           position: 'fixed',
-          top: '60px',
+          bottom: '20px',
           right: '20px',
           zIndex: 2147483647,
           backgroundColor: '#ffffff',
