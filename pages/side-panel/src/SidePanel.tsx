@@ -7,8 +7,6 @@ import {
   Bookmark,
   MessageSquare,
   Sparkles,
-  PanelRightOpen,
-  PanelRightClose,
   Tag,
   FolderOpen,
   UserRound,
@@ -140,7 +138,6 @@ Design for the eyes first, then optimize for everything else.
 const SidePanel = () => {
   console.log('🔧 SidePanel component initializing...');
   
-  const [expanded, setExpanded] = useState(true); // Start expanded by default for side panel
   const [comment, setComment] = useState("");
   const [commentRows, setCommentRows] = useState(1);
   const [comments, setComments] = useState<Array<{
@@ -387,40 +384,51 @@ If you want, I can focus on introduction, details, or conclusion.`;
     setDockActiveIndex(i);
   }
 
-  console.log('🎯 Rendering SidePanel with expanded:', expanded);
-
   try {
     return (
       <div className="relative w-full h-screen bg-philonet-black text-white overflow-hidden font-inter">
         {/* Main Panel - always visible */}
         <motion.aside
         initial={false}
-        animate={{ width: expanded ? "100%" : "420px" }}
+        animate={{ width: "100%" }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="relative h-screen bg-philonet-panel text-white shadow-2xl overflow-visible"
+        className="relative h-screen bg-philonet-panel text-white shadow-2xl overflow-visible w-full max-w-none"
         aria-label="Philonet side panel"
       >
         {/* Top Action Bar */}
-        <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center justify-between px-4">
+        <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
               <div className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted">
                 <UserRound className="h-4 w-4" />
               </div>
-              <span className="text-sm font-light tracking-philonet-wide truncate max-w-[140px]">Philonet User</span>
+              <span className="text-sm font-light tracking-philonet-wide truncate max-w-[150px] lg:max-w-[200px]">
+                Philonet User
+              </span>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button className="h-9 px-3">
-                <Share2 className="mr-2 h-4 w-4" />
-                <span className="hidden md:inline">Share</span>
+            <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+              <Button className="h-9 px-4">
+                <Share2 className="h-4 w-4" />
+                <span className="ml-2">Share</span>
               </Button>
-              <Button className="h-9 px-3">
-                <Bookmark className="mr-2 h-4 w-4" />
-                <span className="hidden md:inline">Save</span>
+              <Button className="h-9 px-4">
+                <Bookmark className="h-4 w-4" />
+                <span className="ml-2">Save</span>
               </Button>
-              <Button className="h-9 px-3">
-                <MoreHorizontal className="mr-2 h-4 w-4" />
-                <span className="hidden md:inline">More</span>
+              <Button className="h-9 px-4">
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="ml-2">More</span>
+              </Button>
+            </div>
+            <div className="md:hidden flex items-center gap-1">
+              <Button className="h-9 px-2">
+                <Share2 className="h-4 w-4" />
+              </Button>
+              <Button className="h-9 px-2">
+                <Bookmark className="h-4 w-4" />
+              </Button>
+              <Button className="h-9 px-2">
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -430,23 +438,23 @@ If you want, I can focus on introduction, details, or conclusion.`;
         <div className="absolute left-0 right-0" style={{ top: 68, bottom: footerH }}>
           <ScrollArea ref={contentRef} className="h-full pr-1">
             {/* Meta header */}
-            <section className="px-5 pt-6">
+            <section className="px-4 md:px-6 lg:px-8 pt-6">
               {/* Philonet Header */}
               <div className="flex items-center gap-3 mb-6 pb-4 border-b border-philonet-border/30">
                 <img 
                   src={chrome.runtime?.getURL('philonet.png') || '/philonet.png'} 
                   alt="Philonet" 
-                  className="w-8 h-8 object-contain"
+                  className="object-contain w-8 h-8 md:w-10 md:h-10"
                   onError={(e) => {
                     const target = e.currentTarget as HTMLImageElement;
                     target.style.display = 'none';
                   }}
                 />
                 <div>
-                  <h1 className="text-xl font-light tracking-philonet-wide text-philonet-blue-400">
+                  <h1 className="font-light tracking-philonet-wide text-philonet-blue-400 text-xl md:text-2xl">
                     Philonet
                   </h1>
-                  <p className="text-xs text-philonet-text-muted tracking-philonet-wide">
+                  <p className="text-philonet-text-muted tracking-philonet-wide text-xs md:text-sm">
                     Knowledge Network
                   </p>
                 </div>
@@ -457,7 +465,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                   <img 
                     src={meta.image} 
                     alt={meta.title || "cover"} 
-                    className="w-full h-[180px] object-cover"
+                    className="w-full object-cover h-[180px] md:h-[240px]"
                     onError={(e) => {
                       console.log('📸 External image failed to load, using fallback');
                       const target = e.currentTarget as HTMLImageElement;
@@ -480,13 +488,13 @@ If you want, I can focus on introduction, details, or conclusion.`;
               )}
 
               {meta.title && (
-                <h2 className="text-3xl md:text-4xl font-light tracking-philonet-wider text-philonet-text-primary">
+                <h2 className="font-light tracking-philonet-wider text-philonet-text-primary text-2xl md:text-4xl lg:text-5xl">
                   {meta.title}
                 </h2>
               )}
 
               {meta.description && (
-                <p className="mt-3 text-[15px] leading-7 text-philonet-text-tertiary font-light tracking-philonet-normal max-w-[70ch]">
+                <p className="mt-3 leading-7 text-philonet-text-tertiary font-light tracking-philonet-normal max-w-[70ch] text-sm md:text-base">
                   {meta.description}
                 </p>
               )}
@@ -499,7 +507,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                     {meta.categories.map((c) => (
                       <span 
                         key={`cat-${c}`} 
-                        className="rounded-full border border-philonet-border-light px-3 py-1 text-xs font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors"
+                        className="rounded-full border border-philonet-border-light font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors px-3 py-1 text-xs md:px-4 md:py-2 md:text-sm"
                       >
                         {c}
                       </span>
@@ -513,7 +521,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                     {meta.tags.map((t) => (
                       <span 
                         key={`tag-${t}`} 
-                        className="rounded-full border border-philonet-border-light px-3 py-1 text-xs font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors"
+                        className="rounded-full border border-philonet-border-light font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors px-3 py-1 text-xs md:px-4 md:py-2 md:text-sm"
                       >
                         #{String(t).replace(/^#/, '')}
                       </span>
@@ -524,13 +532,13 @@ If you want, I can focus on introduction, details, or conclusion.`;
             </section>
 
             {/* Content sections */}
-            <section className="px-5 pb-6 mt-6 space-y-8">
-              <div className="prose prose-invert max-w-[80ch] prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:overflow-hidden prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-td:bg-philonet-panel">
+            <section className="px-4 md:px-6 lg:px-8 pb-6 mt-6 space-y-8">
+              <div className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:overflow-hidden prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-td:bg-philonet-panel max-w-none prose-sm md:prose-base lg:prose-lg">
                 
                 {/* Introduction */}
                 {sections.introduction && (
                   <div>
-                    <h3 className="text-xl font-light tracking-philonet-wide text-philonet-text-secondary">Introduction</h3>
+                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl">Introduction</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.introduction)} />
                   </div>
                 )}
@@ -538,7 +546,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 {/* Details */}
                 {sections.details && (
                   <div className="mt-8">
-                    <h3 className="text-xl font-light tracking-philonet-wide text-philonet-text-secondary">Details</h3>
+                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl">Details</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.details)} />
                   </div>
                 )}
@@ -546,7 +554,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 {/* Conclusion */}
                 {sections.conclusion && (
                   <div className="mt-8">
-                    <h3 className="text-xl font-light tracking-philonet-wide text-philonet-text-secondary">Conclusion</h3>
+                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl">Conclusion</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.conclusion)} />
                   </div>
                 )}
@@ -597,40 +605,45 @@ If you want, I can focus on introduction, details, or conclusion.`;
         </div>
 
         {/* Composer footer */}
-        <div ref={footerRef} className="absolute bottom-0 left-0 right-0 border-t border-philonet-border px-4 py-3 bg-philonet-panel">
+        <div ref={footerRef} className="absolute bottom-0 left-0 right-0 border-t border-philonet-border bg-philonet-panel px-4 py-3 md:px-6 md:py-4">
           {/* Tabs */}
           <div className="flex items-center gap-2 mb-3">
             <button
               onClick={() => setComposerTab("comments")}
               className={cn(
-                'h-8 px-3 rounded-full border text-xs tracking-philonet-wider',
+                'rounded-full border tracking-philonet-wider flex items-center h-8 px-3 text-xs md:h-9 md:px-4 md:text-sm',
                 composerTab === 'comments' 
                   ? 'text-philonet-blue-500 border-philonet-blue-500' 
                   : 'text-philonet-text-muted border-philonet-border-light'
               )}
             >
-              <MessageSquare className="inline h-3.5 w-3.5 mr-2" /> Comments
+              <MessageSquare className="inline mr-2 h-3 w-3 md:h-4 md:w-4" />
+              <span className="hidden sm:inline">Comments</span>
             </button>
             <button
               onClick={() => setComposerTab("ai")}
               className={cn(
-                'h-8 px-3 rounded-full border text-xs tracking-philonet-wider',
+                'rounded-full border tracking-philonet-wider flex items-center h-8 px-3 text-xs md:h-9 md:px-4 md:text-sm',
                 composerTab === 'ai' 
                   ? 'text-philonet-blue-500 border-philonet-blue-500' 
                   : 'text-philonet-text-muted border-philonet-border-light'
               )}
             >
-              <Bot className="inline h-3.5 w-3.5 mr-2" /> Ask AI
+              <Bot className="inline mr-2 h-3 w-3 md:h-4 md:w-4" />
+              <span className="hidden sm:inline">Ask AI</span>
             </button>
           </div>
 
           {/* Selection tag */}
           {hiLiteText && (
-            <div className="mb-2 flex items-center gap-2 text-[11px]">
-              <span className="px-2 py-1 rounded-full border border-philonet-blue-500/60 text-philonet-blue-400 bg-philonet-blue-500/10 truncate max-w-[70%]" title={hiLiteText}>
+            <div className="mb-2 flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-full border border-philonet-blue-500/60 text-philonet-blue-400 bg-philonet-blue-500/10 truncate max-w-[80%]" title={hiLiteText}>
                 Tagged: "{hiLiteText}"
               </span>
-              <button onClick={() => setHiLiteText("")} className="text-philonet-text-muted hover:text-philonet-blue-500">
+              <button 
+                onClick={() => setHiLiteText("")} 
+                className="text-philonet-text-muted hover:text-philonet-blue-500 text-xs"
+              >
                 Clear
               </button>
             </div>
@@ -639,18 +652,18 @@ If you want, I can focus on introduction, details, or conclusion.`;
           {/* Content */}
           {composerTab === 'comments' ? (
             <div>
-              <div className="flex items-start gap-3">
-                <div className="self-center h-10 w-10 rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted flex-shrink-0">
-                  <UserRound className="h-5 w-5" />
+              <div className="flex items-start gap-3 md:gap-4">
+                <div className="self-center rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted flex-shrink-0 h-10 w-10 md:h-12 md:w-12">
+                  <UserRound className="h-5 w-5 md:h-6 md:w-6" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2">
+                  <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
                     <Textarea
                       ref={commentRef}
                       placeholder="Add a comment…"
                       value={comment}
                       rows={commentRows}
-                      className="flex-1"
+                      className="flex-1 text-xs md:text-sm"
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { 
                         setComment(e.target.value); 
                         adjustCommentRows(e.target.value); 
@@ -666,7 +679,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                     <button
                       type="button"
                       title="Insert emoji"
-                      className="ml-2 h-8 w-8 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500"
+                      className="ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 h-8 w-8 md:h-9 md:w-9"
                       onClick={() => {
                         const ta = commentRef.current;
                         const start = (ta?.selectionStart ?? comment.length);
@@ -682,30 +695,34 @@ If you want, I can focus on introduction, details, or conclusion.`;
                         });
                       }}
                     >
-                      <Smile className="h-5 w-5" />
+                      <Smile className="h-4 w-4 md:h-5 md:w-5" />
                     </button>
-                    <Button disabled={!comment.trim()} onClick={submitComment} className="ml-1 h-9 px-3">
-                      <CornerDownLeft className="h-4 w-4" />
+                    <Button 
+                      disabled={!comment.trim()} 
+                      onClick={submitComment} 
+                      className="ml-1 h-9 px-3 md:h-10 md:px-4"
+                    >
+                      <CornerDownLeft className="h-3 w-3 md:h-4 md:w-4" />
                     </Button>
                   </div>
-                  <div className="mt-1 flex justify-end text-[11px] text-philonet-text-subtle">
+                  <div className="mt-1 flex justify-end text-philonet-text-subtle text-[10px] md:text-xs">
                     <span>{Math.max(0, 280 - comment.length)} characters left</span>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="rounded-philonet-lg border border-philonet-blue-500/40 bg-philonet-card/60 p-3 shadow-[0_0_0_1px_rgba(59,130,246,0.25)_inset]">
-              <div className="mb-2 flex items-center gap-2 text-philonet-text-muted text-xs tracking-philonet-wider">
-                <Bot className="h-3.5 w-3.5" />
+            <div className="rounded-philonet-lg border border-philonet-blue-500/40 bg-philonet-card/60 shadow-[0_0_0_1px_rgba(59,130,246,0.25)_inset] p-3 md:p-4">
+              <div className="mb-2 flex items-center gap-2 text-philonet-text-muted tracking-philonet-wider text-xs md:text-sm">
+                <Bot className="h-3 w-3 md:h-4 md:w-4" />
                 <span>ASK AI</span>
               </div>
               <Textarea
                 placeholder="Ask a question about this document…"
                 value={aiQuestion}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAiQuestion(e.target.value)}
-                rows={4}
-                className="bg-transparent"
+                rows={3}
+                className="bg-transparent text-xs md:text-sm"
                 onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { 
                     e.preventDefault(); 
@@ -714,29 +731,25 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 }}
               />
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-[11px] text-philonet-text-muted">Press Cmd/Ctrl+Enter to ask</span>
-                <Button disabled={!aiQuestion.trim() || aiBusy} onClick={askAi} className="h-9 px-3">
-                  {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4 mr-2" />} Ask
+                <span className="text-philonet-text-muted text-[10px] md:text-xs">Press Cmd/Ctrl+Enter to ask</span>
+                <Button 
+                  disabled={!aiQuestion.trim() || aiBusy} 
+                  onClick={askAi} 
+                  className="h-9 px-3 md:h-10 md:px-4"
+                >
+                  {aiBusy ? (
+                    <Loader2 className="animate-spin h-3 w-3 md:h-4 md:w-4" />
+                  ) : (
+                    <>
+                      <Bot className="mr-2 h-3 w-3 md:h-4 md:w-4" />
+                      <span className="hidden sm:inline">Ask</span>
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
           )}
         </div>
-
-        {/* Expand/collapse handle */}
-        <button
-          aria-label={expanded ? "Compact view" : "Expand to full width"}
-          aria-pressed={expanded}
-          onClick={() => setExpanded((v) => !v)}
-          className="group absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 z-50 h-12 w-12 rounded-full bg-philonet-panel border border-philonet-border-light transition-colors shadow-2xl backdrop-blur-sm flex items-center justify-center text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 focus:outline-none"
-          title={expanded ? "Compact view" : "Expand to full width"}
-        >
-          {expanded ? (
-            <PanelRightClose className="h-5 w-5" />
-          ) : (
-            <PanelRightOpen className="h-5 w-5" />
-          )}
-        </button>
 
         {/* Comments dock */}
         {dockOpen && dockList.length > 0 && (
