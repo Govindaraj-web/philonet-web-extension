@@ -5,7 +5,13 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  displayName?: string;
   avatar?: string;
+  subscribed?: boolean;
+  trial?: boolean;
+  pro?: boolean;
+  private?: boolean;
+  modelName?: string;
   preferences?: {
     theme?: 'light' | 'dark' | 'auto';
     speechSettings?: {

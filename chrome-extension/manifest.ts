@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { ManifestType } from '@extension/shared';
+import env from '@extension/env';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
 
@@ -31,7 +32,7 @@ const manifest = {
   version: packageJson.version,
   description: '__MSG_extensionDescription__',
   host_permissions: ['<all_urls>'],
-  permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel', 'activeTab'],
+  permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel', 'activeTab', 'identity'],
   options_page: 'options/index.html',
   background: {
     service_worker: 'background.js',
@@ -84,6 +85,10 @@ const manifest = {
   ],
   side_panel: {
     default_path: 'side-panel/index.html',
+  },
+  oauth2: {
+    client_id: env.CEB_GOOGLE_CLIENT_ID || 'your-google-client-id.apps.googleusercontent.com',
+    scopes: ['openid', 'email', 'profile']
   },
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' data: https: http:;"

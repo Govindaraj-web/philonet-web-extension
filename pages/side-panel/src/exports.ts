@@ -1,7 +1,7 @@
 // Main exports for the modular Philonet Side Panel
 
 // Components
-export { default as SidePanel } from './SidePanelBackwardCompatible';
+export { default as SidePanel } from './SidePanel';
 export { default as SidePanelRefactored } from './SidePanelRefactored';
 
 // Context
@@ -69,4 +69,4 @@ export type {
 export * from './utils';
 
 // Default export for backward compatibility
-export { default } from './SidePanelBackwardCompatible';
+export { default } from './SidePanel';

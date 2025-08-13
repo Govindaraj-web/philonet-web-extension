@@ -42,6 +42,7 @@
 - [Install dependency](#install-dependency)
     - [For root](#install-dependency-for-root)
     - [For module](#install-dependency-for-module)
+- [Google Authentication](#google-authentication)
 - [Environment variables](#env-variables)
     - [Add new](#env-variables-new)
     - [Set via CLI](#env-variables-cli-set)
@@ -144,6 +145,20 @@ can use only `content-script` without `@extension/` prefix
 ## How do I disable modules I'm not using?
 
 [Read here](packages/module-manager/README.md)
+
+## Google Authentication
+
+This extension includes Google OAuth authentication that works exclusively within the Chrome extension environment. The authentication system uses Chrome's Identity API for secure OAuth flows.
+
+### Setup Required:
+1. **Google Cloud Console**: Create OAuth 2.0 credentials for Chrome App
+2. **Environment Variables**: Set `REACT_APP_GOOGLE_CLIENT_ID` in `.env` file
+3. **Chrome Extension Context**: Authentication only works when loaded as a Chrome extension
+
+### Key Points:
+- ✅ **Chrome Extension**: Full Google OAuth functionality
+- ❌ **Web/Development**: Shows "Google authentication is only available in the Chrome extension"
+- 📖 **Documentation**: See [CHROME_EXTENSION_AUTH.md](./CHROME_EXTENSION_AUTH.md) for detailed setup
 
 ## Environment variables
 

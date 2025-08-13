@@ -5,7 +5,7 @@ import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
 
 // Import modular components and hooks
 import {
-  TopActionBar,
+  AuthenticatedTopActionBar,
   ContentRenderer,
   ComposerFooter,
   CommentsDock
@@ -162,9 +162,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
           aria-label="Philonet side panel"
         >
           {/* Top Action Bar */}
-          <TopActionBar
-            userName={user?.name}
-            userAvatar={user?.avatar}
+          <AuthenticatedTopActionBar
             showMoreMenu={state.showMoreMenu}
             showHistoryMenu={state.showHistoryMenu}
             historyItems={state.historyItems}

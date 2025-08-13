@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { AuthService, ContentService, ApiConfig, User } from '../services';
+import { philonetAuthStorage } from '../storage/auth-storage';
 
 // State interface
 interface AppState {
@@ -117,6 +118,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({
       dispatch({ type: 'SET_ERROR', payload: null });
       
       const authResponse = await state.authService.login({ email, password });
+      
+      // Store in our custom storage as well
+      await philonetAuthStorage.setAuth(authResponse.token, {
+        id: authResponse.user.id,
+        email: authResponse.user.email,
+        name: authResponse.user.name,
+        avatar: authResponse.user.avatar
+      });
+      
       dispatch({ type: 'SET_USER', payload: authResponse.user });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
@@ -138,6 +148,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({
       dispatch({ type: 'SET_ERROR', payload: null });
       
       const authResponse = await state.authService.register({ name, email, password });
+      
+      // Store in our custom storage as well
+      await philonetAuthStorage.setAuth(authResponse.token, {
+        id: authResponse.user.id,
+        email: authResponse.user.email,
+        name: authResponse.user.name,
+        avatar: authResponse.user.avatar
+      });
+      
       dispatch({ type: 'SET_USER', payload: authResponse.user });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Registration failed';
@@ -150,13 +169,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({
 
   // Logout function
   const logout = async () => {
-    if (!state.authService) return;
-
     try {
-      await state.authService.logout();
+      if (state.authService) {
+        await state.authService.logout();
+      }
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Clear tokens from our custom storage
+      await philonetAuthStorage.clearAuth();
       dispatch({ type: 'LOGOUT' });
     }
   };
@@ -176,19 +197,45 @@ export const AppProvider: React.FC<AppProviderProps> = ({
         // Default fallback
         if (!apiConfig) {
           apiConfig = {
-            baseUrl: process.env.REACT_APP_API_URL || 'https://api.philonet.app',
+            baseUrl: process.env.CEB_API_URL || 'http://localhost:3000',
             timeout: 10000
           };
         }
 
         initializeServices(apiConfig);
 
-        // Check for existing user session
-        const authService = new AuthService(apiConfig);
-        const currentUser = await authService.getCurrentUser();
+        // Check for existing authentication in our storage
+        const authState = await philonetAuthStorage.get();
+        console.log('Auth state from storage:', authState);
         
-        if (currentUser) {
-          dispatch({ type: 'SET_USER', payload: currentUser });
+        if (authState.isAuthenticated && authState.token && authState.user) {
+          // Convert auth storage user to app user format with all new fields
+          const user: User = {
+            id: authState.user.id,
+            name: authState.user.name,
+            email: authState.user.email,
+            displayName: authState.user.displayName,
+            avatar: authState.user.avatar,
+            subscribed: authState.user.subscribed,
+            trial: authState.user.trial,
+            pro: authState.user.pro,
+            private: authState.user.private,
+            modelName: authState.user.modelName,
+          };
+          console.log('Setting user from storage:', user);
+          dispatch({ type: 'SET_USER', payload: user });
+        } else {
+          console.log('No authenticated user found in storage');
+          // Fallback: Check for existing user session from AuthService
+          const authService = new AuthService(apiConfig);
+          const currentUser = await authService.getCurrentUser();
+          
+          if (currentUser) {
+            console.log('Setting user from AuthService:', currentUser);
+            dispatch({ type: 'SET_USER', payload: currentUser });
+          } else {
+            console.log('No user found in AuthService either');
+          }
         }
       } catch (error) {
         console.error('App initialization error:', error);
