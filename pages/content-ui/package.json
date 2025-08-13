@@ -24,7 +24,11 @@
     "@extension/shared": "workspace:*",
     "@extension/ui": "workspace:*",
     "@extension/i18n": "workspace:*",
-    "@extension/env": "workspace:*"
+    "@extension/env": "workspace:*",
+    "@types/markdown-it": "^14.1.2",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.539.0",
+    "markdown-it": "^14.1.0"
   },
   "devDependencies": {
     "@extension/hmr": "workspace:*",

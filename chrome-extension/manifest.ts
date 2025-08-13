@@ -31,7 +31,7 @@ const manifest = {
   version: packageJson.version,
   description: '__MSG_extensionDescription__',
   host_permissions: ['<all_urls>'],
-  permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel'],
+  permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel', 'activeTab'],
   options_page: 'options/index.html',
   background: {
     service_worker: 'background.js',
@@ -46,6 +46,15 @@ const manifest = {
   },
   icons: {
     '128': 'icon-128.png',
+  },
+  commands: {
+    'toggle-side-panel': {
+      suggested_key: {
+        default: 'Ctrl+Shift+P',
+        mac: 'Command+Shift+P'
+      },
+      description: 'Toggle Philonet Side Panel'
+    }
   },
   content_scripts: [
     {
@@ -72,12 +81,15 @@ const manifest = {
   devtools_page: 'devtools/index.html',
   web_accessible_resources: [
     {
-      resources: ['*.js', '*.css', '*.svg', 'icon-128.png', 'icon-34.png'],
+      resources: ['*.js', '*.css', '*.svg', 'icon-128.png', 'icon-34.png', 'philonet.png'],
       matches: ['*://*/*'],
     },
   ],
   side_panel: {
     default_path: 'side-panel/index.html',
+  },
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' data: https: http:;"
   },
 } satisfies ManifestType;
 
