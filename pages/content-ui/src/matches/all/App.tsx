@@ -191,8 +191,8 @@ export default function App() {
           src={chrome.runtime.getURL('philonet.png')} 
           alt="P" 
           style={{
-            width: '36px',
-            height: '36px',
+            width: '44px',
+            height: '44px',
             objectFit: 'contain',
             pointerEvents: 'none'
           }}

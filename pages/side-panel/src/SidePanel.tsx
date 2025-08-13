@@ -397,37 +397,43 @@ If you want, I can focus on introduction, details, or conclusion.`;
       >
         {/* Top Action Bar */}
         <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center justify-between px-4 lg:px-6">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
-              <div className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted">
-                <UserRound className="h-4 w-4" />
-              </div>
-              <span className="text-sm font-light tracking-philonet-wide truncate max-w-[150px] lg:max-w-[200px]">
-                Philonet User
-              </span>
+          {/* Left side - User info */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card flex items-center justify-center text-philonet-text-muted">
+              <UserRound className="h-4 w-4" />
             </div>
-            <div className="hidden md:flex items-center gap-2 flex-shrink-0">
-              <Button className="h-9 px-4">
+            <span className="text-sm font-light tracking-philonet-wide truncate max-w-[120px] md:max-w-[160px] lg:max-w-[200px]">
+              Philonet User
+            </span>
+          </div>
+          
+          {/* Right side - Action buttons */}
+          <div className="flex items-center gap-2">
+            {/* Desktop buttons */}
+            <div className="hidden md:flex items-center gap-2">
+              <Button className="h-9 px-4 text-sm">
                 <Share2 className="h-4 w-4" />
                 <span className="ml-2">Share</span>
               </Button>
-              <Button className="h-9 px-4">
+              <Button className="h-9 px-4 text-sm">
                 <Bookmark className="h-4 w-4" />
                 <span className="ml-2">Save</span>
               </Button>
-              <Button className="h-9 px-4">
+              <Button className="h-9 px-4 text-sm">
                 <MoreHorizontal className="h-4 w-4" />
                 <span className="ml-2">More</span>
               </Button>
             </div>
-            <div className="md:hidden flex items-center gap-1">
-              <Button className="h-9 px-2">
+            
+            {/* Mobile buttons */}
+            <div className="md:hidden flex items-center gap-1.5">
+              <Button className="h-9 w-9 p-0" title="Share">
                 <Share2 className="h-4 w-4" />
               </Button>
-              <Button className="h-9 px-2">
+              <Button className="h-9 w-9 p-0" title="Save">
                 <Bookmark className="h-4 w-4" />
               </Button>
-              <Button className="h-9 px-2">
+              <Button className="h-9 w-9 p-0" title="More">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </div>
@@ -438,28 +444,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
         <div className="absolute left-0 right-0" style={{ top: 68, bottom: footerH }}>
           <ScrollArea ref={contentRef} className="h-full pr-1">
             {/* Meta header */}
-            <section className="px-4 md:px-6 lg:px-8 pt-6">
-              {/* Philonet Header */}
-              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-philonet-border/30">
-                <img 
-                  src={chrome.runtime?.getURL('philonet.png') || '/philonet.png'} 
-                  alt="Philonet" 
-                  className="object-contain w-8 h-8 md:w-10 md:h-10"
-                  onError={(e) => {
-                    const target = e.currentTarget as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
-                <div>
-                  <h1 className="font-light tracking-philonet-wide text-philonet-blue-400 text-xl md:text-2xl">
-                    Philonet
-                  </h1>
-                  <p className="text-philonet-text-muted tracking-philonet-wide text-xs md:text-sm">
-                    Knowledge Network
-                  </p>
-                </div>
-              </div>
-
+            <section className="px-4 md:px-6 lg:px-8">
               {meta.image && (
                 <div className="rounded-philonet-lg overflow-hidden border border-philonet-border mb-5">
                   <img 
@@ -500,32 +485,36 @@ If you want, I can focus on introduction, details, or conclusion.`;
               )}
 
               {/* Categories & Tags */}
-              <div className="mt-4 flex flex-wrap items-start gap-2">
+              <div className="mt-4 space-y-3">
                 {meta.categories && meta.categories.length > 0 && (
-                  <div className="flex flex-wrap items-start gap-2 text-philonet-text-muted">
-                    <FolderOpen className="h-4 w-4 mt-1" />
-                    {meta.categories.map((c) => (
-                      <span 
-                        key={`cat-${c}`} 
-                        className="rounded-full border border-philonet-border-light font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors px-3 py-1 text-xs md:px-4 md:py-2 md:text-sm"
-                      >
-                        {c}
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-2 text-philonet-text-muted">
+                    <FolderOpen className="h-4 w-4 flex-shrink-0" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      {meta.categories.map((c) => (
+                        <span 
+                          key={`cat-${c}`} 
+                          className="rounded-full border border-philonet-border-light font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors px-3 py-1 text-xs md:px-4 md:py-2 md:text-sm"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 {meta.tags && meta.tags.length > 0 && (
-                  <div className="flex flex-wrap items-start gap-2 text-philonet-text-muted">
-                    <Tag className="h-4 w-4 mt-1" />
-                    {meta.tags.map((t) => (
-                      <span 
-                        key={`tag-${t}`} 
-                        className="rounded-full border border-philonet-border-light font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors px-3 py-1 text-xs md:px-4 md:py-2 md:text-sm"
-                      >
-                        #{String(t).replace(/^#/, '')}
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-2 text-philonet-text-muted">
+                    <Tag className="h-4 w-4 flex-shrink-0" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      {meta.tags.map((t) => (
+                        <span 
+                          key={`tag-${t}`} 
+                          className="rounded-full border border-philonet-border-light font-light tracking-philonet-wider text-philonet-text-muted hover:text-philonet-blue-500 hover:border-philonet-blue-500 transition-colors px-3 py-1 text-xs md:px-4 md:py-2 md:text-sm"
+                        >
+                          #{String(t).replace(/^#/, '')}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -533,12 +522,13 @@ If you want, I can focus on introduction, details, or conclusion.`;
 
             {/* Content sections */}
             <section className="px-4 md:px-6 lg:px-8 pb-6 mt-6 space-y-8">
-              <div className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:overflow-hidden prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-td:bg-philonet-panel max-w-none prose-sm md:prose-base lg:prose-lg">
+              <div className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl">
+                <div className="overflow-x-auto">
                 
                 {/* Introduction */}
                 {sections.introduction && (
                   <div>
-                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl">Introduction</h3>
+                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl lg:text-3xl">Introduction</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.introduction)} />
                   </div>
                 )}
@@ -546,7 +536,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 {/* Details */}
                 {sections.details && (
                   <div className="mt-8">
-                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl">Details</h3>
+                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl lg:text-3xl">Details</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.details)} />
                   </div>
                 )}
@@ -554,7 +544,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 {/* Conclusion */}
                 {sections.conclusion && (
                   <div className="mt-8">
-                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl">Conclusion</h3>
+                    <h3 className="font-light tracking-philonet-wide text-philonet-text-secondary text-xl md:text-2xl lg:text-3xl">Conclusion</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.conclusion)} />
                   </div>
                 )}
@@ -568,8 +558,8 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 {comments && comments.length > 0 && (
                   <div className="mt-12 pt-6 border-t border-philonet-border">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-light tracking-philonet-wider text-philonet-text-secondary">Recent Comments</h4>
-                      <span className="text-xs text-philonet-text-muted tracking-philonet-wide">
+                      <h4 className="text-lg md:text-xl font-light tracking-philonet-wider text-philonet-text-secondary">Recent Comments</h4>
+                      <span className="text-sm text-philonet-text-muted tracking-philonet-wide">
                         {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
                       </span>
                     </div>
@@ -577,19 +567,19 @@ If you want, I can focus on introduction, details, or conclusion.`;
                       {comments.slice(0, 5).map((c) => (
                         <div key={c.id} className="group rounded-philonet border border-philonet-border bg-philonet-card/60 p-4 hover:border-philonet-border-light transition-colors">
                           <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted text-xs flex-shrink-0">
+                            <div className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted text-sm flex-shrink-0">
                               {c.author[0] || 'U'}
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xs text-philonet-text-subtle tracking-philonet-wide">
+                              <div className="text-sm text-philonet-text-subtle tracking-philonet-wide">
                                 {c.author} • {c.ts}
                               </div>
                               {c.tag && (
-                                <div className="mt-1 text-[11px] text-philonet-blue-400">
+                                <div className="mt-1 text-xs text-philonet-blue-400">
                                   Tagged excerpt: "{c.tag.text}"
                                 </div>
                               )}
-                              <div className="text-sm text-philonet-text-tertiary leading-relaxed">
+                              <div className="text-base text-philonet-text-tertiary leading-relaxed mt-2">
                                 {c.text}
                               </div>
                             </div>
@@ -599,6 +589,8 @@ If you want, I can focus on introduction, details, or conclusion.`;
                     </div>
                   </div>
                 )}
+                
+                </div>
               </div>
             </section>
           </ScrollArea>
@@ -611,38 +603,38 @@ If you want, I can focus on introduction, details, or conclusion.`;
             <button
               onClick={() => setComposerTab("comments")}
               className={cn(
-                'rounded-full border tracking-philonet-wider flex items-center h-8 px-3 text-xs md:h-9 md:px-4 md:text-sm',
+                'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base',
                 composerTab === 'comments' 
                   ? 'text-philonet-blue-500 border-philonet-blue-500' 
                   : 'text-philonet-text-muted border-philonet-border-light'
               )}
             >
-              <MessageSquare className="inline mr-2 h-3 w-3 md:h-4 md:w-4" />
+              <MessageSquare className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
               <span className="hidden sm:inline">Comments</span>
             </button>
             <button
               onClick={() => setComposerTab("ai")}
               className={cn(
-                'rounded-full border tracking-philonet-wider flex items-center h-8 px-3 text-xs md:h-9 md:px-4 md:text-sm',
+                'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base',
                 composerTab === 'ai' 
                   ? 'text-philonet-blue-500 border-philonet-blue-500' 
                   : 'text-philonet-text-muted border-philonet-border-light'
               )}
             >
-              <Bot className="inline mr-2 h-3 w-3 md:h-4 md:w-4" />
+              <Bot className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
               <span className="hidden sm:inline">Ask AI</span>
             </button>
           </div>
 
           {/* Selection tag */}
           {hiLiteText && (
-            <div className="mb-2 flex items-center gap-2 text-xs">
+            <div className="mb-2 flex items-center gap-2 text-sm">
               <span className="px-2 py-1 rounded-full border border-philonet-blue-500/60 text-philonet-blue-400 bg-philonet-blue-500/10 truncate max-w-[80%]" title={hiLiteText}>
                 Tagged: "{hiLiteText}"
               </span>
               <button 
                 onClick={() => setHiLiteText("")} 
-                className="text-philonet-text-muted hover:text-philonet-blue-500 text-xs"
+                className="text-philonet-text-muted hover:text-philonet-blue-500 text-sm"
               >
                 Clear
               </button>
@@ -652,69 +644,64 @@ If you want, I can focus on introduction, details, or conclusion.`;
           {/* Content */}
           {composerTab === 'comments' ? (
             <div>
-              <div className="flex items-start gap-3 md:gap-4">
-                <div className="self-center rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center text-philonet-text-muted flex-shrink-0 h-10 w-10 md:h-12 md:w-12">
-                  <UserRound className="h-5 w-5 md:h-6 md:w-6" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
-                    <Textarea
-                      ref={commentRef}
-                      placeholder="Add a comment…"
-                      value={comment}
-                      rows={commentRows}
-                      className="flex-1 text-xs md:text-sm"
-                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { 
-                        setComment(e.target.value); 
-                        adjustCommentRows(e.target.value); 
-                      }}
-                      onFocus={() => adjustCommentRows(comment || ' ')}
-                      onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
-                        if (e.key === 'Enter' && !e.shiftKey) { 
-                          e.preventDefault(); 
-                          submitComment(); 
-                        } 
-                      }}
-                    />
-                    <button
-                      type="button"
-                      title="Insert emoji"
-                      className="ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 h-8 w-8 md:h-9 md:w-9"
-                      onClick={() => {
-                        const ta = commentRef.current;
-                        const start = (ta?.selectionStart ?? comment.length);
-                        const end = (ta?.selectionEnd ?? comment.length);
-                        const next = comment.slice(0, start) + '😊' + comment.slice(end);
-                        setComment(next);
-                        requestAnimationFrame(() => {
-                          if (ta) { 
-                            const pos = start + 2; 
-                            ta.setSelectionRange(pos, pos); 
-                            ta.focus(); 
-                          }
-                        });
-                      }}
-                    >
-                      <Smile className="h-4 w-4 md:h-5 md:w-5" />
-                    </button>
-                    <Button 
-                      disabled={!comment.trim()} 
-                      onClick={submitComment} 
-                      className="ml-1 h-9 px-3 md:h-10 md:px-4"
-                    >
-                      <CornerDownLeft className="h-3 w-3 md:h-4 md:w-4" />
-                    </Button>
-                  </div>
-                  <div className="mt-1 flex justify-end text-philonet-text-subtle text-[10px] md:text-xs">
-                    <span>{Math.max(0, 280 - comment.length)} characters left</span>
-                  </div>
-                </div>
+              <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
+                <Textarea
+                  ref={commentRef}
+                  placeholder="Add a comment…"
+                  value={comment}
+                  rows={commentRows}
+                  className="flex-1 text-sm md:text-base"
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { 
+                    setComment(e.target.value); 
+                    adjustCommentRows(e.target.value); 
+                  }}
+                  onFocus={() => adjustCommentRows(comment || ' ')}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
+                    if (e.key === 'Enter' && !e.shiftKey) { 
+                      e.preventDefault(); 
+                      submitComment(); 
+                    } 
+                  }}
+                />
+                <button
+                  type="button"
+                  title="Insert emoji"
+                  className="ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 h-9 w-9 md:h-10 md:w-10"
+                  onClick={() => {
+                    const ta = commentRef.current;
+                    const start = (ta?.selectionStart ?? comment.length);
+                    const end = (ta?.selectionEnd ?? comment.length);
+                    const next = comment.slice(0, start) + '😊' + comment.slice(end);
+                    setComment(next);
+                    requestAnimationFrame(() => {
+                      if (ta) { 
+                        const pos = start + 2; 
+                        ta.setSelectionRange(pos, pos); 
+                        ta.focus(); 
+                      }
+                    });
+                  }}
+                >
+                  <Smile className="h-5 w-5 md:h-6 md:w-6" />
+                </button>
+                <Button 
+                  disabled={!comment.trim()} 
+                  onClick={submitComment} 
+                  className="ml-1 h-10 px-4 md:h-11 md:px-5"
+                >
+                  <CornerDownLeft className="h-4 w-4 md:h-5 md:w-5" />
+                </Button>
+              </div>
+              <div className="mt-2 flex justify-end">
+                <span className="text-philonet-text-subtle text-sm md:text-base">
+                  {Math.max(0, 280 - comment.length)} characters left
+                </span>
               </div>
             </div>
           ) : (
             <div className="rounded-philonet-lg border border-philonet-blue-500/40 bg-philonet-card/60 shadow-[0_0_0_1px_rgba(59,130,246,0.25)_inset] p-3 md:p-4">
-              <div className="mb-2 flex items-center gap-2 text-philonet-text-muted tracking-philonet-wider text-xs md:text-sm">
-                <Bot className="h-3 w-3 md:h-4 md:w-4" />
+              <div className="mb-2 flex items-center gap-2 text-philonet-text-muted tracking-philonet-wider text-sm md:text-base">
+                <Bot className="h-4 w-4 md:h-5 md:w-5" />
                 <span>ASK AI</span>
               </div>
               <Textarea
@@ -722,7 +709,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 value={aiQuestion}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAiQuestion(e.target.value)}
                 rows={3}
-                className="bg-transparent text-xs md:text-sm"
+                className="bg-transparent text-sm md:text-base"
                 onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { 
                     e.preventDefault(); 
@@ -731,17 +718,17 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 }}
               />
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-philonet-text-muted text-[10px] md:text-xs">Press Cmd/Ctrl+Enter to ask</span>
+                <span className="text-philonet-text-muted text-sm md:text-base">Press Cmd/Ctrl+Enter to ask</span>
                 <Button 
                   disabled={!aiQuestion.trim() || aiBusy} 
                   onClick={askAi} 
-                  className="h-9 px-3 md:h-10 md:px-4"
+                  className="h-10 px-4 md:h-11 md:px-5"
                 >
                   {aiBusy ? (
-                    <Loader2 className="animate-spin h-3 w-3 md:h-4 md:w-4" />
+                    <Loader2 className="animate-spin h-4 w-4 md:h-5 md:w-5" />
                   ) : (
                     <>
-                      <Bot className="mr-2 h-3 w-3 md:h-4 md:w-4" />
+                      <Bot className="mr-2 h-4 w-4 md:h-5 md:w-5" />
                       <span className="hidden sm:inline">Ask</span>
                     </>
                   )}
@@ -837,21 +824,26 @@ If you want, I can focus on introduction, details, or conclusion.`;
                   exit={{ opacity: 0, y: 6, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 22 }}
                   onClick={() => setDockMinimized(false)}
-                  className="rounded-full border border-philonet-border bg-philonet-card/90 backdrop-blur px-3 py-2 flex items-center gap-3 shadow-xl max-w-[300px]"
+                  className="rounded-full border border-philonet-border bg-philonet-card/90 backdrop-blur px-3 py-2 flex items-center gap-2 shadow-xl min-w-0 max-w-[280px]"
                   title="Expand"
                 >
-                  <LoaderRing value={dockActiveIndex + 1} total={dockList.length} size={28} stroke={2} />
-                  <div className="h-6 w-[1px] bg-philonet-border" />
-                  <div className="text-xs text-philonet-text-secondary truncate">
+                  <div className="flex-shrink-0">
+                    <LoaderRing value={dockActiveIndex + 1} total={dockList.length} size={24} stroke={2} />
+                  </div>
+                  <div className="h-5 w-[1px] bg-philonet-border flex-shrink-0" />
+                  <div className="text-xs text-philonet-text-secondary truncate min-w-0">
                     {dockList[dockActiveIndex]?.tag?.text ? (
-                      <div className="flex items-center gap-2">
-                        <Tag className="h-3 w-3 text-philonet-blue-400" />
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Tag className="h-3 w-3 text-philonet-blue-400 flex-shrink-0" />
                         <span className="text-philonet-blue-400 truncate">{dockList[dockActiveIndex].tag.text}</span>
                       </div>
                     ) : (
-                      <>
-                        <span className="text-philonet-text-muted">Comment</span> {dockActiveIndex + 1} of {dockList.length}
-                      </>
+                      <div className="flex items-center gap-1">
+                        <span className="text-philonet-text-muted">Comment</span>
+                        <span className="text-philonet-blue-400 font-medium">{dockActiveIndex + 1}</span>
+                        <span className="text-philonet-text-muted">of</span>
+                        <span className="text-philonet-blue-400 font-medium">{dockList.length}</span>
+                      </div>
                     )}
                   </div>
                 </motion.button>
