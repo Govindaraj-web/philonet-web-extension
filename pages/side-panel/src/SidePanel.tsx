@@ -1,31 +1,35 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  X,
-  MoreHorizontal,
-  Share2,
-  Bookmark,
-  MessageSquare,
-  Sparkles,
-  Tag,
-  FolderOpen,
-  UserRound,
-  Bot,
-  CornerDownLeft,
-  Loader2,
-  Smile,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-  Volume2,
-  VolumeX,
-  Pause,
-  Play,
-} from "lucide-react";
-import MarkdownIt from "markdown-it";
-import { withErrorBoundary, withSuspense } from '@extension/shared';
-import { cn, ErrorDisplay, LoadingSpinner } from '@extension/ui';
+import React from "react";
+import { AppProvider } from './context';
+import SidePanelRefactored from './SidePanelRefactored';
+
+// For backward compatibility and demonstration
+const SidePanel: React.FC = () => {
+  const apiConfig = {
+    baseUrl: process.env.REACT_APP_API_URL || 'https://api.philonet.app',
+    timeout: 10000
+  };
+
+  return (
+    <AppProvider defaultApiConfig={apiConfig}>
+      <SidePanelRefactored />
+    </AppProvider>
+  );
+};
+
+export default SidePanel;
+
+// Note: The original monolithic component has been refactored into a modular architecture.
+// See MODULAR_ARCHITECTURE.md for detailed documentation on the new structure.
+// 
+// Key benefits of the new architecture:
+// 1. ✅ Modular components for easy maintenance
+// 2. ✅ Custom hooks for reusable logic  
+// 3. ✅ Service layer ready for API integration
+// 4. ✅ Context providers for global state
+// 5. ✅ TypeScript types for better development experience
+// 6. ✅ Utility functions for common operations
+// 7. ✅ Prepared for authentication and user management
+// 8. ✅ Extensible architecture for future features
 
 // Philonet UI Components
 const Button = ({ className = "", children, ...props }: any) => (
@@ -182,6 +186,16 @@ const SidePanel = () => {
   const [speechSupported, setSpeechSupported] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+  
+  // History and source states
+  const [currentSourceUrl] = useState("https://example.com/philonet-interface-overview"); // This would come from the extension context
+  const [historyItems] = useState([
+    { id: 1, title: "Philonet Interface Overview", url: "https://example.com/philonet-interface-overview", timestamp: new Date() },
+    { id: 2, title: "Design Systems Guide", url: "https://example.com/design-systems", timestamp: new Date(Date.now() - 3600000) },
+    { id: 3, title: "Reading Experience Best Practices", url: "https://example.com/reading-ux", timestamp: new Date(Date.now() - 7200000) }
+  ]);
+  const [showHistoryMenu, setShowHistoryMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const markdownContent = SAMPLE_MARKDOWNS[sampleIdx].md;
   console.log('📝 Markdown content loaded:', markdownContent.substring(0, 100) + '...');
@@ -487,6 +501,46 @@ const SidePanel = () => {
     };
   }, []);
 
+  // Close menus when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (showHistoryMenu && !target.closest('[data-history-menu]')) {
+        setShowHistoryMenu(false);
+      }
+      if (showMoreMenu && !target.closest('[data-more-menu]')) {
+        setShowMoreMenu(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showHistoryMenu, showMoreMenu]);
+
+  // History and source handlers
+  function openSourcePage() {
+    if (currentSourceUrl) {
+      // In a real extension, this would open the source URL in a new tab
+      window.open(currentSourceUrl, '_blank', 'noopener,noreferrer');
+      console.log('🔗 Opening source URL:', currentSourceUrl);
+    }
+  }
+
+  function toggleHistoryMenu() {
+    setShowHistoryMenu(!showHistoryMenu);
+  }
+
+  function toggleMoreMenu() {
+    setShowMoreMenu(!showMoreMenu);
+  }
+
+  function openHistoryItem(url: string) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setShowHistoryMenu(false);
+    setShowMoreMenu(false); // Close more menu too since history is inside it
+    console.log('📚 Opening history item:', url);
+  }
+
   // Comment actions
   function submitComment() {
     const text = comment.trim();
@@ -636,10 +690,69 @@ If you want, I can focus on introduction, details, or conclusion.`;
                 <Bookmark className="h-4 w-4" />
                 <span className="ml-2">Save</span>
               </Button>
-              <Button className="h-9 px-4 text-sm">
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="ml-2">More</span>
-              </Button>
+              <div className="relative" data-more-menu>
+                <Button 
+                  className="h-9 px-4 text-sm"
+                  onClick={toggleMoreMenu}
+                  title="More options"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="ml-2">More</span>
+                </Button>
+                
+                {/* More dropdown */}
+                <AnimatePresence>
+                  {showMoreMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute top-full right-0 mt-2 w-[200px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur shadow-xl z-50"
+                    >
+                      <div className="p-2">
+                        <button
+                          onClick={toggleHistoryMenu}
+                          className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3"
+                        >
+                          <History className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                          <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                            Reading History
+                          </span>
+                        </button>
+                        
+                        {/* History submenu */}
+                        <AnimatePresence>
+                          {showHistoryMenu && (
+                            <motion.div
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -10 }}
+                              transition={{ duration: 0.12, ease: "easeOut" }}
+                              className="mt-2 ml-4 space-y-1 border-l border-philonet-border-light pl-3"
+                            >
+                              {historyItems.map((item) => (
+                                <button
+                                  key={item.id}
+                                  onClick={() => openHistoryItem(item.url)}
+                                  className="w-full text-left p-2 rounded-lg hover:bg-philonet-panel/60 transition-colors group"
+                                >
+                                  <div className="text-xs text-philonet-text-primary group-hover:text-white truncate">
+                                    {item.title}
+                                  </div>
+                                  <div className="text-[10px] text-philonet-text-subtle mt-0.5">
+                                    {item.timestamp.toLocaleDateString()}
+                                  </div>
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
             
             {/* Mobile buttons */}
@@ -650,9 +763,68 @@ If you want, I can focus on introduction, details, or conclusion.`;
               <Button className="h-9 w-9 p-0" title="Save">
                 <Bookmark className="h-4 w-4" />
               </Button>
-              <Button className="h-9 w-9 p-0" title="More">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              <div className="relative" data-more-menu>
+                <Button 
+                  className="h-9 w-9 p-0" 
+                  title="More options"
+                  onClick={toggleMoreMenu}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+                
+                {/* Mobile More dropdown */}
+                <AnimatePresence>
+                  {showMoreMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute top-full right-0 mt-2 w-[200px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur shadow-xl z-50"
+                    >
+                      <div className="p-2">
+                        <button
+                          onClick={toggleHistoryMenu}
+                          className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3"
+                        >
+                          <History className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                          <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                            Reading History
+                          </span>
+                        </button>
+                        
+                        {/* Mobile History submenu */}
+                        <AnimatePresence>
+                          {showHistoryMenu && (
+                            <motion.div
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -10 }}
+                              transition={{ duration: 0.12, ease: "easeOut" }}
+                              className="mt-2 ml-4 space-y-1 border-l border-philonet-border-light pl-3 max-h-[200px] overflow-y-auto"
+                            >
+                              {historyItems.map((item) => (
+                                <button
+                                  key={item.id}
+                                  onClick={() => openHistoryItem(item.url)}
+                                  className="w-full text-left p-2 rounded-lg hover:bg-philonet-panel/60 transition-colors group"
+                                >
+                                  <div className="text-xs text-philonet-text-primary group-hover:text-white truncate">
+                                    {item.title}
+                                  </div>
+                                  <div className="text-[10px] text-philonet-text-subtle mt-0.5">
+                                    {item.timestamp.toLocaleDateString()}
+                                  </div>
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         </div>
@@ -694,36 +866,60 @@ If you want, I can focus on introduction, details, or conclusion.`;
                   <h2 className="flex-1 font-light tracking-philonet-wider text-philonet-text-primary text-2xl md:text-4xl lg:text-5xl leading-tight">
                     {meta.title}
                   </h2>
-                  {speechSupported && (
+                  <div className="flex items-center gap-2">
+                    {/* Source button */}
                     <button
-                      onClick={toggleSpeech}
+                      onClick={openSourcePage}
                       className="flex-shrink-0 group mt-1 transition-all duration-200 ease-out hover:scale-105 focus:outline-none focus:scale-105"
-                      title={isPlaying ? "Stop listening" : "Listen to article"}
-                      aria-label={isPlaying ? "Stop reading article aloud" : "Read article aloud"}
+                      title="Open source webpage"
+                      aria-label="Open original source webpage"
                     >
                       <div className="relative">
                         <div className={cn(
                           "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 ease-out",
                           "backdrop-blur-sm border border-philonet-border-light/40",
-                          isPlaying 
-                            ? "bg-philonet-blue-500/20 border-philonet-blue-500/60 text-philonet-blue-400 shadow-lg shadow-philonet-blue-500/10" 
-                            : "bg-philonet-card/60 text-philonet-text-muted hover:bg-philonet-card/80 hover:text-philonet-blue-400 hover:border-philonet-blue-500/40"
+                          "bg-philonet-card/60 text-philonet-text-muted hover:bg-philonet-card/80 hover:text-philonet-blue-400 hover:border-philonet-blue-500/40"
                         )}>
-                          {isPlaying ? (
-                            <Pause className="w-4 h-4 md:w-5 md:h-5" />
-                          ) : (
-                            <Volume2 className="w-4 h-4 md:w-5 md:h-5" />
-                          )}
+                          <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
                         </div>
-                        {isPlaying && (
-                          <div className="absolute -inset-1 rounded-full border border-philonet-blue-500/30 animate-pulse" />
-                        )}
                       </div>
                       <div className="mt-1 text-[10px] md:text-[11px] text-philonet-text-subtle font-light tracking-philonet-wide text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        {isPlaying ? "Stop" : "Listen"}
+                        Source
                       </div>
                     </button>
-                  )}
+                    
+                    {/* Text-to-speech button */}
+                    {speechSupported && (
+                      <button
+                        onClick={toggleSpeech}
+                        className="flex-shrink-0 group mt-1 transition-all duration-200 ease-out hover:scale-105 focus:outline-none focus:scale-105"
+                        title={isPlaying ? "Stop listening" : "Listen to article"}
+                        aria-label={isPlaying ? "Stop reading article aloud" : "Read article aloud"}
+                      >
+                        <div className="relative">
+                          <div className={cn(
+                            "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 ease-out",
+                            "backdrop-blur-sm border border-philonet-border-light/40",
+                            isPlaying 
+                              ? "bg-philonet-blue-500/20 border-philonet-blue-500/60 text-philonet-blue-400 shadow-lg shadow-philonet-blue-500/10" 
+                              : "bg-philonet-card/60 text-philonet-text-muted hover:bg-philonet-card/80 hover:text-philonet-blue-400 hover:border-philonet-blue-500/40"
+                          )}>
+                            {isPlaying ? (
+                              <Pause className="w-4 h-4 md:w-5 md:h-5" />
+                            ) : (
+                              <Volume2 className="w-4 h-4 md:w-5 md:h-5" />
+                            )}
+                          </div>
+                          {isPlaying && (
+                            <div className="absolute -inset-1 rounded-full border border-philonet-blue-500/30 animate-pulse" />
+                          )}
+                        </div>
+                        <div className="mt-1 text-[10px] md:text-[11px] text-philonet-text-subtle font-light tracking-philonet-wide text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          {isPlaying ? "Stop" : "Listen"}
+                        </div>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

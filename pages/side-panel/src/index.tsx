@@ -1,6 +1,9 @@
-import '@src/index.css';
-import SidePanel from '@src/SidePanel';
+import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { AppProvider } from './context';
+import SidePanelRefactored from './SidePanelRefactored';
+
+import './index.css';
 
 console.log('🚀 Side panel index.tsx loading...');
 
@@ -16,9 +19,20 @@ const init = () => {
   console.log('🌱 Creating React root...');
   const root = createRoot(appContainer);
   
-  console.log('🎨 Rendering SidePanel component...');
-  root.render(<SidePanel />);
+  // API configuration for the side panel
+  const apiConfig = {
+    baseUrl: process.env.REACT_APP_API_URL || 'https://api.philonet.app',
+    timeout: 10000
+  };
   
+  console.log('🎨 Rendering SidePanel component...');
+  root.render(
+    <React.StrictMode>
+      <AppProvider defaultApiConfig={apiConfig}>
+        <SidePanelRefactored />
+      </AppProvider>
+    </React.StrictMode>
+  );
   console.log('✅ SidePanel rendered successfully!');
 };
 
