@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
 
@@ -21,6 +21,20 @@ import {
 
 import { SidePanelProps } from './types';
 import { SAMPLE_MARKDOWNS } from './data/sampleContent';
+
+// PageData interface for web extraction
+interface PageData {
+  url: string;
+  title: string;
+  metaDescription: string | null;
+  headings: string[];
+  visibleText: string;
+  structuredData: { tags: string[]; categories: string[] };
+  openGraph: Record<string, string>;
+  thumbnailUrl: string | null;
+  wordCount: number;
+  extractedAt: string;
+}
 
 const SidePanel: React.FC<SidePanelProps> = ({
   user,
@@ -60,6 +74,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const markdownContent = SAMPLE_MARKDOWNS[sampleIdx].md;
   const meta = extractMeta(markdownContent);
   const sections = parseSections(meta.body);
+
+  // Page data state
+  const [pageData, setPageData] = useState<PageData | null>(null);
+  const [showPageData, setShowPageData] = useState(false);
 
   console.log('📝 Markdown content loaded:', markdownContent.substring(0, 100) + '...');
   console.log('🏷️ Extracted metadata:', meta);
@@ -106,6 +124,17 @@ const SidePanel: React.FC<SidePanelProps> = ({
       dockActiveIndex: Math.min(Math.max(0, state.dockActiveIndex), dockList.length - 1) 
     });
   }, [state.dockFilterText, state.comments, state.dockActiveIndex, updateState]);
+
+  // Handle page data viewing
+  const handleViewPageData = (data: PageData) => {
+    setPageData(data);
+    setShowPageData(true);
+    console.log('Page data received:', data);
+  };
+
+  const closePageDataModal = () => {
+    setShowPageData(false);
+  };
 
   // Handlers
   const handleCommentChange = (value: string) => {
@@ -169,8 +198,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
             onToggleMoreMenu={toggleMoreMenu}
             onToggleHistoryMenu={toggleHistoryMenu}
             onHistoryItemClick={openHistoryItem}
+            onSummary={() => console.log('Generate summary clicked')}
             onShare={() => console.log('Share clicked')}
             onSave={() => console.log('Save clicked')}
+            onViewPageData={handleViewPageData}
           />
 
           {/* Content Renderer */}
@@ -223,6 +254,108 @@ const SidePanel: React.FC<SidePanelProps> = ({
             />
           </div>
         </motion.aside>
+
+        {/* Page Data Modal */}
+        {showPageData && pageData && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={closePageDataModal}>
+            <div className="bg-philonet-card border border-philonet-border rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-white">Page Data</h2>
+                <button 
+                  onClick={closePageDataModal}
+                  className="text-philonet-text-muted hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="space-y-4 text-sm">
+                <div>
+                  <h3 className="font-semibold text-philonet-blue-400 mb-2">Basic Info</h3>
+                  <div className="space-y-1 text-philonet-text-primary">
+                    <p><strong>URL:</strong> <span className="text-philonet-text-secondary break-all">{pageData.url}</span></p>
+                    <p><strong>Title:</strong> <span className="text-philonet-text-secondary">{pageData.title}</span></p>
+                    <p><strong>Word Count:</strong> <span className="text-philonet-text-secondary">{pageData.wordCount.toLocaleString()}</span></p>
+                    <p><strong>Extracted:</strong> <span className="text-philonet-text-secondary">{new Date(pageData.extractedAt).toLocaleString()}</span></p>
+                  </div>
+                </div>
+
+                {pageData.metaDescription && (
+                  <div>
+                    <h3 className="font-semibold text-philonet-blue-400 mb-2">Meta Description</h3>
+                    <p className="text-philonet-text-secondary">{pageData.metaDescription}</p>
+                  </div>
+                )}
+
+                {pageData.headings.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-philonet-blue-400 mb-2">Headings</h3>
+                    <ul className="space-y-1">
+                      {pageData.headings.slice(0, 10).map((heading, index) => (
+                        <li key={index} className="text-philonet-text-secondary">• {heading}</li>
+                      ))}
+                      {pageData.headings.length > 10 && (
+                        <li className="text-philonet-text-muted">... and {pageData.headings.length - 10} more</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                {(pageData.structuredData.tags.length > 0 || pageData.structuredData.categories.length > 0) && (
+                  <div>
+                    <h3 className="font-semibold text-philonet-blue-400 mb-2">Structured Data</h3>
+                    {pageData.structuredData.tags.length > 0 && (
+                      <div className="mb-2">
+                        <strong className="text-philonet-text-primary">Tags:</strong>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {pageData.structuredData.tags.map((tag, index) => (
+                            <span key={index} className="bg-philonet-border px-2 py-1 rounded text-xs text-philonet-text-secondary">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {pageData.structuredData.categories.length > 0 && (
+                      <div>
+                        <strong className="text-philonet-text-primary">Categories:</strong>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {pageData.structuredData.categories.map((category, index) => (
+                            <span key={index} className="bg-philonet-border px-2 py-1 rounded text-xs text-philonet-text-secondary">
+                              {category}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {Object.keys(pageData.openGraph).length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-philonet-blue-400 mb-2">Open Graph Data</h3>
+                    <div className="space-y-1">
+                      {Object.entries(pageData.openGraph).map(([key, value]) => (
+                        <p key={key} className="text-philonet-text-primary">
+                          <strong>{key}:</strong> <span className="text-philonet-text-secondary">{value}</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="font-semibold text-philonet-blue-400 mb-2">Content Preview</h3>
+                  <div className="bg-philonet-panel p-3 rounded border max-h-60 overflow-y-auto">
+                    <pre className="text-xs text-philonet-text-secondary whitespace-pre-wrap">
+                      {pageData.visibleText.slice(0, 2000)}{pageData.visibleText.length > 2000 ? '...' : ''}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Custom Scrollbar Styles */}
         <style>{`
