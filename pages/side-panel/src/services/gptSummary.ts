@@ -1,7 +1,20 @@
 
-import { getApiUrl, API_ENDPOINTS } from "../../../../../src/config/api";
-import { stream } from "fast-glob";
 import { philonetAuthStorage } from "../storage/auth-storage";
+
+// Temporary API configuration until the real config is available
+const getApiUrl = (endpoint: string) => `http://localhost:3000/v1/client${endpoint}`;
+const API_ENDPOINTS = {
+  PARSE: '/parse',
+  STORE_SUMMARY: '/store-summary',
+  GET_ARTICLE_RECOMMENDATIONS: '/article-recommendations',
+  GET_USER_RECOMMENDATIONS: '/user-recommendations',
+  UPDATE_USER_VECTOR: '/update-user-vector',
+  ADD_TO_ROOM: '/add-to-room',
+  GET_ARTICLE_DETAILS: '/article-details',
+  EXTRACT_ARTICLE: '/extract-article',
+  STORE_HIGHLIGHT: '/store-highlight',
+  CONTENT_HIGHLIGHTS: '/content-highlights'
+};
 
 export const getSummaryStorageKey = () => `gpt_summary_${location.origin}${location.pathname}`;
 
@@ -160,7 +173,7 @@ export const streamWebSummaryFromEvents = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ content: pageContent, stream: true, ignoreCache: false, deep_summary: true }),
+      body: JSON.stringify({ content: pageContent, stream: true, ignoreCache: true, deep_summary: true }),
     });
 
     if (!response.ok) {
@@ -214,7 +227,13 @@ export const streamWebSummaryFromEvents = async (
           }
         }
       } catch (streamError) {
-        throw new StreamError(`Stream reading error: ${streamError.message}`);
+        let message = 'Stream reading error';
+        if (typeof streamError === 'object' && streamError && 'message' in streamError) {
+          message = `Stream reading error: ${(streamError as { message?: string }).message}`;
+        } else if (typeof streamError === 'string') {
+          message = `Stream reading error: ${streamError}`;
+        }
+        throw new StreamError(message);
       }
     }
   } catch (error) {
@@ -233,7 +252,9 @@ export const streamWebSummaryFromEvents = async (
 
 export const fetchWebTopicTagsAndSummary = async (
   pageContent: PageContent,
-  apiEndpoint: string = getApiUrl(API_ENDPOINTS.PARSE)
+  apiEndpoint: string = getApiUrl(API_ENDPOINTS.PARSE),
+  streamSummaryEndpoint?: string,
+  onSummaryChunk?: (chunk: string) => void
 ): Promise<{
   tags: string[];
   title: string;
@@ -241,11 +262,43 @@ export const fetchWebTopicTagsAndSummary = async (
   summary: string;
   metadata?: any;
 }> => {
+  // If content is not present, generate summary using streaming first
   if (!pageContent.visibleText?.trim()) {
-    throw new Error('Page content cannot be empty');
+    if (!streamSummaryEndpoint) {
+      throw new Error('Page content is empty and no streaming endpoint provided for summary generation');
+    }
+    
+    if (!onSummaryChunk) {
+      throw new Error('Page content is empty and no summary chunk handler provided');
+    }
+
+    // Generate summary using streaming
+    let generatedSummary = '';
+    const chunkHandler = (chunk: string) => {
+      generatedSummary += chunk;
+      onSummaryChunk(chunk);
+    };
+
+    try {
+      // Create a minimal page content for streaming
+      const minimalPageContent: PageContent = {
+        ...pageContent,
+        visibleText: pageContent.title || pageContent.metaDescription || 'No content available'
+      };
+
+      await streamWebSummaryFromEvents(minimalPageContent, streamSummaryEndpoint, chunkHandler);
+
+      // Update pageContent with generated summary
+      pageContent = {
+        ...pageContent,
+        visibleText: generatedSummary
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
-  // Fetch access token from philonetAuthStorage
+  // Proceed with normal parsing now that we have content
   const accessToken = await getAccessToken();
   if (!accessToken) {
     throw new Error('Access token not found in localStorage');
@@ -272,6 +325,76 @@ export const fetchWebTopicTagsAndSummary = async (
     title: data.title || '',
     metadata: data.metadata,
   };
+};
+
+/**
+ * Generates a streaming summary and extracts page details in parallel.
+ * This function runs both operations simultaneously for better performance.
+ */
+export const generateSummaryAndExtractDetails = async (
+  pageContent: PageContent,
+  streamSummaryEndpoint: string,
+  extractEndpoint: string = getApiUrl(API_ENDPOINTS.EXTRACT_ARTICLE),
+  onSummaryChunk?: (chunk: string) => void
+): Promise<{
+  tags: string[];
+  title: string;
+  categories: Array<string | [string, number]>;
+  summary: string;
+  metadata?: any;
+  streamedSummary: string;
+}> => {
+  let streamedSummary = '';
+  
+  // Generate summary using streaming
+  const chunkHandler = (chunk: string) => {
+    streamedSummary += chunk;
+    if (onSummaryChunk) {
+      onSummaryChunk(chunk);
+    }
+  };
+
+  try {
+    // Use existing content if available, otherwise use minimal content for streaming
+    const contentForStreaming: PageContent = pageContent.visibleText?.trim() 
+      ? pageContent 
+      : {
+          ...pageContent,
+          visibleText: pageContent.title || pageContent.metaDescription || 'Generate summary for this page'
+        };
+
+    // Start both operations in parallel
+    const streamingPromise = streamWebSummaryFromEvents(contentForStreaming, streamSummaryEndpoint, chunkHandler);
+    
+    // Start extractarticle in parallel using the original page content
+    const extractPromise = extractArticleData({
+      rawText: contentForStreaming.visibleText,
+      content: {
+        url: contentForStreaming.url,
+        title: contentForStreaming.title,
+        metaDescription: contentForStreaming.metaDescription,
+        headings: contentForStreaming.headings,
+        visibleText: contentForStreaming.visibleText,
+        structuredData: contentForStreaming.structuredData,
+        openGraph: contentForStreaming.openGraph,
+        thumbnailUrl: contentForStreaming.thumbnailUrl
+      }
+    }, extractEndpoint);
+
+    // Wait for both to complete
+    const [_, extractDetails] = await Promise.all([streamingPromise, extractPromise]);
+
+    return {
+      tags: extractDetails.tags,
+      title: extractDetails.title,
+      categories: extractDetails.categories,
+      summary: extractDetails.summary,
+      metadata: extractDetails.metadata,
+      streamedSummary
+    };
+  } catch (error) {
+    throw new Error(`Failed to generate summary and extract details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 };
 
 /**

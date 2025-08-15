@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Settings, Eye, FileText, RefreshCw } from "lucide-react";
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
+import ContentSkeleton from './components/ContentSkeleton';
 
 // Import modular components and hooks
 import {
@@ -23,6 +24,16 @@ import {
 import { SidePanelProps, MarkdownMeta } from './types';
 import { SAMPLE_MARKDOWNS } from './data/sampleContent';
 import { philonetAuthStorage } from './storage/auth-storage';
+import { 
+  generateSummaryAndExtractDetails, 
+  fetchWebTopicTagsAndSummary,
+  streamWebSummaryFromEvents,
+  extractArticleData,
+  createPageContentFromUploadedFile,
+  extractThumbnailUrl,
+  storeWebSummary,
+  type PageContent 
+} from './services/gptSummary';
 
 // PageData interface for web extraction
 interface PageData {
@@ -163,6 +174,14 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [showNotification, setShowNotification] = useState(false);
   const [notificationTimeout, setNotificationTimeout] = useState<NodeJS.Timeout | null>(null);
   const [timeoutProgress, setTimeoutProgress] = useState(100);
+  
+  // Content generation streaming state
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [streamingContent, setStreamingContent] = useState<string>('');
+  const [generatedTags, setGeneratedTags] = useState<string[]>([]);
+  const [generatedCategories, setGeneratedCategories] = useState<Array<string | [string, number]>>([]);
+  const [generatedTitle, setGeneratedTitle] = useState<string>('');
+  const [showStreamingProgress, setShowStreamingProgress] = useState(false);
 
   // Dynamic content based on article data or fallback to sample (after article state is declared)
   const [sampleIdx] = useState(0);
@@ -185,11 +204,11 @@ ${article.description}
 `;
       const articleMeta: MarkdownMeta = {
         title: article.title,
-        description: article.summary,
+        description: article.summary, // Use summary for header description
         image: article.thumbnail_url,
         categories: article.categories,
         tags: article.tags,
-        body: article.description
+        body: article.description // Use description as the main body content
       };
       
       return {
@@ -511,11 +530,14 @@ ${article.description}
       console.log('🔍 Checking for existing article for URL:', currentUrl);
       checkAndLoadArticle(currentUrl);
     }
+    // Reset streaming state when URL changes
+    resetStreamingState();
   }, [currentUrl, settings.autoUpdate]);
 
-  // Auto-hide notifications with timeout
+  // Auto-hide notifications with timeout - TEMPORARILY DISABLED
   useEffect(() => {
-    if ((article || articleError) && !isLoadingArticle) {
+    // Notifications temporarily disabled in favor of loading overlay
+    if (false && (article || articleError) && !isLoadingArticle) {
       setShowNotification(true);
       setTimeoutProgress(100);
       
@@ -557,9 +579,10 @@ ${article.description}
     };
   }, [article, articleError, isLoadingArticle]);
 
-  // Show notification immediately when loading starts
+  // Show notification immediately when loading starts - TEMPORARILY DISABLED
   useEffect(() => {
-    if (isLoadingArticle) {
+    // Notifications temporarily disabled in favor of loading overlay
+    if (false && isLoadingArticle) {
       setShowNotification(true);
       setTimeoutProgress(100);
       
@@ -842,6 +865,7 @@ ${article.description}
       setArticleError(error instanceof Error ? error.message : 'Failed to fetch article');
     } finally {
       setIsLoadingArticle(false);
+      endLoadingWithMinTimer();
     }
   };
 
@@ -853,17 +877,251 @@ ${article.description}
 
     try {
       setIsLoadingArticle(true);
+      setIsGeneratingContent(true);
+      startLoadingWithMinTimer();
       setArticleError(null);
       
-      // For now, just show a placeholder
-      // This will be implemented later as mentioned in the requirements
+      // Reset streaming states
+      setStreamingContent('');
+      setGeneratedTags([]);
+      setGeneratedCategories([]);
+      setGeneratedTitle('');
+
       console.log('🔄 Generate content requested for:', currentUrl);
-      setArticleError('Content generation will be implemented later');
+
+      // First, extract page data
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Extract page data using the same logic from extractPageData
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const extractUrl = () => window.location.href;
+          const extractTitle = () => document.title;
+          const extractMetaDescription = () => {
+            const meta = document.querySelector('meta[name="description"]');
+            return meta ? meta.getAttribute('content') : null;
+          };
+          const extractHeadings = () => {
+            const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            return Array.from(headings).map(h => h.textContent?.trim() || '').filter(Boolean);
+          };
+          const extractVisibleText = () => {
+            const walker = document.createTreeWalker(
+              document.body,
+              NodeFilter.SHOW_TEXT,
+              {
+                acceptNode: (node) => {
+                  const parent = node.parentElement;
+                  if (!parent) return NodeFilter.FILTER_REJECT;
+                  
+                  const style = getComputedStyle(parent);
+                  if (style.display === 'none' || 
+                      style.visibility === 'hidden' || 
+                      style.opacity === '0') {
+                    return NodeFilter.FILTER_REJECT;
+                  }
+                  
+                  const tagName = parent.tagName.toLowerCase();
+                  if (['script', 'style', 'noscript', 'meta', 'link'].includes(tagName)) {
+                    return NodeFilter.FILTER_REJECT;
+                  }
+                  
+                  return NodeFilter.FILTER_ACCEPT;
+                }
+              }
+            );
+            
+            let textContent = '';
+            let node;
+            while (node = walker.nextNode()) {
+              const text = node.textContent?.trim();
+              if (text && text.length > 3) {
+                textContent += text + ' ';
+              }
+            }
+            return textContent.trim();
+          };
+
+          const extractThumbnailUrl = (): string | null => {
+            // Try Open Graph image
+            const ogImage = document.querySelector('meta[property="og:image"]');
+            if (ogImage?.getAttribute('content')) {
+              return ogImage.getAttribute('content');
+            }
+
+            // YouTube fallback
+            if (location.hostname.includes('youtube.com')) {
+              const videoId = new URLSearchParams(location.search).get('v');
+              if (videoId) {
+                return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+              }
+            }
+
+            return null;
+          };
+
+          return {
+            url: extractUrl(),
+            title: extractTitle(),
+            metaDescription: extractMetaDescription(),
+            headings: extractHeadings(),
+            visibleText: extractVisibleText(),
+            thumbnailUrl: extractThumbnailUrl(),
+            structuredData: {},
+            openGraph: {}
+          };
+        }
+      });
+
+      if (!results[0]?.result) {
+        throw new Error('Failed to extract page data');
+      }
+
+      const extractedPageData = results[0].result;
+      console.log('📄 Extracted page data:', extractedPageData);
+
+      // Create PageContent object
+      const pageContent: PageContent = {
+        url: extractedPageData.url,
+        title: extractedPageData.title,
+        metaDescription: extractedPageData.metaDescription || '',
+        headings: extractedPageData.headings || [],
+        visibleText: extractedPageData.visibleText || '',
+        structuredData: extractedPageData.structuredData || {},
+        openGraph: extractedPageData.openGraph || {},
+        thumbnailUrl: extractedPageData.thumbnailUrl || undefined
+      };
+
+      // Create an initial mock article immediately to update the main content area
+      const initialArticle: Article = {
+        article_id: 0,
+        room_id: 0,
+        created_at: new Date().toISOString(),
+        is_deleted: false,
+        pdf: false,
+        category: 'Generating',
+        sparked_by: null,
+        url: pageContent.url,
+        title: pageContent.title || 'Generating Title...',
+        description: pageContent.metaDescription || 'Content is being generated, please wait...',
+        thumbnail_url: pageContent.thumbnailUrl || '',
+        shared_by: '',
+        tags: [],
+        categories: [],
+        summary: 'Generating summary...',
+        room_name: 'Generated Content',
+        room_description: 'AI Generated Content Room',
+        room_admin: '',
+        private_space: false,
+        spark_owner: null
+      };
+
+      // Set the initial article to update the main content area
+      setArticle(initialArticle);
+      updateState({ currentSourceUrl: pageContent.url });
+
+      // Always use streaming generation regardless of content amount
+      console.log('📝 Starting streaming content generation...');
+      
+      const streamEndpoint = 'http://localhost:3000/v1/client/summarize';
+      const extractEndpoint = 'http://localhost:3000/v1/client/extractarticle';
+      
+      // Start both operations in parallel, but handle them independently
+      let streamingContent = '';
+      let extractCompleted = false;
+      
+      // Start streaming operation
+      const streamingPromise = streamWebSummaryFromEvents(
+        pageContent,
+        streamEndpoint,
+        (chunk: string) => {
+          console.log('📝 Streaming chunk received:', chunk);
+          streamingContent += chunk;
+          setStreamingContent(streamingContent);
+          
+          // Update the article in real-time as content streams in
+          setArticle(currentArticle => {
+            if (!currentArticle) return currentArticle;
+            return {
+              ...currentArticle,
+              description: streamingContent, // Update description (body) with streaming content
+            };
+          });
+        }
+      );
+      
+      // Start extract operation in parallel - render immediately when ready
+      extractArticleData({
+        rawText: pageContent.visibleText,
+        content: {
+          url: pageContent.url,
+          title: pageContent.title,
+          metaDescription: pageContent.metaDescription,
+          headings: pageContent.headings,
+          visibleText: pageContent.visibleText,
+          structuredData: pageContent.structuredData,
+          openGraph: pageContent.openGraph,
+          thumbnailUrl: pageContent.thumbnailUrl
+        }
+      }, extractEndpoint).then((extractDetails: any) => {
+        console.log('📄 Extract article completed:', extractDetails);
+        extractCompleted = true;
+        
+        // Update the article immediately with extracted metadata
+        setArticle(currentArticle => {
+          if (!currentArticle) return currentArticle;
+          return {
+            ...currentArticle,
+            title: extractDetails.title || currentArticle.title,
+            summary: extractDetails.summary, // Use extracted API summary for header description
+            tags: extractDetails.tags,
+            categories: extractDetails.categories.map((cat: any) => 
+              typeof cat === 'string' ? cat : cat[0]
+            )
+          };
+        });
+        
+        // Update state with extract results
+        setGeneratedTitle(extractDetails.title);
+        setGeneratedTags(extractDetails.tags);
+        setGeneratedCategories(extractDetails.categories);
+        
+        console.log('✅ Extract article metadata updated immediately:', {
+          title: extractDetails.title,
+          tags: extractDetails.tags,
+          categories: extractDetails.categories,
+          summary: extractDetails.summary
+        });
+      }).catch((error) => {
+        console.error('❌ Extract article failed:', error);
+      });
+
+      // Let streaming continue independently - handle completion separately
+      streamingPromise.then(() => {
+        console.log('✅ Streaming content generation completed independently');
+        console.log('📝 Final streamed content length:', streamingContent.length);
+      }).catch((error) => {
+        console.error('❌ Streaming failed:', error);
+      });
+
+      console.log('🎉 Both operations started independently - they will update UI when ready');
+
+      // Update the source URL
+      updateState({ currentSourceUrl: pageContent.url });
+
     } catch (error) {
       console.error('❌ Error generating content:', error);
+      setArticle(null);
+      updateState({ currentSourceUrl: "" });
       setArticleError(error instanceof Error ? error.message : 'Failed to generate content');
     } finally {
       setIsLoadingArticle(false);
+      setIsGeneratingContent(false);
+      endLoadingWithMinTimer();
     }
   };
 
@@ -948,6 +1206,16 @@ ${article.description}
 
   const handleGenerateContent = () => {
     generateContent();
+  };
+  
+  // Reset streaming content state
+  const resetStreamingState = () => {
+    setStreamingContent('');
+    setGeneratedTags([]);
+    setGeneratedCategories([]);
+    setGeneratedTitle('');
+    setIsGeneratingContent(false);
+    // Don't clear the source URL since we want to preserve navigation context
   };
 
   const handleViewArticleContent = () => {
@@ -1058,8 +1326,14 @@ ${article.description}
             isExtracting={isExtractingPageData}
           />
 
-          {/* Content Renderer or Encouraging Message */}
-          {article ? (
+          {/* Content Renderer, Skeleton Loading, or Encouraging Message */}
+          {(isLoadingWithMinTimer || isLoadingArticle) ? (
+            <div className="absolute left-0 right-0" style={{ top: 68, bottom: state.footerH }}>
+              <div className="h-full overflow-y-auto pr-1">
+                <ContentSkeleton />
+              </div>
+            </div>
+          ) : article ? (
             <ContentRenderer
               meta={meta}
               sections={sections}
@@ -1100,15 +1374,15 @@ ${article.description}
                 {/* Generate Button */}
                 <motion.button
                   onClick={handleGenerateContent}
-                  disabled={isLoadingArticle}
+                  disabled={isLoadingArticle || isGeneratingContent}
                   whileHover={{ scale: 1.02, y: -2 }}
                   whileTap={{ scale: 0.98, y: 0 }}
                   className="group relative w-full bg-gradient-to-r from-philonet-blue-600 via-philonet-blue-600 to-philonet-blue-500 hover:from-philonet-blue-700 hover:via-philonet-blue-700 hover:to-philonet-blue-600 disabled:from-philonet-blue-600/50 disabled:via-philonet-blue-600/50 disabled:to-philonet-blue-500/50 text-white py-4 px-8 rounded-xl font-semibold text-lg shadow-[0_4px_14px_0_rgba(59,130,246,0.4)] hover:shadow-[0_8px_24px_0_rgba(59,130,246,0.5)] active:shadow-[0_2px_8px_0_rgba(59,130,246,0.4)] transition-all duration-300 disabled:cursor-not-allowed flex items-center justify-center gap-3 border border-philonet-blue-500/20"
                 >
-                  {isLoadingArticle ? (
+                  {isLoadingArticle || isGeneratingContent ? (
                     <>
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      <span>Generating...</span>
+                      <span>{isGeneratingContent ? 'Generating Content...' : 'Loading...'}</span>
                     </>
                   ) : (
                     <>
@@ -1130,9 +1404,114 @@ ${article.description}
             </div>
           )}
 
-          {/* Article Status Indicator */}
+          {/* Streaming Content Generation Modal */}
           <AnimatePresence>
-            {showNotification && (article || isLoadingArticle || articleError) && (
+            {showStreamingProgress && isGeneratingContent && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="bg-philonet-card border border-philonet-border rounded-xl shadow-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden"
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 border-2 border-philonet-blue-400/30 border-t-philonet-blue-400 rounded-full animate-spin"></div>
+                      <h2 className="text-xl font-semibold text-white">Generating Content</h2>
+                    </div>
+                  </div>
+
+                  {/* Progress Indicators */}
+                  <div className="space-y-4 mb-6">
+                    {/* Page Analysis */}
+                    <div className="flex items-center gap-3 p-3 bg-philonet-panel/50 rounded-lg border border-philonet-border/50">
+                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                      <span className="text-sm text-green-400 font-medium">Page analysis completed</span>
+                    </div>
+
+                    {/* Content Generation */}
+                    <div className="flex items-center gap-3 p-3 bg-philonet-panel/50 rounded-lg border border-philonet-border/50">
+                      <div className="w-2 h-2 bg-philonet-blue-400 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-philonet-blue-400 font-medium">Generating summary...</span>
+                    </div>
+
+                    {/* Tag Extraction */}
+                    {generatedTags.length > 0 && (
+                      <div className="flex items-center gap-3 p-3 bg-philonet-panel/50 rounded-lg border border-philonet-border/50">
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                        <span className="text-sm text-yellow-400 font-medium">Extracting tags and categories...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Generated Content Preview */}
+                  {generatedTitle && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium text-philonet-blue-400 mb-2">Generated Title</h3>
+                      <div className="bg-philonet-background/50 border border-philonet-border/50 rounded-lg p-3">
+                        <p className="text-white font-medium">{generatedTitle}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tags Preview */}
+                  {generatedTags.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium text-philonet-blue-400 mb-2">Tags</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {generatedTags.slice(0, 6).map((tag, index) => (
+                          <span
+                            key={index}
+                            className="px-2 py-1 bg-philonet-blue-600/20 border border-philonet-blue-500/50 rounded-md text-xs text-philonet-blue-400"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {generatedTags.length > 6 && (
+                          <span className="px-2 py-1 bg-philonet-border/50 rounded-md text-xs text-philonet-text-muted">
+                            +{generatedTags.length - 6} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Streaming Content */}
+                  {streamingContent && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium text-philonet-blue-400 mb-2">
+                        Generated Summary ({streamingContent.length} characters)
+                      </h3>
+                      <div className="bg-philonet-background/50 border border-philonet-border/50 rounded-lg p-3 max-h-40 overflow-y-auto philonet-scrollbar">
+                        <div className="text-philonet-text-secondary text-sm leading-relaxed whitespace-pre-wrap">
+                          {streamingContent}
+                          <span className="inline-block w-2 h-4 bg-philonet-blue-400 ml-1 animate-pulse"></span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Progress Message */}
+                  <div className="text-center">
+                    <p className="text-sm text-philonet-text-muted">
+                      Please wait while we analyze and generate content for this page...
+                    </p>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Article Status Indicator - Temporarily Hidden */}
+          <AnimatePresence>
+            {false && showNotification && (article || isLoadingArticle || articleError) && (
               <motion.div
                 initial={{ opacity: 0, x: 40, y: 0, scale: 0.9 }}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
