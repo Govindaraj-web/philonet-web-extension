@@ -1,0 +1,140 @@
+/* Enhanced streaming cursor animation styles */
+@keyframes streamingCursor {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0.2; }
+}
+
+@keyframes cursorBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.streaming-cursor {
+  animation: streamingCursor 0.8s infinite;
+}
+
+.streaming-cursor::after {
+  content: '▋';
+  color: #3b82f6; /* philonet-blue-500 */
+  font-weight: bold;
+  margin-left: 2px;
+  animation: cursorBlink 1.2s infinite;
+}
+
+/* Multi-line streaming animation with enhanced cursor */
+.streaming-content {
+  position: relative;
+  display: inline-block;
+  min-height: 1.2em;
+}
+
+.streaming-content.is-active::after {
+  content: '▋';
+  color: #3b82f6; /* philonet-blue-500 */
+  font-weight: bold;
+  margin-left: 3px;
+  animation: cursorBlink 0.9s infinite;
+  vertical-align: baseline;
+  line-height: inherit;
+}
+
+/* Line-by-line streaming effect with stagger */
+.streaming-line {
+  opacity: 0;
+  animation: fadeInSlide 0.4s ease-out forwards;
+}
+
+.streaming-line:nth-child(odd) {
+  animation-delay: 0.1s;
+}
+
+.streaming-line:nth-child(even) {
+  animation-delay: 0.05s;
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Enhanced typing effect for sentences */
+.streaming-word {
+  opacity: 0;
+  display: inline-block;
+  animation: fadeInWord 0.15s ease-out forwards;
+}
+
+@keyframes fadeInWord {
+  from { 
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth paragraph animation for multi-line content */
+.streaming-paragraph {
+  opacity: 0;
+  animation: fadeInParagraph 0.6s ease-out forwards;
+}
+
+@keyframes fadeInParagraph {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Character-by-character reveal for detailed streaming */
+.streaming-char {
+  opacity: 0;
+  animation: fadeInChar 0.03s ease-out forwards;
+}
+
+@keyframes fadeInChar {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Pulse effect for content being actively generated */
+.streaming-active {
+  position: relative;
+}
+
+.streaming-active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    #3b82f6 20%,
+    #3b82f6 80%,
+    transparent
+  );
+  border-radius: 2px;
+  animation: pulseBar 2s ease-in-out infinite;
+}
+
+@keyframes pulseBar {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
