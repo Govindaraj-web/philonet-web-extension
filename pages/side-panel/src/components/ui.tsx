@@ -34,7 +34,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, any>(({ className = "
   <div 
     ref={ref} 
     {...props} 
-    className={cn("overflow-y-auto philonet-scrollbar", className)}
+    className={cn("overflow-x-auto overflow-y-auto philonet-scrollbar", className)}
     style={{
       scrollbarWidth: 'thin',
       scrollbarColor: '#374151 #1f2937'

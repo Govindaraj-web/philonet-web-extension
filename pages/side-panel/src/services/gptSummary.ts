@@ -1,8 +1,18 @@
 
 import { getApiUrl, API_ENDPOINTS } from "../../../../../src/config/api";
 import { stream } from "fast-glob";
+import { philonetAuthStorage } from "../storage/auth-storage";
 
 export const getSummaryStorageKey = () => `gpt_summary_${location.origin}${location.pathname}`;
+
+// Helper function to get access token
+const getAccessToken = async (): Promise<string> => {
+  const token = await philonetAuthStorage.getToken();
+  if (!token) {
+    throw new Error('Access token not found. Please log in.');
+  }
+  return token;
+};
 
 // Add custom error types
 export class APIError extends Error {
@@ -135,10 +145,10 @@ export const streamWebSummaryFromEvents = async (
     throw new Error('SSE endpoint URL cannot be empty');
   }
 
-  // Fetch access token from chrome.storage.local (async)
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    throw new Error('Access token not found in storage');
   }
 
   console.log('Using SSE endpoint:', sseEndpoint);
@@ -235,8 +245,8 @@ export const fetchWebTopicTagsAndSummary = async (
     throw new Error('Page content cannot be empty');
   }
 
-  // Fetch access token from localStorage
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
     throw new Error('Access token not found in localStorage');
   }
@@ -390,10 +400,10 @@ export async function storeWebSummary(
   },
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.STORE_SUMMARY)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload = {
@@ -434,10 +444,10 @@ export async function fetchArticleRecommendations(
   article_id: string,
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.GET_ARTICLE_RECOMMENDATIONS)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload = { article_id };
@@ -466,10 +476,10 @@ export async function fetchArticleRecommendations(
 export async function fetchUserArticleRecommendations(
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.GET_USER_RECOMMENDATIONS)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const response = await fetch(apiEndpoint, {
@@ -501,10 +511,10 @@ export async function sendUserVectorEvent(
   event_type: string,
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.UPDATE_USER_VECTOR)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload = {
@@ -546,10 +556,10 @@ export async function addToRoom(
   },
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.ADD_TO_ROOM)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   // Only include allowed fields
@@ -631,10 +641,10 @@ export async function getArticleDetails(
     };
   }>;
 }> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload = { articleId };
@@ -690,10 +700,10 @@ export async function extractArticleData(
   suggestions: string[];
   socialSearch: string;
 }> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const response = await fetch(apiEndpoint, {
@@ -732,10 +742,10 @@ export async function storeSmartHighlight(
   },
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.STORE_HIGHLIGHT)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload = {
@@ -781,10 +791,10 @@ export async function fetchContentHighlights(
   },
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.CONTENT_HIGHLIGHTS)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload: any = {
@@ -826,10 +836,10 @@ export async function getStoredHighlights(
   },
   apiEndpoint: string = getApiUrl(API_ENDPOINTS.CONTENT_HIGHLIGHTS)
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const payload = {
@@ -861,10 +871,10 @@ export async function summarizePdfFile(
   file: File | Blob,
   apiEndpoint: string = 'http://localhost:3000/v1/client/summarize-pdf'
 ): Promise<any> {
-  // Fetch access token from chrome.storage.local
-  const accessToken = await chrome.storage.local.get(['accessToken']).then(result => result.accessToken);
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
   if (!accessToken) {
-    throw new Error('Access token not found in chrome.storage.local');
+    // Token validation is handled in getAccessToken()
   }
 
   const formData = new FormData();

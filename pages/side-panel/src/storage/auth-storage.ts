@@ -37,6 +37,7 @@ export const philonetAuthStorage = {
   
   // Set user and token after successful authentication
   setAuth: async (token: string, user: AuthState['user']) => {
+    console.log('🔐 Storing auth data - Token exists:', !!token, 'User exists:', !!user);
     const authState: AuthState = {
       token,
       user,
@@ -45,6 +46,9 @@ export const philonetAuthStorage = {
     
     if (typeof chrome !== 'undefined' && chrome.storage) {
       await chrome.storage.local.set({ [STORAGE_KEY]: authState });
+      console.log('✅ Auth data stored successfully in chrome.storage.local');
+    } else {
+      console.error('❌ Chrome storage not available');
     }
   },
   
@@ -64,6 +68,11 @@ export const philonetAuthStorage = {
   // Get current token
   getToken: async (): Promise<string | null> => {
     const state = await philonetAuthStorage.get();
+    console.log('🔍 Getting token from storage - Auth state:', {
+      hasToken: !!state.token,
+      isAuthenticated: state.isAuthenticated,
+      hasUser: !!state.user
+    });
     return state.token;
   },
   

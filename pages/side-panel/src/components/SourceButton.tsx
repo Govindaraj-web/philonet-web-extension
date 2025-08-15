@@ -5,9 +5,10 @@ import { ExternalLink } from 'lucide-react';
 interface SourceButtonProps {
   onClick: () => void;
   className?: string;
+  sourceUrl?: string;
 }
 
-const SourceButton: React.FC<SourceButtonProps> = ({ onClick, className = "" }) => {
+const SourceButton: React.FC<SourceButtonProps> = ({ onClick, className = "", sourceUrl }) => {
   return (
     <button
       onClick={onClick}
@@ -20,15 +21,26 @@ const SourceButton: React.FC<SourceButtonProps> = ({ onClick, className = "" }) 
     >
       <div className="relative">
         <div className={cn(
-          "w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 ease-out",
+          "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 ease-out",
           "backdrop-blur-sm border border-philonet-border-light/40",
           "bg-philonet-card/60 text-philonet-text-muted hover:bg-philonet-card/80 hover:text-philonet-blue-400 hover:border-philonet-blue-500/40"
         )}>
-          <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
+          {sourceUrl && (
+            <img 
+              src={`https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(sourceUrl)}`}
+              alt="Source favicon"
+              className="w-4 h-4 md:w-5 md:h-5 rounded-sm opacity-90 flex-shrink-0"
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                target.style.display = 'none';
+              }}
+            />
+          )}
+          <ExternalLink className="w-4 h-4 md:w-5 md:h-5 flex-shrink-0" />
         </div>
       </div>
-      <div className="mt-1 text-[10px] md:text-[11px] text-philonet-text-subtle font-light tracking-philonet-wide text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-        Source
+      <div className="mt-1 text-[10px] md:text-[11px] text-philonet-text-subtle font-light tracking-philonet-wide text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 max-w-[120px] md:max-w-[150px] truncate">
+        {sourceUrl ? new URL(sourceUrl).hostname : 'Source'}
       </div>
     </button>
   );

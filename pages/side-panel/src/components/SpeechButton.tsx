@@ -42,7 +42,7 @@ const SpeechButton: React.FC<SpeechButtonProps> = ({
           )}
         </div>
         {isPlaying && (
-          <div className="absolute -inset-1 rounded-full border border-philonet-blue-500/30 animate-pulse" />
+          <div className="absolute -inset-1 rounded-full border border-philonet-blue-500/30" />
         )}
       </div>
       <div className="mt-1 text-[10px] md:text-[11px] text-philonet-text-subtle font-light tracking-philonet-wide text-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">

@@ -700,63 +700,32 @@ export default function App() {
         }
       `;
 
-      // Sample markdown content from SidePanel
-      const sampleMarkdown = `# The Humane Interface of Philonet
-
-![cover](https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=1200&q=80)
-
-A minimalist, high-contrast reading surface with humane spacing and subtle blue affordances.
-
-**Categories:** Design, Systems, Product
-**Tags:** philonet, ui, reading, dark-mode
-
-## Introduction
-Philonet emphasizes clarity, legibility, and rhythm in digital reading experiences.
-
-## Details
-- Lightweight typography with generous scale
-- Neutral grays for clear hierarchy
-- Blue accents for interactive elements
-- Responsive layout patterns
-
-## Conclusion
-Design for the eyes first, then optimize for everything else.
-
-| Element   | Purpose         | Implementation |
-|-----------|-----------------|----------------|
-| Spacing   | Comfort         | 8px grid       |
-| Contrast  | Readability     | WCAG AA        |
-| Motion    | Feedback        | Subtle spring  |
-`;
-
-      // Parse the markdown content (simplified version)
-      const parseMarkdown = (md: string) => {
-        const lines = md.split('\n');
-        let title = '', description = '', categories: string[] = [], tags: string[] = [], body = '';
-        
-        // Extract title
-        const titleMatch = lines.find((line: string) => line.startsWith('# '));
-        if (titleMatch) title = titleMatch.replace('# ', '');
-        
-        // Extract description (first paragraph after title)
-        const descIndex = lines.findIndex((line: string) => line.trim() && !line.startsWith('#') && !line.startsWith('!') && !line.startsWith('**'));
-        if (descIndex > -1) description = lines[descIndex];
-        
-        // Extract categories and tags
-        const catMatch = lines.find((line: string) => line.startsWith('**Categories:**'));
-        if (catMatch) categories = catMatch.replace('**Categories:**', '').split(',').map((c: string) => c.trim());
-        
-        const tagMatch = lines.find((line: string) => line.startsWith('**Tags:**'));
-        if (tagMatch) tags = tagMatch.replace('**Tags:**', '').split(',').map((t: string) => t.trim());
-        
-        // Extract body content
-        const bodyStart = lines.findIndex((line: string) => line.startsWith('## Introduction'));
-        if (bodyStart > -1) body = lines.slice(bodyStart).join('\n');
-        
-        return { title, description, categories, tags, body };
+      // Sample article data structure (this will be replaced with real API data later)
+      const sampleArticle = {
+        id: 5496,
+        title: "Reels Rewire: Your Brain on Short Videos",
+        description: "The Hidden Costs of Watching Reels\n\nSocial media has become an integral part of our daily lives. The constant stream of short-form videos, particularly reels, has made it effortless for us to browse and consume information. However, a recent study suggests that this frequent usage of short videos can have a profound impact on our brain's functioning, leading to addiction and altered behavior.",
+        summary: "Frequent short-form video usage can rewire the brain, leading to decreased attention span, impulsive behavior, and potential long-term cognitive decline, similar to addictive behaviors.",
+        url: "https://indianexpress.com/article/health-wellness/does-watching-reels-have-same-effect-as-alcohol-on-brain-new-study-10188907/lite/",
+        thumbnail: "https://images.indianexpress.com/2025/08/reels-mobile-scrolling.jpg",
+        categories: ["Mental Health"],
+        tags: ["🧠 Brain rewiring", "📱 Reels addiction", "⏳ Attention span", "🤯 Cognitive impact", "🤳 Short videos"],
+        shared_by: "pS6nDACD3wbMCoRdmKJtXpi7PDa2",
+        created_at: "2025-08-14T19:37:20.026Z",
+        is_pdf: false
       };
       
-      const meta = parseMarkdown(sampleMarkdown);
+      // Use the sample article data (this structure will be used for real API data)
+      const meta = {
+        title: sampleArticle.title,
+        description: sampleArticle.summary, // Use summary as the main description
+        thumbnail: sampleArticle.thumbnail,
+        categories: sampleArticle.categories,
+        tags: sampleArticle.tags,
+        body: sampleArticle.description, // Use full description as body content
+        url: sampleArticle.url,
+        created_at: sampleArticle.created_at
+      };
       
       // Create the panel HTML with actual SidePanel content
       const panel = document.createElement('div');
@@ -818,7 +787,7 @@ Design for the eyes first, then optimize for everything else.
 
           <!-- Cover Image -->
           <div class="philonet-cover-container">
-            <img src="https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=1200&q=80" 
+            <img src="${meta.thumbnail}" 
                  alt="${meta.title}" 
                  class="philonet-cover-image"
                  onerror="this.parentElement.style.display='none'">
@@ -843,9 +812,11 @@ Design for the eyes first, then optimize for everything else.
               ${meta.tags.length > 0 ? `
                 <div class="philonet-tag-group">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 7V5C3 3.89543 3.89543 3 5 3H8.5L10 5H19C20.1046 5 21 5.89543 21 7V11"/>
+                    <path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34L12 7h6a2 2 0 0 1 2 2v5.66"/>
+                    <circle cx="18" cy="18" r="3"/>
+                    <path d="m21.5 21.5-1.5-1.5"/>
                   </svg>
-                  ${meta.tags.map((tag: string) => `<span class="philonet-tag">#${tag.replace(/^#/, '')}</span>`).join('')}
+                  ${meta.tags.map((tag: string) => `<span class="philonet-tag">${tag}</span>`).join('')}
                 </div>
               ` : ''}
             </div>
@@ -854,51 +825,54 @@ Design for the eyes first, then optimize for everything else.
           <!-- Article Content -->
           <div class="philonet-article-content">
             <div class="philonet-section">
-              <h3 class="philonet-section-title">Introduction</h3>
-              <p class="philonet-section-text">Philonet emphasizes clarity, legibility, and rhythm in digital reading experiences.</p>
+              <h3 class="philonet-section-title">Article Summary</h3>
+              <p class="philonet-section-text">${meta.description}</p>
             </div>
 
             <div class="philonet-section">
-              <h3 class="philonet-section-title">Details</h3>
-              <ul class="philonet-list">
-                <li>Lightweight typography with generous scale</li>
-                <li>Neutral grays for clear hierarchy</li>
-                <li>Blue accents for interactive elements</li>
-                <li>Responsive layout patterns</li>
-              </ul>
+              <h3 class="philonet-section-title">Full Content</h3>
+              <div class="philonet-section-text" style="white-space: pre-line;">${meta.body}</div>
             </div>
 
+            ${meta.url ? `
             <div class="philonet-section">
-              <h3 class="philonet-section-title">Conclusion</h3>
-              <p class="philonet-section-text">Design for the eyes first, then optimize for everything else.</p>
+              <h3 class="philonet-section-title">Source</h3>
+              <p class="philonet-section-text">
+                <a href="${meta.url}" target="_blank" style="color: #3b82f6; text-decoration: underline;">
+                  Read full article →
+                </a>
+              </p>
             </div>
+            ` : ''}
 
-            <!-- Implementation Table -->
+            <!-- Meta Information Table -->
             <div class="philonet-table-container">
               <table class="philonet-table">
                 <thead>
                   <tr>
-                    <th>Element</th>
-                    <th>Purpose</th>
-                    <th>Implementation</th>
+                    <th>Property</th>
+                    <th>Details</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Spacing</td>
-                    <td>Comfort</td>
-                    <td>8px grid</td>
+                    <td>Categories</td>
+                    <td>${meta.categories.join(', ')}</td>
                   </tr>
                   <tr>
-                    <td>Contrast</td>
-                    <td>Readability</td>
-                    <td>WCAG AA</td>
+                    <td>Tags</td>
+                    <td>${meta.tags.join(', ')}</td>
                   </tr>
                   <tr>
-                    <td>Motion</td>
-                    <td>Feedback</td>
-                    <td>Subtle spring</td>
+                    <td>Created</td>
+                    <td>${new Date(meta.created_at).toLocaleDateString()}</td>
                   </tr>
+                  ${meta.url ? `
+                  <tr>
+                    <td>Source URL</td>
+                    <td style="word-break: break-all; font-size: 12px;">${meta.url}</td>
+                  </tr>
+                  ` : ''}
                 </tbody>
               </table>
             </div>
@@ -1038,307 +1012,6 @@ Design for the eyes first, then optimize for everything else.
           }
         });
       }
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .philonet-section-icon {
-          font-size: 18px;
-          color: #3b82f6;
-        }
-
-        .philonet-cards {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .philonet-card {
-          background: #111111;
-          border: 1px solid #262626;
-          border-radius: 8px;
-          padding: 16px;
-          transition: all 0.2s;
-          cursor: pointer;
-        }
-
-        .philonet-card:hover {
-          background: #161616;
-          border-color: #3b82f6;
-          transform: translateY(-1px);
-        }
-
-        .philonet-card-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 8px;
-        }
-
-        .philonet-card-title {
-          font-size: 14px;
-          font-weight: 600;
-          color: #ffffff;
-        }
-
-        .philonet-card-badge {
-          background: #3b82f6;
-          color: #ffffff;
-          font-size: 10px;
-          font-weight: 600;
-          padding: 2px 6px;
-          border-radius: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.02em;
-        }
-
-        .philonet-card-description {
-          font-size: 13px;
-          color: #a3a3a3;
-          line-height: 1.4;
-          margin-bottom: 12px;
-        }
-
-        .philonet-card-tags {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-        }
-
-        .philonet-tag {
-          background: #262626;
-          color: #a3a3a3;
-          font-size: 11px;
-          padding: 4px 8px;
-          border-radius: 12px;
-          border: 1px solid transparent;
-          transition: all 0.2s;
-        }
-
-        .philonet-tag:hover {
-          background: #3b82f6;
-          color: #ffffff;
-          border-color: #3b82f6;
-        }
-
-        .philonet-input {
-          width: 100%;
-          background: #111111;
-          border: 1px solid #262626;
-          border-radius: 8px;
-          padding: 12px;
-          color: #ffffff;
-          font-size: 14px;
-          transition: all 0.2s;
-          resize: none;
-        }
-
-        .philonet-input:focus {
-          outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-        }
-
-        .philonet-input::placeholder {
-          color: #525252;
-        }
-
-        .philonet-footer {
-          padding: 16px 24px;
-          border-top: 1px solid #262626;
-          background: #0f0f0f;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .philonet-footer-text {
-          font-size: 12px;
-          color: #737373;
-        }
-
-        .philonet-footer-actions {
-          display: flex;
-          gap: 8px;
-        }
-
-        .philonet-btn {
-          background: #3b82f6;
-          color: #ffffff;
-          border: none;
-          border-radius: 6px;
-          padding: 8px 16px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-          text-transform: uppercase;
-          letter-spacing: 0.02em;
-        }
-
-        .philonet-btn:hover {
-          background: #2563eb;
-          transform: translateY(-1px);
-        }
-
-        .philonet-btn-secondary {
-          background: transparent;
-          color: #737373;
-          border: 1px solid #262626;
-        }
-
-        .philonet-btn-secondary:hover {
-          background: #262626;
-          color: #ffffff;
-        }
-
-        .philonet-animate-in {
-          animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        @keyframes slideInRight {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-      `;
-
-      // Create the panel HTML
-      const panel = document.createElement('div');
-      panel.className = 'philonet-panel philonet-animate-in';
-      panel.innerHTML = `
-        <div class="philonet-header">
-          <div class="philonet-logo">
-            <img src="${chrome.runtime.getURL('philonet.png')}" alt="Philonet" onerror="this.style.display='none'">
-            <div class="philonet-title">Philonet</div>
-          </div>
-          <button class="philonet-close-btn" onclick="this.dispatchEvent(new CustomEvent('close-panel', { bubbles: true }))">
-            ✕
-          </button>
-        </div>
-
-        <div class="philonet-content">
-          <div class="philonet-hero">
-            <div class="philonet-hero-content">
-              <h2>Welcome to Philonet</h2>
-              <p>A humane interface for digital reading and knowledge exploration</p>
-              <div class="philonet-features">
-                <div class="philonet-feature">
-                  <span class="philonet-feature-icon">🚀</span>
-                  <div class="philonet-feature-text">Fast Access</div>
-                </div>
-                <div class="philonet-feature">
-                  <span class="philonet-feature-icon">🔒</span>
-                  <div class="philonet-feature-text">Isolated</div>
-                </div>
-                <div class="philonet-feature">
-                  <span class="philonet-feature-icon">⌨️</span>
-                  <div class="philonet-feature-text">Shortcuts</div>
-                </div>
-                <div class="philonet-feature">
-                  <span class="philonet-feature-icon">🎨</span>
-                  <div class="philonet-feature-text">Elegant</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="philonet-section">
-            <h3>
-              <span class="philonet-section-icon">📚</span>
-              Reading Tools
-            </h3>
-            <div class="philonet-cards">
-              <div class="philonet-card">
-                <div class="philonet-card-header">
-                  <div class="philonet-card-title">Page Analysis</div>
-                  <div class="philonet-card-badge">AI</div>
-                </div>
-                <div class="philonet-card-description">
-                  Intelligent content analysis and summarization for better comprehension.
-                </div>
-                <div class="philonet-card-tags">
-                  <div class="philonet-tag">Smart</div>
-                  <div class="philonet-tag">Summary</div>
-                  <div class="philonet-tag">Insights</div>
-                </div>
-              </div>
-              <div class="philonet-card">
-                <div class="philonet-card-header">
-                  <div class="philonet-card-title">Highlight & Notes</div>
-                  <div class="philonet-card-badge">Pro</div>
-                </div>
-                <div class="philonet-card-description">
-                  Capture important passages and add personal annotations.
-                </div>
-                <div class="philonet-card-tags">
-                  <div class="philonet-tag">Capture</div>
-                  <div class="philonet-tag">Annotate</div>
-                  <div class="philonet-tag">Organize</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="philonet-section">
-            <h3>
-              <span class="philonet-section-icon">💭</span>
-              Ask Questions
-            </h3>
-            <textarea 
-              class="philonet-input" 
-              placeholder="What would you like to know about this page?"
-              rows="3"
-            ></textarea>
-          </div>
-
-          <div class="philonet-section">
-            <h3>
-              <span class="philonet-section-icon">🔖</span>
-              Quick Actions
-            </h3>
-            <div class="philonet-cards">
-              <div class="philonet-card">
-                <div class="philonet-card-header">
-                  <div class="philonet-card-title">Save to Library</div>
-                </div>
-                <div class="philonet-card-description">
-                  Add this page to your personal knowledge library for future reference.
-                </div>
-              </div>
-              <div class="philonet-card">
-                <div class="philonet-card-header">
-                  <div class="philonet-card-title">Share Insights</div>
-                </div>
-                <div class="philonet-card-description">
-                  Share your highlights and notes with others or export them.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="philonet-footer">
-          <div class="philonet-footer-text">
-            Ctrl/Cmd + Shift + P to toggle
-          </div>
-          <div class="philonet-footer-actions">
-            <button class="philonet-btn philonet-btn-secondary">Settings</button>
-            <button class="philonet-btn">Get Started</button>
-          </div>
-        </div>
-      `;
-
-      // Add event listeners
-      panel.addEventListener('close-panel', () => {
-        setSidePanelOpen(false);
-      });
 
       // Append to shadow DOM
       shadow.appendChild(style);

@@ -15,6 +15,7 @@ interface ContentRendererProps {
   onOpenSource: () => void;
   contentRef: React.RefObject<HTMLDivElement>;
   footerH: number;
+  sourceUrl?: string;
 }
 
 const ContentRenderer: React.FC<ContentRendererProps> = ({
@@ -27,7 +28,8 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
   onToggleSpeech,
   onOpenSource,
   contentRef,
-  footerH
+  footerH,
+  sourceUrl
 }) => {
   return (
     <div className="absolute left-0 right-0" style={{ top: 68, bottom: footerH }}>
@@ -38,6 +40,7 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
           speechSupported={speechSupported}
           onToggleSpeech={onToggleSpeech}
           onOpenSource={onOpenSource}
+          sourceUrl={sourceUrl}
         />
         
         <ContentSections
