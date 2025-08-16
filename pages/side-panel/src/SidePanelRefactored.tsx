@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings, Eye, FileText, RefreshCw } from "lucide-react";
+import { Settings, Eye, FileText, RefreshCw, Upload, CloudUpload, CheckCircle, AlertCircle } from "lucide-react";
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
 import ContentSkeleton from './components/ContentSkeleton';
@@ -171,6 +171,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // PDF upload modal state
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false);
   const [pdfUploadFileName, setPdfUploadFileName] = useState<string>('');
+
+  // Enhanced PDF upload state for drag & drop
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [uploadError, setUploadError] = useState<string>('');
 
   // Article state
   const [article, setArticle] = useState<Article | null>(null);
@@ -2117,17 +2123,27 @@ ${article.description}
 
   // Direct file upload handler (integrated into main UI)
   const handleDirectFileUpload = async (file: File) => {
+    // Reset upload state
+    setUploadProgress(0);
+    setUploadError('');
+    setUploadStatus('idle');
+
+    // Validate file type
     if (!file.type.includes('pdf')) {
-      setArticleError('Please select a PDF file');
+      setUploadStatus('error');
+      setUploadError('Please select a PDF file');
       return;
     }
 
+    // Validate file size
     if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      setArticleError('File size must be less than 50MB');
+      setUploadStatus('error');
+      setUploadError('File size must be less than 50MB');
       return;
     }
 
     try {
+      setUploadStatus('uploading');
       setIsLoadingArticle(true);
       setIsGeneratingContent(true);
       startLoadingWithMinTimer();
@@ -2146,6 +2162,17 @@ ${article.description}
 
       console.log('📤 Uploading PDF file directly:', file.name);
 
+      // Simulate upload progress (since fetch doesn't provide real progress)
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90; // Keep at 90% until actual upload completes
+          }
+          return prev + Math.random() * 15;
+        });
+      }, 200);
+
       // Upload to extract-pdf-content endpoint
       const response = await fetch('http://localhost:3000/v1/client/extract-pdf-content', {
         method: 'POST',
@@ -2155,6 +2182,9 @@ ${article.description}
         body: formData,
       });
 
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Upload failed: ${response.status} ${response.statusText}`);
@@ -2162,16 +2192,68 @@ ${article.description}
 
       const pdfData = await response.json();
       console.log('✅ PDF uploaded successfully:', pdfData);
-
-      // Process the uploaded PDF using the existing handlePdfUploadSuccess logic
-      await handlePdfUploadSuccess(pdfData);
+      
+      setUploadStatus('success');
+      
+      // Brief success display before processing
+      setTimeout(async () => {
+        // Process the uploaded PDF using the existing handlePdfUploadSuccess logic
+        await handlePdfUploadSuccess(pdfData);
+        
+        // Reset upload state after processing starts
+        setTimeout(() => {
+          setUploadStatus('idle');
+          setUploadProgress(0);
+        }, 1000);
+      }, 500);
 
     } catch (error) {
       console.error('❌ Direct PDF upload failed:', error);
+      setUploadStatus('error');
+      setUploadError(error instanceof Error ? error.message : 'Upload failed');
       setArticleError(error instanceof Error ? error.message : 'Upload failed');
       setIsLoadingArticle(false);
       setIsGeneratingContent(false);
       endLoadingWithMinTimer();
+      setUploadProgress(0);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set isDragging to false if we're leaving the drag area completely
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const pdfFile = files.find(file => file.type.includes('pdf'));
+    
+    if (pdfFile) {
+      handleDirectFileUpload(pdfFile);
+    } else if (files.length > 0) {
+      setUploadStatus('error');
+      setUploadError('Please drop a PDF file');
     }
   };
 
@@ -2365,49 +2447,217 @@ ${article.description}
                   </motion.button>
                 )}
 
-                {/* PDF Upload UI for local files */}
+                {/* Enhanced PDF Upload UI for local files */}
                 {shouldShowPdfUpload() && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="w-full space-y-4"
+                    className="w-full space-y-6"
                   >
-                    <div className="border-2 border-dashed border-blue-500/50 hover:border-blue-400 rounded-xl p-8 text-center transition-colors bg-blue-900/10">
-                      <div className="space-y-4">
-                        <div className="w-12 h-12 mx-auto text-blue-400">
-                          <FileText className="w-full h-full" />
-                        </div>
-                        <div>
-                          <p className="text-white font-medium mb-2">Upload your PDF file</p>
-                          <p className="text-philonet-text-muted text-sm">
-                            Chrome can't access local files directly. Upload to generate content.
-                          </p>
-                        </div>
-                        <input
-                          type="file"
-                          accept=".pdf"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              handleDirectFileUpload(file);
-                            }
-                          }}
-                          className="hidden"
-                          id="main-pdf-upload-input"
-                        />
-                        <label
-                          htmlFor="main-pdf-upload-input"
-                          className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
-                        >
-                          <FileText className="w-5 h-5" />
-                          Choose PDF File
-                        </label>
-                        <p className="text-xs text-gray-400">
-                          PDF files up to 50MB
-                        </p>
+                    {/* Main upload area */}
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`
+                        relative group border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300 overflow-hidden
+                        ${isDragging 
+                          ? 'border-blue-400 bg-blue-500/20 scale-105' 
+                          : uploadStatus === 'error'
+                          ? 'border-red-400/60 bg-red-500/10 hover:border-red-300'
+                          : uploadStatus === 'success'
+                          ? 'border-green-400/60 bg-green-500/10'
+                          : uploadStatus === 'uploading'
+                          ? 'border-blue-400/60 bg-blue-500/10'
+                          : 'border-blue-500/50 bg-blue-900/10 hover:border-blue-400 hover:bg-blue-500/15'
+                        }
+                      `}
+                    >
+                      {/* Background gradient effect */}
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 via-transparent to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                      
+                      {/* Animated background dots */}
+                      <div className="absolute inset-0 opacity-20">
+                        <div className="absolute top-4 left-4 w-1 h-1 bg-blue-400 rounded-full animate-pulse"></div>
+                        <div className="absolute top-8 right-8 w-1 h-1 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+                        <div className="absolute bottom-6 left-6 w-1 h-1 bg-blue-300 rounded-full animate-pulse" style={{ animationDelay: '1s' }}></div>
+                        <div className="absolute bottom-4 right-4 w-1 h-1 bg-purple-300 rounded-full animate-pulse" style={{ animationDelay: '1.5s' }}></div>
                       </div>
+
+                      <div className="relative z-10 space-y-6">
+                        {/* Icon area */}
+                        <div className="flex justify-center">
+                          <motion.div
+                            animate={
+                              uploadStatus === 'uploading' 
+                                ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }
+                                : uploadStatus === 'success'
+                                ? { scale: [1, 1.2, 1] }
+                                : isDragging
+                                ? { scale: 1.2, y: -5 }
+                                : { scale: 1, y: 0 }
+                            }
+                            transition={{ 
+                              duration: uploadStatus === 'uploading' ? 2 : 0.3,
+                              repeat: uploadStatus === 'uploading' ? Infinity : 0 
+                            }}
+                            className={`
+                              w-16 h-16 rounded-full flex items-center justify-center
+                              ${uploadStatus === 'error'
+                                ? 'bg-red-500/20 text-red-400'
+                                : uploadStatus === 'success'
+                                ? 'bg-green-500/20 text-green-400'
+                                : uploadStatus === 'uploading'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-blue-500/20 text-blue-400 group-hover:bg-blue-500/30'
+                              }
+                            `}
+                          >
+                            {uploadStatus === 'uploading' ? (
+                              <CloudUpload className="w-8 h-8" />
+                            ) : uploadStatus === 'success' ? (
+                              <CheckCircle className="w-8 h-8" />
+                            ) : uploadStatus === 'error' ? (
+                              <AlertCircle className="w-8 h-8" />
+                            ) : (
+                              <FileText className="w-8 h-8" />
+                            )}
+                          </motion.div>
+                        </div>
+
+                        {/* Text content */}
+                        <div className="space-y-3">
+                          <motion.h3 
+                            className={`text-xl font-semibold ${
+                              uploadStatus === 'error' ? 'text-red-300' :
+                              uploadStatus === 'success' ? 'text-green-300' :
+                              'text-white'
+                            }`}
+                            animate={{ opacity: [0.8, 1, 0.8] }}
+                            transition={{ duration: 2, repeat: isDragging ? Infinity : 0 }}
+                          >
+                            {uploadStatus === 'uploading' ? 'Uploading PDF...' :
+                             uploadStatus === 'success' ? 'Upload Successful!' :
+                             uploadStatus === 'error' ? 'Upload Failed' :
+                             isDragging ? 'Drop your PDF here!' : 'Upload your PDF file'}
+                          </motion.h3>
+                          
+                          <p className={`text-sm ${
+                            uploadStatus === 'error' ? 'text-red-300/80' :
+                            uploadStatus === 'success' ? 'text-green-300/80' :
+                            'text-philonet-text-muted'
+                          }`}>
+                            {uploadStatus === 'uploading' ? 'Processing your file...' :
+                             uploadStatus === 'success' ? 'Starting content generation...' :
+                             uploadStatus === 'error' ? uploadError :
+                             'Chrome can\'t access local files directly. Upload to generate content.'}
+                          </p>
+
+                          {/* Upload progress bar */}
+                          {uploadStatus === 'uploading' && (
+                            <div className="space-y-2">
+                              <div className="w-full bg-blue-900/30 rounded-full h-2 overflow-hidden">
+                                <motion.div
+                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full"
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${uploadProgress}%` }}
+                                  transition={{ duration: 0.3 }}
+                                />
+                              </div>
+                              <p className="text-xs text-blue-300/70">
+                                {Math.round(uploadProgress)}% uploaded
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        {uploadStatus !== 'uploading' && uploadStatus !== 'success' && (
+                          <div className="flex flex-col items-center space-y-4">
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleDirectFileUpload(file);
+                                }
+                              }}
+                              className="hidden"
+                              id="enhanced-pdf-upload-input"
+                              disabled={uploadStatus === 'uploading' || uploadStatus === 'success'}
+                            />
+                            
+                            <motion.label
+                              htmlFor="enhanced-pdf-upload-input"
+                              whileHover={{ scale: 1.05, y: -2 }}
+                              whileTap={{ scale: 0.95 }}
+                              className={`
+                                cursor-pointer inline-flex items-center gap-3 px-8 py-4 rounded-xl font-semibold text-sm
+                                transition-all duration-300 shadow-lg hover:shadow-xl
+                                ${uploadStatus === 'error'
+                                  ? 'bg-red-600 hover:bg-red-700 text-white border border-red-500/30'
+                                  : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border border-blue-500/30'
+                                }
+                              `}
+                            >
+                              <Upload className="w-5 h-5" />
+                              {uploadStatus === 'error' ? 'Try Again' : 'Choose PDF File'}
+                            </motion.label>
+
+                            <div className="flex items-center space-x-2 text-xs text-gray-400">
+                              <span>Or drag and drop your file here</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* File requirements */}
+                        <div className="flex items-center justify-center space-x-6 text-xs text-gray-500">
+                          <div className="flex items-center space-x-1">
+                            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+                            <span>PDF files only</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+                            <span>Up to 50MB</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Drag overlay */}
+                      <AnimatePresence>
+                        {isDragging && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-blue-500/20 backdrop-blur-sm rounded-2xl border-2 border-blue-400 flex items-center justify-center"
+                          >
+                            <motion.div
+                              animate={{ scale: [1, 1.1, 1] }}
+                              transition={{ duration: 1, repeat: Infinity }}
+                              className="text-blue-300 text-center"
+                            >
+                              <Upload className="w-12 h-12 mx-auto mb-2" />
+                              <p className="text-lg font-semibold">Drop to upload</p>
+                            </motion.div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
+
+                    {/* Success state additional info */}
+                    {uploadStatus === 'success' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-center text-green-400 text-sm"
+                      >
+                        <CheckCircle className="w-5 h-5 inline mr-2" />
+                        PDF uploaded successfully! Content generation starting...
+                      </motion.div>
+                    )}
                   </motion.div>
                 )}
 
