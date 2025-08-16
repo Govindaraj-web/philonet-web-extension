@@ -48,7 +48,7 @@ export const PdfUploadModal: React.FC<PdfUploadModalProps> = ({
       console.log('📤 Uploading PDF file:', file.name);
 
       // Upload to extract-pdf-content endpoint
-      const response = await fetch('http://localhost:3000/v1/client/extract-pdf-content', {
+      const response = await fetch(`${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/extract-pdf-content`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

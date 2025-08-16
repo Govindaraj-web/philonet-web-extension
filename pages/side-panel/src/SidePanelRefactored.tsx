@@ -759,7 +759,11 @@ ${article.description}
         : `📄 Making API call to fetch article for hash: ${params.hash}`;
       console.log(logMessage);
 
-      const response = await fetch('http://localhost:3000/v1/client/articles', {
+      const apiUrl = process.env.CEB_API_URL || 'http://localhost:3000';
+      console.log('🔧 Environment CEB_API_URL:', process.env.CEB_API_URL);
+      console.log('🔧 Using API URL:', apiUrl);
+
+      const response = await fetch(`${apiUrl}/v1/client/articles`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1134,47 +1138,62 @@ ${article.description}
         }
       };
 
-      // Start streaming PDF summary
+      // Start both PDF operations only if we have a valid fileHash
       let streamingContent = '';
-      const streamingPromise = streamPdfSummaryFromEvents(
-        pdfData.metadata.fileHash,
-        (chunk: string) => {
-          console.log('📝 PDF streaming chunk received:', chunk);
-          streamingContent += chunk;
-          setStreamingContent(streamingContent);
-
-          // Set initial article when first chunk arrives to remove skeleton
-          setArticle(currentArticle => {
-            if (!currentArticle) {
-              // First chunk - create the initial article
-              return {
-                ...initialArticle,
-                description: streamingContent, // Start with the first chunk
-              };
-            } else {
-              // Update existing article with new streaming content
-              return {
-                ...currentArticle,
-                description: streamingContent, // Update description with streaming content
-              };
-            }
-          });
-        }
-      );
-
-      // Start extract PDF article data in parallel
-      console.log('📄 Starting PDF article extraction with hash:', pdfData.metadata.fileHash);
+      let streamingPromise: Promise<void>;
+      
+      console.log('📄 Starting PDF operations with hash:', pdfData.metadata.fileHash);
       console.log('📄 Full PDF data:', pdfData);
       
       if (!pdfData.metadata?.fileHash) {
         console.error('❌ PDF fileHash is missing or undefined:', pdfData.metadata);
-        // Set extractComplete to true so we don't wait for it
+        // Set both operations as completed since we can't proceed
         setContentGenerationStatus(prev => ({
           ...prev,
           extractComplete: true,
-          message: streamingCompleted ? 'Finalizing...' : 'Content streaming in progress...'
+          streamingComplete: true,
+          message: 'PDF processing failed: missing file hash'
         }));
+        
+        // Create a rejected promise for consistency
+        streamingPromise = Promise.reject(new Error('PDF fileHash is missing'));
+        
+        // Turn off loading states
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
+        
+        setArticleError('Failed to process PDF: missing file hash');
+        return;
       } else {
+        // Start streaming PDF summary
+        streamingPromise = streamPdfSummaryFromEvents(
+          pdfData.metadata.fileHash,
+          (chunk: string) => {
+            console.log('📝 PDF streaming chunk received:', chunk);
+            streamingContent += chunk;
+            setStreamingContent(streamingContent);
+
+            // Set initial article when first chunk arrives to remove skeleton
+            setArticle(currentArticle => {
+              if (!currentArticle) {
+                // First chunk - create the initial article
+                return {
+                  ...initialArticle,
+                  description: streamingContent, // Start with the first chunk
+                };
+              } else {
+                // Update existing article with new streaming content
+                return {
+                  ...currentArticle,
+                  description: streamingContent, // Update description with streaming content
+                };
+              }
+            });
+          }
+        );
+        
+        // Start extract PDF article data in parallel
         extractPdfArticleData(pdfData.metadata.fileHash).then((extractDetails: any) => {
           console.log('📄 PDF extract article completed:', extractDetails);
           extractCompleted = true;
@@ -1244,40 +1263,40 @@ ${article.description}
         setIsGeneratingContent(false);
         endLoadingWithMinTimer();
       });
-      } // Close the else block
+      
+        // Handle streaming completion
+        streamingPromise.then(() => {
+          console.log('✅ PDF streaming content generation completed');
+          console.log('📝 Final PDF streamed content length:', streamingContent.length);
+          streamingCompleted = true;
+          streamingResult = streamingContent;
 
-      // Handle streaming completion
-      streamingPromise.then(() => {
-        console.log('✅ PDF streaming content generation completed');
-        console.log('📝 Final PDF streamed content length:', streamingContent.length);
-        streamingCompleted = true;
-        streamingResult = streamingContent;
+          // Update status for streaming completion
+          setContentGenerationStatus(prev => ({
+            ...prev,
+            streamingComplete: true,
+            message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
+          }));
 
-        // Update status for streaming completion
-        setContentGenerationStatus(prev => ({
-          ...prev,
-          streamingComplete: true,
-          message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
-        }));
+          // Turn off loading states immediately when streaming completes
+          if (!extractCompleted) {
+            setIsLoadingArticle(false);
+            setIsGeneratingContent(false);
+            endLoadingWithMinTimer();
+          }
 
-        // Turn off loading states immediately when streaming completes
-        if (!extractCompleted) {
+          // Check if we can save to room now
+          checkAndSaveToRoom();
+        }).catch((error) => {
+          console.error('❌ PDF streaming failed:', error);
+          setArticleError(error instanceof Error ? error.message : 'Failed to generate PDF content');
+          
+          // Turn off loading states on streaming error
           setIsLoadingArticle(false);
           setIsGeneratingContent(false);
           endLoadingWithMinTimer();
-        }
-
-        // Check if we can save to room now
-        checkAndSaveToRoom();
-      }).catch((error) => {
-        console.error('❌ PDF streaming failed:', error);
-        setArticleError(error instanceof Error ? error.message : 'Failed to generate PDF content');
-        
-        // Turn off loading states on streaming error
-        setIsLoadingArticle(false);
-        setIsGeneratingContent(false);
-        endLoadingWithMinTimer();
-      });
+        });
+      } // Close the else block
 
       console.log('🎉 PDF operations started independently - they will update UI when ready');
 
@@ -1494,8 +1513,8 @@ ${article.description}
         message: 'Generating content and extracting metadata...'
       });
       
-      const streamEndpoint = 'http://localhost:3000/v1/client/summarize';
-      const extractEndpoint = 'http://localhost:3000/v1/client/extractarticle';
+      const streamEndpoint = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/summarize`;
+      const extractEndpoint = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/extractarticle`;
       
       // Start both operations in parallel, but handle them independently
       let streamingContent = '';
@@ -2174,7 +2193,7 @@ ${article.description}
       }, 200);
 
       // Upload to extract-pdf-content endpoint
-      const response = await fetch('http://localhost:3000/v1/client/extract-pdf-content', {
+      const response = await fetch(`${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/extract-pdf-content`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
