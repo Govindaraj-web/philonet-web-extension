@@ -1,6 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 @import '@extension/ui/global.css';
 
+/* KaTeX CSS for LaTeX rendering */
+@import 'katex/dist/katex.min.css';
+
+/* KaTeX CSS for LaTeX rendering */
+@import 'katex/dist/katex.min.css';
+
 /* Philonet theme globals */
 @layer base {
   html {
@@ -11,6 +17,48 @@
     font-weight: 300;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* KaTeX styling for dark theme */
+  .katex {
+    color: #e5e7eb !important; /* Light gray text for dark theme */
+  }
+  
+  .katex .mord,
+  .katex .mopen,
+  .katex .mclose,
+  .katex .mbin,
+  .katex .mrel,
+  .katex .mpunct {
+    color: #e5e7eb !important;
+  }
+  
+  .katex .mop {
+    color: #93c5fd !important; /* Light blue for operators */
+  }
+  
+  .katex .msupsub {
+    color: #fbbf24 !important; /* Amber for superscripts/subscripts */
+  }
+  
+  .katex-display {
+    margin: 1em 0 !important;
+    padding: 0.5em !important;
+    background: rgba(31, 41, 55, 0.3) !important; /* Subtle dark background */
+    border-radius: 8px !important;
+    border-left: 4px solid #3b82f6 !important; /* Blue accent */
+  }
+  
+  /* KaTeX fallback styling */
+  .katex-fallback {
+    font-family: 'Fira Code', 'Monaco', 'Menlo', monospace;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+  }
+  
+  .katex-error {
+    font-family: 'Fira Code', 'Monaco', 'Menlo', monospace;
+    font-size: 0.9em;
   }
 
   /* Prose styling for markdown content */

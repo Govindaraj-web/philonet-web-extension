@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import MarkdownIt from 'markdown-it';
 import { MarkdownMeta, ContentSections } from '../types';
+import { createMathMarkdownRenderer } from '../utils/markdownRenderer';
 
 export function useMarkdown() {
-  const md = useMemo(() => new MarkdownIt({ html: false, linkify: true, breaks: false }), []);
+  const md = useMemo(() => createMathMarkdownRenderer(), []);
   
   const renderMD = (text: string) => md.render(text || "");
   const render = (text: string) => ({ __html: renderMD(text) });

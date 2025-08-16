@@ -18,6 +18,309 @@ const API_ENDPOINTS = {
 
 export const getSummaryStorageKey = () => `gpt_summary_${location.origin}${location.pathname}`;
 
+// Formula preprocessing utilities
+export const preserveFormulas = (content: string): string => {
+  // Protect LaTeX formulas from being mangled
+  return content
+    // Protect inline math: $formula$
+    .replace(/\$([^$\n]+)\$/g, '`MATH_INLINE_START`$1`MATH_INLINE_END`')
+    // Protect display math: $$formula$$
+    .replace(/\$\$([^$]+)\$\$/g, '`MATH_DISPLAY_START`$1`MATH_DISPLAY_END`')
+    // Protect equation environments
+    .replace(/\\begin\{equation\}([\s\S]*?)\\end\{equation\}/g, '`EQUATION_START`$1`EQUATION_END`')
+    // Protect align environments
+    .replace(/\\begin\{align\}([\s\S]*?)\\end\{align\}/g, '`ALIGN_START`$1`ALIGN_END`');
+};
+
+export const restoreFormulas = (content: string): string => {
+  // Restore protected formulas
+  return content
+    .replace(/`MATH_INLINE_START`([^`]+)`MATH_INLINE_END`/g, '$$$1$$')
+    .replace(/`MATH_DISPLAY_START`([^`]+)`MATH_DISPLAY_END`/g, '$$$$$$\n$1\n$$$$$$')
+    .replace(/`EQUATION_START`([^`]+)`EQUATION_END`/g, '\\begin{equation}$1\\end{equation}')
+    .replace(/`ALIGN_START`([^`]+)`ALIGN_END`/g, '\\begin{align}$1\\end{align}');
+};
+
+// PDF utility functions
+export const isPdfUrl = (url: string): boolean => {
+  if (!url) return false;
+  
+  try {
+    const urlObj = new URL(url);
+    
+    // Check file:// URLs for .pdf extension
+    if (urlObj.protocol === 'file:') {
+      return urlObj.pathname.toLowerCase().endsWith('.pdf');
+    }
+    
+    // Check if URL ends with .pdf
+    const urlPath = urlObj.pathname.toLowerCase();
+    if (urlPath.endsWith('.pdf')) return true;
+    
+    // Check for PDF MIME type in the URL (some sites serve PDFs with different extensions)
+    if (url.toLowerCase().includes('application/pdf')) return true;
+    
+    // Check for common PDF URL patterns
+    const pdfPatterns = [
+      /\.pdf$/i,
+      /\.pdf\?/i,
+      /\.pdf#/i,
+      /\/pdf\//i,
+      /pdf.*download/i,
+      /download.*pdf/i
+    ];
+    
+    return pdfPatterns.some(pattern => pattern.test(url));
+  } catch (error) {
+    // If URL parsing fails, fall back to basic pattern matching
+    return url.toLowerCase().includes('.pdf');
+  }
+};
+
+// Helper function to check if URL is a local file
+export const isLocalFile = (url: string): boolean => {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.protocol === 'file:';
+  } catch (error) {
+    return false;
+  }
+};
+
+// Function to handle local PDF files using Chrome extension APIs
+export const extractLocalPdfFile = async (fileUrl: string): Promise<PdfUploadResponse> => {
+  const accessToken = await getAccessToken();
+  
+  try {
+    // Use Chrome extension APIs to access local file
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    console.log('📄 Current tab info:', { id: tab.id, url: tab.url });
+    
+    if (!tab.id) {
+      throw new Error('No active tab found');
+    }
+
+    // For local PDFs displayed in browser, we need to use a different approach
+    // Check if the current tab is actually displaying the PDF
+    if (!tab.url) {
+      throw new Error('Current tab has no URL');
+    }
+    
+    console.log('📄 Checking if tab URL starts with file://', tab.url.startsWith('file://'));
+    console.log('📄 Checking if fileUrl matches tab URL:', fileUrl === tab.url);
+    
+    if (!tab.url.startsWith('file://')) {
+      throw new Error(`Current tab is not displaying a local file. Tab URL: ${tab.url}, Expected: ${fileUrl}`);
+    }
+
+    // Since direct file:// access is restricted, we'll suggest uploading the file
+    const fileName = fileUrl.split('/').pop() || 'document.pdf';
+    const helpfulError = `� Local PDF Access Restricted
+
+Chrome extensions cannot directly access local files (file:// URLs) due to security restrictions.
+
+To process your PDF "${fileName}", please try one of these options:
+
+1. **Upload Method**: 
+   - Copy the PDF file to a location you can upload from
+   - Use the "Upload PDF" feature in this extension
+
+2. **Cloud Method**:
+   - Upload the PDF to Google Drive, Dropbox, or similar
+   - Open it from the cloud service
+   - Then generate content from the web URL
+
+3. **Web Server Method**:
+   - Place the PDF on a web server
+   - Access it via https:// URL
+
+This is a browser security limitation, not an extension bug. Local file access would require installing native software with elevated permissions.
+
+Would you like to try uploading the PDF file instead?`;
+
+    throw new LocalFileAccessError(helpfulError, fileName);
+
+  } catch (error) {
+    console.error('Error extracting local PDF:', error);
+    // Re-throw the error as-is to preserve the helpful message
+    throw error;
+  }
+};
+
+export const extractPdfFromUrl = async (url: string): Promise<PdfUploadResponse> => {
+  // Check if this is a local file
+  if (isLocalFile(url)) {
+    return extractLocalPdfFile(url);
+  }
+  
+  // Handle remote URLs
+  const accessToken = await getAccessToken();
+  
+  // First fetch the PDF content
+  const pdfResponse = await fetch(url);
+  if (!pdfResponse.ok) {
+    throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+  }
+  
+  const pdfBlob = await pdfResponse.blob();
+  
+  // Create form data for upload
+  const formData = new FormData();
+  const filename = url.split('/').pop() || 'document.pdf';
+  formData.append('pdf', pdfBlob, filename);
+  
+  // Upload and extract PDF content
+  const response = await fetch('http://localhost:3000/v1/client/extract-pdf-content', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const pdfResult = await response.json() as PdfUploadResponse;
+  console.log('📄 Remote PDF extraction result:', pdfResult);
+  
+  // Ensure we have the required metadata structure
+  if (!pdfResult.metadata?.fileHash) {
+    console.error('❌ Remote PDF response missing fileHash:', pdfResult);
+    throw new Error('Remote PDF processing failed: missing fileHash in response');
+  }
+  
+  return pdfResult;
+};
+
+export const streamPdfSummaryFromEvents = async (
+  pdfHash: string,
+  onChunk: (chunk: string) => void
+): Promise<void> => {
+  const accessToken = await getAccessToken();
+
+  const response = await fetch('http://localhost:3000/v1/client/pdfsummary', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ 
+      pdfHash, 
+      stream: true, 
+      ignoreCache: true
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new StreamError('Response body is null');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let done = false;
+  let buffer = '';
+  let accumulatedContent = '';
+
+  while (!done) {
+    try {
+      const { value, done: streamDone } = await reader.read();
+      done = streamDone;
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          const dataLine = line.startsWith('data: ') 
+              ? line.slice(6).trim()
+              : line.trim();
+
+          // Skip empty lines
+          if (!dataLine) continue;
+
+          // Check for [DONE] message
+          if (dataLine === '[DONE]') {
+            // Apply formula restoration to final content
+            const restoredContent = restoreFormulas(accumulatedContent);
+            if (restoredContent !== accumulatedContent) {
+              // If formulas were restored, send the corrected content
+              onChunk(restoredContent);
+            }
+            return;
+          }
+
+          try {
+            const json = JSON.parse(dataLine);
+            let chunkContent = '';
+            
+            // Use the correct field for your API
+            if (json.text !== undefined) {
+              chunkContent = json.text;
+            } else if (json.content !== undefined) {
+              chunkContent = json.content;
+            }
+            
+            if (chunkContent) {
+              accumulatedContent += chunkContent;
+              onChunk(chunkContent);
+            }
+          } catch (e) {
+            console.warn('Failed to parse line:', line);
+          }
+        }
+      }
+    } catch (streamError) {
+      let message = 'Stream reading error';
+      if (typeof streamError === 'object' && streamError && 'message' in streamError) {
+        message = `Stream reading error: ${(streamError as { message?: string }).message}`;
+      } else if (typeof streamError === 'string') {
+        message = `Stream reading error: ${streamError}`;
+      }
+      throw new StreamError(message);
+    }
+  }
+};
+
+export const extractPdfArticleData = async (
+  pdfHash: string
+): Promise<{
+  tags: string[];
+  title: string;
+  obscene: boolean;
+  summary: string;
+  category: string;
+  metadata: any;
+  realtime: boolean;
+  sensitive: boolean;
+  categories: string[];
+  suggestions: string[];
+  socialSearch: string;
+}> => {
+  const accessToken = await getAccessToken();
+
+  const response = await fetch('http://localhost:3000/v1/client/extractpdfarticle', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ pdfHash }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
 // Helper function to get access token
 const getAccessToken = async (): Promise<string> => {
   const token = await philonetAuthStorage.getToken();
@@ -42,6 +345,13 @@ export class StreamError extends Error {
   }
 }
 
+export class LocalFileAccessError extends Error {
+  constructor(message: string, public fileName: string) {
+    super(message);
+    this.name = 'LocalFileAccessError';
+  }
+}
+
 export interface PageContent {
   url: string;
   title: string;
@@ -51,6 +361,29 @@ export interface PageContent {
   structuredData: any;
   openGraph: any;
   thumbnailUrl?: string; // Added thumbnailUrl property
+}
+
+export interface PdfUploadResponse {
+  success: boolean;
+  summary: string;
+  imageUrl: string;
+  metadata: {
+    title: string;
+    pageCount: number;
+    wordCount: number;
+    originalName: string;
+    fileSize: number;
+    pdfUrl: string;
+    fileHash: string;
+    accessCount: number;
+    cacheHit: string;
+    firstCached: string;
+    lastAccessed: string;
+  };
+}
+
+export interface PdfHashRequest {
+  pdfHash: string;
 }
 
 // Update function signatures to use PageContent
@@ -676,6 +1009,8 @@ export async function addToRoom(
     categories?: string[];
     category?: string;
     description: string;
+    hash?: string;
+    pdf?: boolean;
   },
   apiEndpoint: string = 'http://localhost:3000/v1/room/addtorooms'
 ): Promise<any> {
@@ -695,6 +1030,8 @@ export async function addToRoom(
   if (params.categories) payload.categories = params.categories;
   if (params.category) payload.category = params.category;
   if (params.description) payload.description = params.description;
+  if (params.hash) payload.hash = params.hash;
+  if (params.pdf !== undefined) payload.pdf = params.pdf;
 
   const response = await fetch(apiEndpoint, {
     method: 'POST',

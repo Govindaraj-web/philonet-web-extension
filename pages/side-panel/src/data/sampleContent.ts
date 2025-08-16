@@ -1,5 +1,11 @@
 // Sample markdown content for demonstration
+import { MATH_TEST_CONTENT } from './mathTestContent';
+
 export const SAMPLE_MARKDOWNS = [
+  {
+    name: "Math Rendering Test",
+    md: MATH_TEST_CONTENT
+  },
   {
     name: "Philonet Interface Overview",
     md: `# The Humane Interface of Philonet

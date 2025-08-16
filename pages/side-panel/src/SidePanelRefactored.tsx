@@ -12,6 +12,7 @@ import {
   ComposerFooter,
   CommentsDock
 } from './components';
+import { PdfUploadModal } from './components/PdfUploadModal';
 
 import {
   useSpeech,
@@ -33,7 +34,14 @@ import {
   extractThumbnailUrl,
   storeWebSummary,
   addToRoom,
-  type PageContent 
+  isPdfUrl,
+  isLocalFile,
+  extractPdfFromUrl,
+  streamPdfSummaryFromEvents,
+  extractPdfArticleData,
+  LocalFileAccessError,
+  type PageContent,
+  type PdfUploadResponse 
 } from './services/gptSummary';
 
 // PageData interface for web extraction
@@ -160,6 +168,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [currentUrl, setCurrentUrl] = useState<string>('');
 
+  // PDF upload modal state
+  const [showPdfUploadModal, setShowPdfUploadModal] = useState(false);
+  const [pdfUploadFileName, setPdfUploadFileName] = useState<string>('');
+
   // Article state
   const [article, setArticle] = useState<Article | null>(null);
   const [isLoadingArticle, setIsLoadingArticle] = useState(false);
@@ -263,7 +275,7 @@ ${article.description}
   }
 
   // Selection handling
-  useSelection(contentRef, (text: string) => {
+  useSelection(contentRef as React.RefObject<HTMLElement>, (text: string) => {
     updateState({ hiLiteText: text, dockFilterText: text });
   });
 
@@ -558,7 +570,7 @@ ${article.description}
       
       // Clear existing timeout
       if (notificationTimeout) {
-        clearTimeout(notificationTimeout);
+        clearTimeout(notificationTimeout as NodeJS.Timeout);
       }
       
       // Animate progress from 100 to 0 over 5 seconds
@@ -603,7 +615,7 @@ ${article.description}
       
       // Clear any existing timeout when loading starts
       if (notificationTimeout) {
-        clearTimeout(notificationTimeout);
+        clearTimeout(notificationTimeout as NodeJS.Timeout);
         setNotificationTimeout(null);
       }
     }
@@ -723,7 +735,7 @@ ${article.description}
   };
 
   // Article API functions
-  const fetchArticleByUrl = async (url: string): Promise<ArticleApiResponse | null> => {
+  const fetchArticle = async (params: { url?: string; hash?: string }): Promise<ArticleApiResponse | null> => {
     try {
       const token = await philonetAuthStorage.getToken();
       console.log('🔐 Retrieved token from storage:', token ? '✅ Token exists' : '❌ No token found');
@@ -732,14 +744,22 @@ ${article.description}
         throw new Error('No access token available. Please log in.');
       }
 
-      console.log('🌐 Making API call to fetch article for URL:', url);
+      if (!params.url && !params.hash) {
+        throw new Error('Either URL or hash must be provided');
+      }
+
+      const logMessage = params.url 
+        ? `🌐 Making API call to fetch article for URL: ${params.url}`
+        : `📄 Making API call to fetch article for hash: ${params.hash}`;
+      console.log(logMessage);
+
       const response = await fetch('http://localhost:3000/v1/client/articles', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(params),
       });
 
       if (!response.ok) {
@@ -762,7 +782,7 @@ ${article.description}
       });
       return data;
     } catch (error) {
-      console.error('Error fetching article by URL:', error);
+      console.error('Error fetching article:', error);
       throw error;
     }
   };
@@ -816,7 +836,7 @@ ${article.description}
       startLoadingWithMinTimer();
       setArticleError(null);
       
-      const result = await fetchArticleByUrl(url);
+      const result = await fetchArticle({ url });
       
       // Enhanced debugging for API response
       console.log('🔍 API Response Debug:', {
@@ -906,11 +926,375 @@ ${article.description}
       setArticle(null);
       // Clear the source URL when there's an error
       updateState({ currentSourceUrl: "" });
+      
       setArticleError(error instanceof Error ? error.message : 'Failed to fetch article');
     } finally {
       setIsLoadingArticle(false);
       endLoadingWithMinTimer();
     }
+  };
+
+  // PDF content generation function
+  const generatePdfContent = async (pdfUrl: string) => {
+    try {
+      setContentGenerationStatus({
+        stage: 'extracting',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Extracting PDF content...'
+      });
+
+      console.log('📄 Starting PDF content extraction for:', pdfUrl);
+
+      // Extract PDF content and get hash
+      const pdfData: PdfUploadResponse = await extractPdfFromUrl(pdfUrl);
+      console.log('📄 PDF extracted successfully:', pdfData);
+
+      // Check if an article already exists for this PDF hash
+      setContentGenerationStatus({
+        stage: 'checking',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Checking for existing PDF article...'
+      });
+
+      try {
+        const existingArticleResult = await fetchArticle({ hash: pdfData.metadata.fileHash });
+        
+        if (existingArticleResult?.success && existingArticleResult?.data && existingArticleResult.data.length > 0) {
+          // PDF article already exists, load it instead of generating new content
+          const apiArticle = existingArticleResult.data[0];
+          const convertedArticle: Article = {
+            article_id: apiArticle.article_id,
+            room_id: apiArticle.room_id,
+            created_at: apiArticle.created_at,
+            is_deleted: apiArticle.is_deleted,
+            pdf: apiArticle.pdf,
+            category: apiArticle.category,
+            sparked_by: apiArticle.sparked_by,
+            url: apiArticle.url,
+            title: apiArticle.title,
+            description: apiArticle.description,
+            thumbnail_url: apiArticle.thumbnail_url,
+            shared_by: apiArticle.shared_by,
+            tags: apiArticle.tags,
+            categories: apiArticle.categories,
+            summary: apiArticle.summary,
+            room_name: apiArticle.room_name,
+            room_description: apiArticle.room_description,
+            room_admin: apiArticle.room_admin,
+            private_space: apiArticle.private_space,
+            spark_owner: apiArticle.spark_owner
+          };
+          
+          setArticle(convertedArticle);
+          updateState({ currentSourceUrl: apiArticle.url });
+          setContentGenerationStatus({
+            stage: 'complete',
+            streamingComplete: true,
+            extractComplete: true,
+            savingComplete: true,
+            message: 'Existing PDF article loaded successfully'
+          });
+          
+          // Auto-hide status after 1.5 seconds
+          setTimeout(() => {
+            setContentGenerationStatus(prev => 
+              prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+            );
+          }, 1500);
+          
+          console.log('✅ Existing PDF article found and loaded:', convertedArticle);
+          return; // Exit early since we found existing content
+        }
+      } catch (error) {
+        console.log('📄 No existing PDF article found, proceeding with generation:', error);
+        // Continue with generation if no existing article found
+      }
+
+      // Create an initial article with PDF metadata
+      const initialArticle: Article = {
+        article_id: 0,
+        room_id: 0,
+        created_at: new Date().toISOString(),
+        is_deleted: false,
+        pdf: true, // Mark as PDF
+        category: 'Generated',
+        sparked_by: null,
+        url: pdfUrl,
+        title: pdfData.metadata.title || 'PDF Document',
+        description: '', // Will be filled by streaming
+        thumbnail_url: pdfData.imageUrl || '',
+        shared_by: '',
+        tags: [],
+        categories: [],
+        summary: '', // Will be filled by extract
+        room_name: 'Generated Content',
+        room_description: 'AI Generated Content Room',
+        room_admin: '',
+        private_space: false,
+        spark_owner: null
+      };
+
+      // Update source URL
+      updateState({ currentSourceUrl: pdfUrl });
+
+      setContentGenerationStatus({
+        stage: 'processing',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Generating content and extracting metadata...'
+      });
+
+      // Track completion of both operations for saving to DB
+      let streamingCompleted = false;
+      let extractCompleted = false;
+      let streamingResult = '';
+      let extractResult: any = null;
+
+      // Function to check if both operations are complete and save to DB
+      const checkAndSaveToRoom = async () => {
+        if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
+          try {
+            setContentGenerationStatus(prev => ({
+              ...prev,
+              stage: 'saving',
+              message: 'Saving to database...'
+            }));
+
+            console.log('💾 Both PDF operations completed - saving to room...');
+
+            const addToRoomParams = {
+              url: pdfUrl,
+              title: extractResult.title || pdfData.metadata.title || 'PDF Document',
+              summary: extractResult.summary || 'AI generated summary from PDF',
+              thumbnail_url: pdfData.imageUrl || null,
+              tags: extractResult.tags || [],
+              categories: extractResult.categories?.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              ) || [],
+              description: streamingResult,
+              hash: pdfData.metadata.fileHash,
+              pdf: true
+            };
+
+            const saveResult = await addToRoom(addToRoomParams);
+            console.log('✅ Successfully saved PDF to room:', saveResult);
+
+            setContentGenerationStatus({
+              stage: 'complete',
+              streamingComplete: true,
+              extractComplete: true,
+              savingComplete: true,
+              message: 'PDF content generated and saved successfully!'
+            });
+
+            // Auto-hide status after 1.5 seconds
+            setTimeout(() => {
+              setContentGenerationStatus(prev => 
+                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+              );
+            }, 1500);
+
+            // Update the article with the saved data if it has an ID
+            if (saveResult?.article_id) {
+              setArticle(currentArticle => {
+                if (!currentArticle) return currentArticle;
+                return {
+                  ...currentArticle,
+                  article_id: saveResult.article_id,
+                  room_id: saveResult.room_id || currentArticle.room_id
+                };
+              });
+            }
+          } catch (error) {
+            console.error('❌ Failed to save PDF to room:', error);
+            setContentGenerationStatus(prev => ({
+              ...prev,
+              stage: 'complete',
+              message: 'PDF content generated but failed to save to database'
+            }));
+
+            // Auto-hide status after 2 seconds even on error
+            setTimeout(() => {
+              setContentGenerationStatus(prev => 
+                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+              );
+            }, 2000);
+          }
+        }
+      };
+
+      // Start streaming PDF summary
+      let streamingContent = '';
+      const streamingPromise = streamPdfSummaryFromEvents(
+        pdfData.metadata.fileHash,
+        (chunk: string) => {
+          console.log('📝 PDF streaming chunk received:', chunk);
+          streamingContent += chunk;
+          setStreamingContent(streamingContent);
+
+          // Set initial article when first chunk arrives to remove skeleton
+          setArticle(currentArticle => {
+            if (!currentArticle) {
+              // First chunk - create the initial article
+              return {
+                ...initialArticle,
+                description: streamingContent, // Start with the first chunk
+              };
+            } else {
+              // Update existing article with new streaming content
+              return {
+                ...currentArticle,
+                description: streamingContent, // Update description with streaming content
+              };
+            }
+          });
+        }
+      );
+
+      // Start extract PDF article data in parallel
+      console.log('📄 Starting PDF article extraction with hash:', pdfData.metadata.fileHash);
+      console.log('📄 Full PDF data:', pdfData);
+      
+      if (!pdfData.metadata?.fileHash) {
+        console.error('❌ PDF fileHash is missing or undefined:', pdfData.metadata);
+        // Set extractComplete to true so we don't wait for it
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          extractComplete: true,
+          message: streamingCompleted ? 'Finalizing...' : 'Content streaming in progress...'
+        }));
+      } else {
+        extractPdfArticleData(pdfData.metadata.fileHash).then((extractDetails: any) => {
+          console.log('📄 PDF extract article completed:', extractDetails);
+          extractCompleted = true;
+          extractResult = extractDetails;
+
+          // Update status for extract completion
+          setContentGenerationStatus(prev => ({
+            ...prev,
+            extractComplete: true,
+            message: streamingCompleted ? 'Finalizing...' : 'Content streaming in progress...'
+          }));
+
+          // Update the article immediately with extracted metadata
+          setArticle(currentArticle => {
+          if (!currentArticle) {
+            // Extract completed first - create initial article with metadata
+            return {
+              ...initialArticle,
+              title: extractDetails.title || initialArticle.title,
+              summary: extractDetails.summary,
+              tags: extractDetails.tags,
+              categories: extractDetails.categories.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              )
+            };
+          } else {
+            // Update existing article with extract metadata
+            return {
+              ...currentArticle,
+              title: extractDetails.title || currentArticle.title,
+              summary: extractDetails.summary,
+              tags: extractDetails.tags,
+              categories: extractDetails.categories.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              )
+            };
+          }
+        });
+
+        // Update state with extract results
+        setGeneratedTitle(extractDetails.title);
+        setGeneratedTags(extractDetails.tags);
+        setGeneratedCategories(extractDetails.categories);
+
+        console.log('✅ PDF extract article metadata updated immediately:', {
+          title: extractDetails.title,
+          tags: extractDetails.tags,
+          categories: extractDetails.categories,
+          summary: extractDetails.summary
+        });
+
+        // Turn off loading states immediately when extract completes
+        if (!streamingCompleted) {
+          setIsLoadingArticle(false);
+          setIsGeneratingContent(false);
+          endLoadingWithMinTimer();
+        }
+
+        // Check if we can save to room now
+        checkAndSaveToRoom();
+      }).catch((error) => {
+        console.error('❌ PDF extract article failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to extract PDF metadata');
+        
+        // Turn off loading states on extract error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
+      });
+      } // Close the else block
+
+      // Handle streaming completion
+      streamingPromise.then(() => {
+        console.log('✅ PDF streaming content generation completed');
+        console.log('📝 Final PDF streamed content length:', streamingContent.length);
+        streamingCompleted = true;
+        streamingResult = streamingContent;
+
+        // Update status for streaming completion
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          streamingComplete: true,
+          message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
+        }));
+
+        // Turn off loading states immediately when streaming completes
+        if (!extractCompleted) {
+          setIsLoadingArticle(false);
+          setIsGeneratingContent(false);
+          endLoadingWithMinTimer();
+        }
+
+        // Check if we can save to room now
+        checkAndSaveToRoom();
+      }).catch((error) => {
+        console.error('❌ PDF streaming failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to generate PDF content');
+        
+        // Turn off loading states on streaming error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
+      });
+
+      console.log('🎉 PDF operations started independently - they will update UI when ready');
+
+    } catch (error) {
+      console.error('❌ Error generating PDF content:', error);
+      setArticle(null);
+      updateState({ currentSourceUrl: "" });
+      
+      // Handle local file access restrictions specially
+      if (error instanceof LocalFileAccessError) {
+        console.log('🔓 Local PDF detected - setting appropriate error message for UI');
+        setArticleError('No article found for this page');
+        // Don't show popup modal - let the main UI handle the upload
+      } else {
+        setArticleError(error instanceof Error ? error.message : 'Failed to process PDF');
+      }
+      
+      // Turn off loading states only on error during PDF setup
+      setIsLoadingArticle(false);
+      setIsGeneratingContent(false);
+      endLoadingWithMinTimer();
+    }
+    // Note: Loading states are now managed in checkAndSaveToRoom() when both PDF operations complete
   };
 
   const generateContent = async () => {
@@ -941,7 +1325,24 @@ ${article.description}
 
       console.log('🔄 Generate content requested for:', currentUrl);
 
-      // First, extract page data
+      // Check if URL is a PDF (including local files)
+      const isCurrentUrlPdf = isPdfUrl(currentUrl);
+      const isCurrentUrlLocalFile = isLocalFile(currentUrl);
+      
+      console.log('🔍 URL Analysis:', {
+        url: currentUrl,
+        isPdf: isCurrentUrlPdf,
+        isLocalFile: isCurrentUrlLocalFile,
+        shouldUsePdfFlow: isCurrentUrlPdf || isCurrentUrlLocalFile
+      });
+      
+      if (isCurrentUrlPdf || isCurrentUrlLocalFile) {
+        console.log('📄 PDF or local file detected, using PDF processing flow');
+        await generatePdfContent(currentUrl);
+        return;
+      }
+
+      // First, extract page data for non-PDF URLs
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) {
         throw new Error('No active tab found');
@@ -1136,7 +1537,7 @@ ${article.description}
               stage: 'saving',
               message: 'Saving to database...'
             }));
-            
+
             console.log('💾 Both operations completed - saving to room...');
             
             const addToRoomParams = {
@@ -1194,9 +1595,7 @@ ${article.description}
             }, 2000);
           }
         }
-      };
-      
-      // Start extract operation in parallel - render immediately when ready
+      };      // Start extract operation in parallel - render immediately when ready
       extractArticleData({
         rawText: pageContent.visibleText,
         content: {
@@ -1260,10 +1659,23 @@ ${article.description}
           summary: extractDetails.summary
         });
         
+        // Turn off loading states immediately when extract completes
+        if (!streamingCompleted) {
+          setIsLoadingArticle(false);
+          setIsGeneratingContent(false);
+          endLoadingWithMinTimer();
+        }
+        
         // Check if we can save to room now
         checkAndSaveToRoom();
       }).catch((error) => {
         console.error('❌ Extract article failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to extract article metadata');
+        
+        // Turn off loading states on extract error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
       });
 
       // Let streaming continue independently - handle completion separately
@@ -1280,10 +1692,23 @@ ${article.description}
           message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
         }));
         
+        // Turn off loading states immediately when streaming completes
+        if (!extractCompleted) {
+          setIsLoadingArticle(false);
+          setIsGeneratingContent(false);
+          endLoadingWithMinTimer();
+        }
+        
         // Check if we can save to room now
         checkAndSaveToRoom();
       }).catch((error) => {
         console.error('❌ Streaming failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to generate streaming content');
+        
+        // Turn off loading states on streaming error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
       });
 
       console.log('🎉 Both operations started independently - they will update UI when ready');
@@ -1295,12 +1720,22 @@ ${article.description}
       console.error('❌ Error generating content:', error);
       setArticle(null);
       updateState({ currentSourceUrl: "" });
-      setArticleError(error instanceof Error ? error.message : 'Failed to generate content');
-    } finally {
+      
+      // Handle local file access restrictions specially
+      if (error instanceof LocalFileAccessError) {
+        console.log('🔓 Local PDF detected - setting appropriate error message for UI');
+        setArticleError('No article found for this page');
+        // Don't show popup modal - let the main UI handle the upload
+      } else {
+        setArticleError(error instanceof Error ? error.message : 'Failed to generate content');
+      }
+      
+      // Turn off loading states only on error during setup
       setIsLoadingArticle(false);
       setIsGeneratingContent(false);
       endLoadingWithMinTimer();
     }
+    // Note: Loading states are now managed in checkAndSaveToRoom() when both operations complete
   };
 
   // Handle page data viewing
@@ -1408,6 +1843,336 @@ ${article.description}
 
   const closeArticleContentModal = () => {
     setShowArticleContent(false);
+  };
+
+  // PDF Upload Modal handlers
+  const handlePdfUploadSuccess = async (pdfData: PdfUploadResponse) => {
+    try {
+      console.log('📤 PDF uploaded successfully, starting content generation...', pdfData);
+      
+      // Create a mock article from the uploaded PDF data
+      const uploadedPdfArticle: Article = {
+        article_id: 0,
+        room_id: 0,
+        created_at: new Date().toISOString(),
+        is_deleted: false,
+        pdf: true,
+        category: 'Generated',
+        sparked_by: null,
+        url: currentUrl, // Keep the original file:// URL for context
+        title: pdfData.metadata.title || 'Uploaded PDF Document',
+        description: '', // Will be filled by streaming
+        thumbnail_url: pdfData.imageUrl || '',
+        shared_by: '',
+        tags: [],
+        categories: [],
+        summary: '', // Will be filled by extract
+        room_name: 'Generated Content',
+        room_description: 'AI Generated Content Room',
+        room_admin: '',
+        private_space: false,
+        spark_owner: null
+      };
+
+      // Start the same PDF processing flow as generatePdfContent, but with uploaded data
+      setIsLoadingArticle(true);
+      setIsGeneratingContent(true);
+      startLoadingWithMinTimer();
+      setArticleError(null);
+      
+      setContentGenerationStatus({
+        stage: 'processing',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Generating content from uploaded PDF...'
+      });
+
+      // Track completion of both operations for saving to DB
+      let streamingCompleted = false;
+      let extractCompleted = false;
+      let streamingResult = '';
+      let extractResult: any = null;
+
+      // Function to check if both operations are complete and save to DB
+      const checkAndSaveToRoom = async () => {
+        if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
+          try {
+            setContentGenerationStatus(prev => ({
+              ...prev,
+              stage: 'saving',
+              message: 'Saving to database...'
+            }));
+
+            console.log('💾 Both uploaded PDF operations completed - saving to room...');
+
+            const addToRoomParams = {
+              url: currentUrl,
+              title: extractResult.title || pdfData.metadata.title || 'Uploaded PDF Document',
+              summary: extractResult.summary || 'AI generated summary from uploaded PDF',
+              thumbnail_url: pdfData.imageUrl || null,
+              tags: extractResult.tags || [],
+              categories: extractResult.categories?.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              ) || [],
+              description: streamingResult,
+              hash: pdfData.metadata.fileHash,
+              pdf: true
+            };
+
+            const saveResult = await addToRoom(addToRoomParams);
+            console.log('✅ Successfully saved uploaded PDF to room:', saveResult);
+
+            setContentGenerationStatus({
+              stage: 'complete',
+              streamingComplete: true,
+              extractComplete: true,
+              savingComplete: true,
+              message: 'Uploaded PDF content generated and saved successfully!'
+            });
+
+            // Auto-hide status after 1.5 seconds
+            setTimeout(() => {
+              setContentGenerationStatus(prev => 
+                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+              );
+            }, 1500);
+
+            // Update the article with the saved data if it has an ID
+            if (saveResult?.article_id) {
+              setArticle(currentArticle => {
+                if (!currentArticle) return currentArticle;
+                return {
+                  ...currentArticle,
+                  article_id: saveResult.article_id,
+                  room_id: saveResult.room_id || currentArticle.room_id
+                };
+              });
+            }
+          } catch (error) {
+            console.error('❌ Failed to save uploaded PDF to room:', error);
+            setContentGenerationStatus(prev => ({
+              ...prev,
+              stage: 'complete',
+              message: 'PDF content generated but failed to save to database'
+            }));
+
+            // Auto-hide status after 2 seconds even on error
+            setTimeout(() => {
+              setContentGenerationStatus(prev => 
+                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+              );
+            }, 2000);
+          }
+        }
+      };
+
+      // Start streaming PDF summary with uploaded data
+      let streamingContent = '';
+      const streamingPromise = streamPdfSummaryFromEvents(
+        pdfData.metadata.fileHash,
+        (chunk: string) => {
+          console.log('📝 Uploaded PDF streaming chunk received:', chunk);
+          streamingContent += chunk;
+          setStreamingContent(streamingContent);
+
+          // Set initial article when first chunk arrives to remove skeleton
+          setArticle(currentArticle => {
+            if (!currentArticle) {
+              // First chunk - create the initial article
+              return {
+                ...uploadedPdfArticle,
+                description: streamingContent, // Start with the first chunk
+              };
+            } else {
+              // Update existing article with new streaming content
+              return {
+                ...currentArticle,
+                description: streamingContent, // Update description with streaming content
+              };
+            }
+          });
+        }
+      );
+
+      // Start extract PDF article data in parallel
+      console.log('📄 Starting uploaded PDF article extraction with hash:', pdfData.metadata.fileHash);
+      
+      extractPdfArticleData(pdfData.metadata.fileHash).then((extractDetails: any) => {
+        console.log('📄 Uploaded PDF extract article completed:', extractDetails);
+        extractCompleted = true;
+        extractResult = extractDetails;
+
+        // Update status for extract completion
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          extractComplete: true,
+          message: streamingCompleted ? 'Finalizing...' : 'Content streaming in progress...'
+        }));
+
+        // Update the article immediately with extracted metadata
+        setArticle(currentArticle => {
+          if (!currentArticle) {
+            // Extract completed first - create initial article with metadata
+            return {
+              ...uploadedPdfArticle,
+              title: extractDetails.title || uploadedPdfArticle.title,
+              summary: extractDetails.summary,
+              tags: extractDetails.tags,
+              categories: extractDetails.categories.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              )
+            };
+          } else {
+            // Update existing article with extract metadata
+            return {
+              ...currentArticle,
+              title: extractDetails.title || currentArticle.title,
+              summary: extractDetails.summary,
+              tags: extractDetails.tags,
+              categories: extractDetails.categories.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              )
+            };
+          }
+        });
+
+        // Update state with extract results
+        setGeneratedTitle(extractDetails.title);
+        setGeneratedTags(extractDetails.tags);
+        setGeneratedCategories(extractDetails.categories);
+
+        // Turn off loading states immediately when extract completes
+        if (!streamingCompleted) {
+          setIsLoadingArticle(false);
+          setIsGeneratingContent(false);
+          endLoadingWithMinTimer();
+        }
+
+        // Check if we can save to room now
+        checkAndSaveToRoom();
+      }).catch((error) => {
+        console.error('❌ Uploaded PDF extract article failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to extract uploaded PDF metadata');
+        
+        // Turn off loading states on extract error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
+      });
+
+      // Handle streaming completion
+      streamingPromise.then(() => {
+        console.log('✅ Uploaded PDF streaming content generation completed');
+        console.log('📝 Final uploaded PDF streamed content length:', streamingContent.length);
+        streamingCompleted = true;
+        streamingResult = streamingContent;
+
+        // Update status for streaming completion
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          streamingComplete: true,
+          message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
+        }));
+
+        // Turn off loading states immediately when streaming completes
+        if (!extractCompleted) {
+          setIsLoadingArticle(false);
+          setIsGeneratingContent(false);
+          endLoadingWithMinTimer();
+        }
+
+        // Check if we can save to room now
+        checkAndSaveToRoom();
+      }).catch((error) => {
+        console.error('❌ Uploaded PDF streaming failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to generate content from uploaded PDF');
+        
+        // Turn off loading states on streaming error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
+      });
+
+      console.log('🎉 Uploaded PDF operations started independently - they will update UI when ready');
+      
+    } catch (error) {
+      console.error('❌ Error processing uploaded PDF:', error);
+      setArticleError(error instanceof Error ? error.message : 'Failed to process uploaded PDF');
+      setIsLoadingArticle(false);
+      setIsGeneratingContent(false);
+      endLoadingWithMinTimer();
+    }
+  };
+
+  const closePdfUploadModal = () => {
+    setShowPdfUploadModal(false);
+    setPdfUploadFileName('');
+  };
+
+  // Helper function to check if we should show PDF upload UI
+  const shouldShowPdfUpload = () => {
+    return isLocalFile(currentUrl) && isPdfUrl(currentUrl);
+  };
+
+  // Direct file upload handler (integrated into main UI)
+  const handleDirectFileUpload = async (file: File) => {
+    if (!file.type.includes('pdf')) {
+      setArticleError('Please select a PDF file');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      setArticleError('File size must be less than 50MB');
+      return;
+    }
+
+    try {
+      setIsLoadingArticle(true);
+      setIsGeneratingContent(true);
+      startLoadingWithMinTimer();
+      setArticleError(null);
+
+      // Get access token
+      const token = await philonetAuthStorage.getToken();
+      
+      if (!token) {
+        throw new Error('No access token available. Please log in.');
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('pdf', file);
+
+      console.log('📤 Uploading PDF file directly:', file.name);
+
+      // Upload to extract-pdf-content endpoint
+      const response = await fetch('http://localhost:3000/v1/client/extract-pdf-content', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Upload failed: ${response.status} ${response.statusText}`);
+      }
+
+      const pdfData = await response.json();
+      console.log('✅ PDF uploaded successfully:', pdfData);
+
+      // Process the uploaded PDF using the existing handlePdfUploadSuccess logic
+      await handlePdfUploadSuccess(pdfData);
+
+    } catch (error) {
+      console.error('❌ Direct PDF upload failed:', error);
+      setArticleError(error instanceof Error ? error.message : 'Upload failed');
+      setIsLoadingArticle(false);
+      setIsGeneratingContent(false);
+      endLoadingWithMinTimer();
+    }
   };
 
   // Notification management functions
@@ -1529,7 +2294,7 @@ ${article.description}
               renderHighlighted={handleRenderHighlighted}
               onToggleSpeech={handleToggleSpeech}
               onOpenSource={openSourcePage}
-              contentRef={contentRef}
+              contentRef={contentRef as React.RefObject<HTMLDivElement>}
               footerH={state.footerH}
               sourceUrl={state.currentSourceUrl}
             />
@@ -1549,41 +2314,102 @@ ${article.description}
 
                 {/* Heading */}
                 <div className="space-y-3">
-                  <h1 className="text-xl font-semibold text-white">
-                    No article found for this page?
-                  </h1>
-                  <p className="text-philonet-text-secondary">
-                    Be the first to generate and share content about this topic!
-                  </p>
-                </div>
-
-                {/* Generate Button */}
-                <motion.button
-                  onClick={handleGenerateContent}
-                  disabled={isLoadingArticle || isGeneratingContent}
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98, y: 0 }}
-                  className="group relative w-full bg-gradient-to-r from-philonet-blue-600 via-philonet-blue-600 to-philonet-blue-500 hover:from-philonet-blue-700 hover:via-philonet-blue-700 hover:to-philonet-blue-600 disabled:from-philonet-blue-600/50 disabled:via-philonet-blue-600/50 disabled:to-philonet-blue-500/50 text-white py-4 px-8 rounded-xl font-semibold text-lg shadow-[0_4px_14px_0_rgba(59,130,246,0.4)] hover:shadow-[0_8px_24px_0_rgba(59,130,246,0.5)] active:shadow-[0_2px_8px_0_rgba(59,130,246,0.4)] transition-all duration-300 disabled:cursor-not-allowed flex items-center justify-center gap-3 border border-philonet-blue-500/20"
-                >
-                  {isLoadingArticle || isGeneratingContent ? (
+                  {shouldShowPdfUpload() ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      <span>{isGeneratingContent ? 'Generating Content...' : 'Loading...'}</span>
+                      <h1 className="text-xl font-semibold text-white">
+                        Local PDF Detected
+                      </h1>
+                      <p className="text-philonet-text-secondary">
+                        Upload your PDF file to generate and share content about it!
+                      </p>
                     </>
                   ) : (
                     <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span>Generate Content</span>
+                      <h1 className="text-xl font-semibold text-white">
+                        No article found for this page?
+                      </h1>
+                      <p className="text-philonet-text-secondary">
+                        Be the first to generate and share content about this topic!
+                      </p>
                     </>
                   )}
-                  
-                  {/* Shine effect */}
-                  <div className="absolute inset-0 overflow-hidden rounded-xl">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent w-full h-full transform -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out skew-x-12"></div>
-                  </div>
-                </motion.button>
+                </div>
+
+                {/* Generate Button for non-PDF pages */}
+                {!shouldShowPdfUpload() && (
+                  <motion.button
+                    onClick={handleGenerateContent}
+                    disabled={isLoadingArticle || isGeneratingContent}
+                    whileHover={{ scale: 1.02, y: -2 }}
+                    whileTap={{ scale: 0.98, y: 0 }}
+                    className="group relative w-full bg-gradient-to-r from-philonet-blue-600 via-philonet-blue-600 to-philonet-blue-500 hover:from-philonet-blue-700 hover:via-philonet-blue-700 hover:to-philonet-blue-600 disabled:from-philonet-blue-600/50 disabled:via-philonet-blue-600/50 disabled:to-philonet-blue-500/50 text-white py-4 px-8 rounded-xl font-semibold text-lg shadow-[0_4px_14px_0_rgba(59,130,246,0.4)] hover:shadow-[0_8px_24px_0_rgba(59,130,246,0.5)] active:shadow-[0_2px_8px_0_rgba(59,130,246,0.4)] transition-all duration-300 disabled:cursor-not-allowed flex items-center justify-center gap-3 border border-philonet-blue-500/20"
+                  >
+                    {isLoadingArticle || isGeneratingContent ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        <span>{isGeneratingContent ? 'Generating Content...' : 'Loading...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span>Generate Content</span>
+                      </>
+                    )}
+                    
+                    {/* Shine effect */}
+                    <div className="absolute inset-0 overflow-hidden rounded-xl">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent w-full h-full transform -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out skew-x-12"></div>
+                    </div>
+                  </motion.button>
+                )}
+
+                {/* PDF Upload UI for local files */}
+                {shouldShowPdfUpload() && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-full space-y-4"
+                  >
+                    <div className="border-2 border-dashed border-blue-500/50 hover:border-blue-400 rounded-xl p-8 text-center transition-colors bg-blue-900/10">
+                      <div className="space-y-4">
+                        <div className="w-12 h-12 mx-auto text-blue-400">
+                          <FileText className="w-full h-full" />
+                        </div>
+                        <div>
+                          <p className="text-white font-medium mb-2">Upload your PDF file</p>
+                          <p className="text-philonet-text-muted text-sm">
+                            Chrome can't access local files directly. Upload to generate content.
+                          </p>
+                        </div>
+                        <input
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleDirectFileUpload(file);
+                            }
+                          }}
+                          className="hidden"
+                          id="main-pdf-upload-input"
+                        />
+                        <label
+                          htmlFor="main-pdf-upload-input"
+                          className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                        >
+                          <FileText className="w-5 h-5" />
+                          Choose PDF File
+                        </label>
+                        <p className="text-xs text-gray-400">
+                          PDF files up to 50MB
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Features */}
               </div>
@@ -1752,7 +2578,7 @@ ${article.description}
                       <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
                       <span className="font-semibold text-green-400">Article Found</span>
                     </div>
-                    <div className="text-philonet-text-secondary text-xs truncate mb-2">{article.title}</div>
+                    <div className="text-philonet-text-secondary text-xs truncate mb-2">{article?.title}</div>
                     <button
                       onClick={handleViewArticleContent}
                       className="text-green-400 hover:text-green-300 underline text-xs font-medium transition-colors"
@@ -1799,36 +2625,80 @@ ${article.description}
                   </motion.div>
                 )}
                 
-                {articleError && !article && !isLoadingArticle && !articleError.includes('Content generation will be implemented') && (
+                {articleError && !article && !isLoadingArticle && !articleError?.includes('Content generation will be implemented') && (
                   <motion.div
                     initial={{ scale: 0.9, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 0.9, opacity: 0 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
                     className={`relative bg-philonet-card/95 backdrop-blur-md border shadow-2xl text-white px-4 py-3 rounded-xl text-sm pr-10 ${
-                      articleError.includes('No article found') 
+                      articleError?.includes('No article found') 
                         ? 'border-yellow-500/30'
+                        : articleError?.includes('Local PDF Access Info') 
+                        ? 'border-blue-500/30'
                         : 'border-red-500/30'
                     }`}
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <div className={`w-3 h-3 rounded-full ${
-                        articleError.includes('No article found') ? 'bg-yellow-400' : 'bg-red-400'
+                        articleError?.includes('No article found') 
+                          ? 'bg-yellow-400' 
+                          : articleError?.includes('Local PDF Access Info')
+                          ? 'bg-blue-400'
+                          : 'bg-red-400'
                       }`}></div>
                       <span className={`font-semibold ${
-                        articleError.includes('No article found') ? 'text-yellow-400' : 'text-red-400'
+                        articleError?.includes('No article found') 
+                          ? 'text-yellow-400' 
+                          : articleError?.includes('Local PDF Access Info')
+                          ? 'text-blue-400'
+                          : 'text-red-400'
                       }`}>
-                        {articleError.includes('No article found') ? 'No Article Found' : 'Error'}
+                        {articleError?.includes('No article found') 
+                          ? 'No Article Found' 
+                          : articleError?.includes('Local PDF Access Info')
+                          ? 'Local File Information'
+                          : 'Error'}
                       </span>
                     </div>
-                    <div className="text-philonet-text-muted text-xs mb-2">{articleError}</div>
-                    {articleError.includes('No article found') && (
+                    <div className="text-philonet-text-muted text-xs mb-2 whitespace-pre-line">
+                      {articleError?.includes('Local PDF Access Info') 
+                        ? articleError?.replace('Local PDF Access Info: ', '') || ''
+                        : articleError}
+                    </div>
+                    {articleError?.includes('No article found') && !shouldShowPdfUpload() && (
                       <button
                         onClick={handleGenerateContent}
                         className="text-yellow-400 hover:text-yellow-300 underline text-xs font-medium transition-colors"
                       >
                         Generate Content →
                       </button>
+                    )}
+                    
+                    {/* PDF Upload for local files */}
+                    {articleError?.includes('No article found') && shouldShowPdfUpload() && (
+                      <div className="space-y-2">
+                        <p className="text-blue-200 text-xs">
+                          Local PDF detected. Upload the file to process it:
+                        </p>
+                        <input
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleDirectFileUpload(file);
+                            }
+                          }}
+                          className="block w-full text-xs text-gray-400 
+                                   file:mr-2 file:py-1 file:px-2 
+                                   file:rounded file:border-0 
+                                   file:text-xs file:font-medium 
+                                   file:bg-blue-600 file:text-white 
+                                   hover:file:bg-blue-700 file:cursor-pointer
+                                   bg-transparent"
+                        />
+                      </div>
                     )}
                     
                     {/* Close Button */}
@@ -1862,7 +2732,7 @@ ${article.description}
                             strokeDasharray={`${2 * Math.PI * 14}`}
                             strokeDashoffset={`${2 * Math.PI * 14 * (1 - timeoutProgress / 100)}`}
                             className={`transition-all duration-100 ease-linear ${
-                              articleError.includes('No article found') ? 'text-yellow-400' : 'text-red-400'
+                              articleError?.includes('No article found') ? 'text-yellow-400' : 'text-red-400'
                             }`}
                             strokeLinecap="round"
                           />
@@ -1892,7 +2762,7 @@ ${article.description}
                 onAskAi={handleAskAi}
                 onClearSelection={() => updateState({ hiLiteText: "" })}
                 onInsertEmoji={handleInsertEmoji}
-                commentRef={commentRef}
+                commentRef={commentRef as React.RefObject<HTMLTextAreaElement>}
               />
             </div>
           )}
@@ -2203,7 +3073,7 @@ ${article.description}
                     </div>
 
                     {/* Generate Content Button (when no article exists) */}
-                    {!article && !isLoadingArticle && articleError && articleError.includes('No article found') && (
+                    {!article && !isLoadingArticle && articleError && articleError.includes('No article found') && !shouldShowPdfUpload() && (
                       <button
                         onClick={handleGenerateContent}
                         className="px-4 py-2.5 bg-philonet-green-600 hover:bg-philonet-green-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-2"
@@ -2211,6 +3081,43 @@ ${article.description}
                         <FileText className="w-4 h-4" />
                         Generate Content
                       </button>
+                    )}
+
+                    {/* PDF Upload UI (when no article exists and it's a local PDF) */}
+                    {!article && !isLoadingArticle && articleError && articleError.includes('No article found') && shouldShowPdfUpload() && (
+                      <div className="p-4 bg-philonet-card border border-blue-500/30 rounded-lg space-y-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+                          <span className="font-semibold text-blue-400">Local PDF Detected</span>
+                        </div>
+                        <p className="text-philonet-text-muted text-sm">
+                          Chrome can't access local files directly. Upload your PDF file to generate content:
+                        </p>
+                        <div className="border-2 border-dashed border-gray-600 hover:border-blue-500 rounded-lg p-4 text-center transition-colors">
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleDirectFileUpload(file);
+                              }
+                            }}
+                            className="hidden"
+                            id="pdf-upload-input"
+                          />
+                          <label
+                            htmlFor="pdf-upload-input"
+                            className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+                          >
+                            <FileText className="w-4 h-4" />
+                            Upload PDF File
+                          </label>
+                          <p className="text-xs text-gray-400 mt-2">
+                            PDF files up to 50MB
+                          </p>
+                        </div>
+                      </div>
                     )}
 
                     {/* Status Display */}
@@ -2511,6 +3418,14 @@ ${article.description}
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
           }
         `}</style>
+
+        {/* PDF Upload Modal */}
+        <PdfUploadModal
+          isOpen={showPdfUploadModal}
+          onClose={closePdfUploadModal}
+          onUploadSuccess={handlePdfUploadSuccess}
+          fileName={pdfUploadFileName}
+        />
       </div>
     );
   } catch (error) {

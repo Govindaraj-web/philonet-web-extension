@@ -31,7 +31,7 @@ const manifest = {
   },
   version: packageJson.version,
   description: '__MSG_extensionDescription__',
-  host_permissions: ['<all_urls>'],
+  host_permissions: ['<all_urls>', 'file:///*/*'],
   permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel', 'activeTab', 'identity'],
   options_page: 'options/index.html',
   background: {

@@ -27,8 +27,11 @@
     "@tailwindcss/typography": "^0.5.16",
     "@types/markdown-it": "^14.1.2",
     "framer-motion": "^12.23.12",
+    "katex": "^0.16.22",
     "lucide-react": "^0.539.0",
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@extension/tailwindcss-config": "workspace:*",
