@@ -9,7 +9,7 @@ const API_ENDPOINTS = {
   GET_ARTICLE_RECOMMENDATIONS: '/article-recommendations',
   GET_USER_RECOMMENDATIONS: '/user-recommendations',
   UPDATE_USER_VECTOR: '/update-user-vector',
-  ADD_TO_ROOM: '/add-to-room',
+  ADD_TO_ROOM: '/room/addtorooms',
   GET_ARTICLE_DETAILS: '/article-details',
   EXTRACT_ARTICLE: '/extract-article',
   STORE_HIGHLIGHT: '/store-highlight',
@@ -677,7 +677,7 @@ export async function addToRoom(
     category?: string;
     description: string;
   },
-  apiEndpoint: string = getApiUrl(API_ENDPOINTS.ADD_TO_ROOM)
+  apiEndpoint: string = 'http://localhost:3000/v1/room/addtorooms'
 ): Promise<any> {
   // Fetch access token from philonetAuthStorage
   const accessToken = await getAccessToken();

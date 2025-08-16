@@ -32,6 +32,7 @@ import {
   createPageContentFromUploadedFile,
   extractThumbnailUrl,
   storeWebSummary,
+  addToRoom,
   type PageContent 
 } from './services/gptSummary';
 
@@ -182,6 +183,20 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [generatedCategories, setGeneratedCategories] = useState<Array<string | [string, number]>>([]);
   const [generatedTitle, setGeneratedTitle] = useState<string>('');
   const [showStreamingProgress, setShowStreamingProgress] = useState(false);
+  
+  // Status tracking for content generation flow
+  const [contentGenerationStatus, setContentGenerationStatus] = useState<{
+    stage: 'idle' | 'checking' | 'extracting' | 'streaming' | 'processing' | 'saving' | 'complete';
+    streamingComplete: boolean;
+    extractComplete: boolean;
+    savingComplete: boolean;
+    message?: string;
+  }>({
+    stage: 'idle',
+    streamingComplete: false,
+    extractComplete: false,
+    savingComplete: false
+  });
 
   // Dynamic content based on article data or fallback to sample (after article state is declared)
   const [sampleIdx] = useState(0);
@@ -789,6 +804,14 @@ ${article.description}
     }
 
     try {
+      setContentGenerationStatus({
+        stage: 'checking',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Checking for existing article...'
+      });
+      
       setIsLoadingArticle(true);
       startLoadingWithMinTimer();
       setArticleError(null);
@@ -835,12 +858,33 @@ ${article.description}
         setArticle(convertedArticle);
         // Update the source URL to point to the actual article URL
         updateState({ currentSourceUrl: apiArticle.url });
+        setContentGenerationStatus({
+          stage: 'complete',
+          streamingComplete: true,
+          extractComplete: true,
+          savingComplete: true,
+          message: 'Article loaded successfully'
+        });
+        
+        // Auto-hide status after 1.5 seconds
+        setTimeout(() => {
+          setContentGenerationStatus(prev => 
+            prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+          );
+        }, 1500);
+        
         console.log('✅ Article found and converted:', convertedArticle);
         console.log('🔗 Source URL updated to:', apiArticle.url);
       } else {
         setArticle(null);
         // Clear the source URL when no article is found
         updateState({ currentSourceUrl: "" });
+        setContentGenerationStatus({
+          stage: 'idle',
+          streamingComplete: false,
+          extractComplete: false,
+          savingComplete: false
+        });
         if (result?.success) {
           if (!result.data) {
             setArticleError('API response missing data field');
@@ -876,6 +920,14 @@ ${article.description}
     }
 
     try {
+      setContentGenerationStatus({
+        stage: 'extracting',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Extracting page content...'
+      });
+      
       setIsLoadingArticle(true);
       setIsGeneratingContent(true);
       startLoadingWithMinTimer();
@@ -1003,16 +1055,16 @@ ${article.description}
         created_at: new Date().toISOString(),
         is_deleted: false,
         pdf: false,
-        category: 'Generating',
+        category: 'Generated',
         sparked_by: null,
         url: pageContent.url,
-        title: pageContent.title || 'Generating Title...',
-        description: pageContent.metaDescription || 'Content is being generated, please wait...',
+        title: pageContent.title || 'Generated Content',
+        description: '', // Start with empty description - will be filled by streaming
         thumbnail_url: pageContent.thumbnailUrl || '',
         shared_by: '',
         tags: [],
         categories: [],
-        summary: 'Generating summary...',
+        summary: '', // Start with empty summary - will be filled by extract article
         room_name: 'Generated Content',
         room_description: 'AI Generated Content Room',
         room_admin: '',
@@ -1020,19 +1072,26 @@ ${article.description}
         spark_owner: null
       };
 
-      // Set the initial article to update the main content area
-      setArticle(initialArticle);
+      // Don't set the initial article immediately - let skeleton show during generation
+      // setArticle(initialArticle);
       updateState({ currentSourceUrl: pageContent.url });
 
       // Always use streaming generation regardless of content amount
       console.log('📝 Starting streaming content generation...');
+      
+      setContentGenerationStatus({
+        stage: 'processing',
+        streamingComplete: false,
+        extractComplete: false,
+        savingComplete: false,
+        message: 'Generating content and extracting metadata...'
+      });
       
       const streamEndpoint = 'http://localhost:3000/v1/client/summarize';
       const extractEndpoint = 'http://localhost:3000/v1/client/extractarticle';
       
       // Start both operations in parallel, but handle them independently
       let streamingContent = '';
-      let extractCompleted = false;
       
       // Start streaming operation
       const streamingPromise = streamWebSummaryFromEvents(
@@ -1043,16 +1102,99 @@ ${article.description}
           streamingContent += chunk;
           setStreamingContent(streamingContent);
           
-          // Update the article in real-time as content streams in
+          // Set initial article when first chunk arrives to remove skeleton
           setArticle(currentArticle => {
-            if (!currentArticle) return currentArticle;
-            return {
-              ...currentArticle,
-              description: streamingContent, // Update description (body) with streaming content
-            };
+            if (!currentArticle) {
+              // First chunk - create the initial article
+              return {
+                ...initialArticle,
+                description: streamingContent, // Start with the first chunk
+              };
+            } else {
+              // Update existing article with new streaming content
+              return {
+                ...currentArticle,
+                description: streamingContent, // Update description (body) with streaming content
+              };
+            }
           });
         }
       );
+      
+      // Track completion of both operations for saving to DB
+      let streamingCompleted = false;
+      let extractCompleted = false;
+      let streamingResult = '';
+      let extractResult: any = null;
+      
+      // Function to check if both operations are complete and save to DB
+      const checkAndSaveToRoom = async () => {
+        if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
+          try {
+            setContentGenerationStatus(prev => ({
+              ...prev,
+              stage: 'saving',
+              message: 'Saving to database...'
+            }));
+            
+            console.log('💾 Both operations completed - saving to room...');
+            
+            const addToRoomParams = {
+              url: pageContent.url,
+              title: extractResult.title || pageContent.title || 'Generated Content',
+              summary: extractResult.summary || 'AI generated summary',
+              thumbnail_url: pageContent.thumbnailUrl || null,
+              tags: extractResult.tags || [],
+              categories: extractResult.categories?.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              ) || [],
+              description: streamingResult
+            };
+            
+            const saveResult = await addToRoom(addToRoomParams);
+            console.log('✅ Successfully saved to room:', saveResult);
+            
+            setContentGenerationStatus({
+              stage: 'complete',
+              streamingComplete: true,
+              extractComplete: true,
+              savingComplete: true,
+              message: 'Content generated and saved successfully!'
+            });
+            
+          // Auto-hide status after 1.5 seconds
+          setTimeout(() => {
+            setContentGenerationStatus(prev => 
+              prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+            );
+          }, 1500);            // Update the article with the saved data if it has an ID
+            if (saveResult?.article_id) {
+              setArticle(currentArticle => {
+                if (!currentArticle) return currentArticle;
+                return {
+                  ...currentArticle,
+                  article_id: saveResult.article_id,
+                  room_id: saveResult.room_id || currentArticle.room_id
+                };
+              });
+            }
+          } catch (error) {
+            console.error('❌ Failed to save to room:', error);
+            setContentGenerationStatus(prev => ({
+              ...prev,
+              stage: 'complete',
+              message: 'Content generated but failed to save to database'
+            }));
+            
+            // Auto-hide status after 2 seconds even on error
+            setTimeout(() => {
+              setContentGenerationStatus(prev => 
+                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+              );
+            }, 2000);
+          }
+        }
+      };
       
       // Start extract operation in parallel - render immediately when ready
       extractArticleData({
@@ -1070,19 +1212,40 @@ ${article.description}
       }, extractEndpoint).then((extractDetails: any) => {
         console.log('📄 Extract article completed:', extractDetails);
         extractCompleted = true;
+        extractResult = extractDetails;
+        
+        // Update status for extract completion
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          extractComplete: true,
+          message: streamingCompleted ? 'Finalizing...' : 'Content streaming in progress...'
+        }));
         
         // Update the article immediately with extracted metadata
         setArticle(currentArticle => {
-          if (!currentArticle) return currentArticle;
-          return {
-            ...currentArticle,
-            title: extractDetails.title || currentArticle.title,
-            summary: extractDetails.summary, // Use extracted API summary for header description
-            tags: extractDetails.tags,
-            categories: extractDetails.categories.map((cat: any) => 
-              typeof cat === 'string' ? cat : cat[0]
-            )
-          };
+          if (!currentArticle) {
+            // Extract completed first - create initial article with metadata
+            return {
+              ...initialArticle,
+              title: extractDetails.title || initialArticle.title,
+              summary: extractDetails.summary, // Use extracted API summary for header description
+              tags: extractDetails.tags,
+              categories: extractDetails.categories.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              )
+            };
+          } else {
+            // Update existing article with extract metadata
+            return {
+              ...currentArticle,
+              title: extractDetails.title || currentArticle.title,
+              summary: extractDetails.summary, // Use extracted API summary for header description
+              tags: extractDetails.tags,
+              categories: extractDetails.categories.map((cat: any) => 
+                typeof cat === 'string' ? cat : cat[0]
+              )
+            };
+          }
         });
         
         // Update state with extract results
@@ -1096,6 +1259,9 @@ ${article.description}
           categories: extractDetails.categories,
           summary: extractDetails.summary
         });
+        
+        // Check if we can save to room now
+        checkAndSaveToRoom();
       }).catch((error) => {
         console.error('❌ Extract article failed:', error);
       });
@@ -1104,6 +1270,18 @@ ${article.description}
       streamingPromise.then(() => {
         console.log('✅ Streaming content generation completed independently');
         console.log('📝 Final streamed content length:', streamingContent.length);
+        streamingCompleted = true;
+        streamingResult = streamingContent;
+        
+        // Update status for streaming completion
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          streamingComplete: true,
+          message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
+        }));
+        
+        // Check if we can save to room now
+        checkAndSaveToRoom();
       }).catch((error) => {
         console.error('❌ Streaming failed:', error);
       });
@@ -1215,6 +1393,12 @@ ${article.description}
     setGeneratedCategories([]);
     setGeneratedTitle('');
     setIsGeneratingContent(false);
+    setContentGenerationStatus({
+      stage: 'idle',
+      streamingComplete: false,
+      extractComplete: false,
+      savingComplete: false
+    });
     // Don't clear the source URL since we want to preserve navigation context
   };
 
@@ -1326,8 +1510,10 @@ ${article.description}
             isExtracting={isExtractingPageData}
           />
 
+
+
           {/* Content Renderer, Skeleton Loading, or Encouraging Message */}
-          {(isLoadingWithMinTimer || isLoadingArticle) ? (
+          {(isLoadingWithMinTimer || isLoadingArticle || isGeneratingContent) ? (
             <div className="absolute left-0 right-0" style={{ top: 68, bottom: state.footerH }}>
               <div className="h-full overflow-y-auto pr-1">
                 <ContentSkeleton />
@@ -1728,6 +1914,76 @@ ${article.description}
               />
             </div>
           )}
+
+          {/* Subtle Glass Effect Status Indicator - Top Right */}
+          <AnimatePresence>
+            {contentGenerationStatus.stage !== 'idle' && contentGenerationStatus.stage !== 'complete' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8, y: -10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="fixed top-20 right-4 z-40 pointer-events-none"
+              >
+                <div className="bg-black/20 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-lg">
+                  <div className="flex items-center gap-2">
+                    {/* Animated Status Dot */}
+                    <div className="w-2 h-2 bg-philonet-blue-400 rounded-full animate-pulse"></div>
+                    
+                    {/* Progress Dots */}
+                    <div className="flex items-center gap-1">
+                      {/* Streaming Progress */}
+                      <div className={`w-1 h-1 rounded-full transition-all duration-500 ${
+                        contentGenerationStatus.streamingComplete 
+                          ? 'bg-green-400 shadow-sm shadow-green-400/50' 
+                          : contentGenerationStatus.stage === 'processing'
+                            ? 'bg-philonet-blue-400 animate-pulse' 
+                            : 'bg-white/20'
+                      }`}></div>
+                      
+                      {/* Extract Progress */}
+                      <div className={`w-1 h-1 rounded-full transition-all duration-500 ${
+                        contentGenerationStatus.extractComplete 
+                          ? 'bg-green-400 shadow-sm shadow-green-400/50' 
+                          : contentGenerationStatus.stage === 'processing'
+                            ? 'bg-philonet-blue-400 animate-pulse' 
+                            : 'bg-white/20'
+                      }`}></div>
+                      
+                      {/* Save Progress */}
+                      <div className={`w-1 h-1 rounded-full transition-all duration-500 ${
+                        contentGenerationStatus.savingComplete 
+                          ? 'bg-green-400 shadow-sm shadow-green-400/50' 
+                          : contentGenerationStatus.stage === 'saving'
+                            ? 'bg-philonet-blue-400 animate-pulse' 
+                            : 'bg-white/20'
+                      }`}></div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Success Indicator - Auto disappears */}
+          <AnimatePresence>
+            {contentGenerationStatus.stage === 'complete' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8, y: -10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="fixed top-20 right-4 z-40 pointer-events-none"
+              >
+                <div className="bg-green-500/20 backdrop-blur-md border border-green-400/20 rounded-xl px-3 py-2 shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-green-400 font-medium">Complete</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.aside>
 
         {/* Settings Modal */}
