@@ -134,11 +134,7 @@ export function useSidePanelState() {
         author: highlight.user_name || 'Unknown',
         text: highlight.message || 'No comment',
         ts: formatTimeAgo(new Date(highlight.created_at)),
-        tag: highlight.highlighted_text ? { 
-          text: highlight.highlighted_text,
-          startIndex: highlight.start_index,
-          endIndex: highlight.end_index
-        } : null,
+        tag: highlight.highlighted_text ? { text: highlight.highlighted_text } : null,
         profilePic: highlight.user_profile_pic || undefined
       }));
       

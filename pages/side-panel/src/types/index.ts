@@ -4,11 +4,7 @@ export interface Comment {
   author: string;
   text: string;
   ts: string;
-  tag?: { 
-    text: string;
-    startIndex: number;
-    endIndex: number;
-  } | null;
+  tag?: { text: string } | null;
   profilePic?: string;
 }
 

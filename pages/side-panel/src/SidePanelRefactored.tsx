@@ -2008,14 +2008,9 @@ ${article.description}
   };
 
   const handleNavigateToText = (text?: string) => {
-    console.log('🚀 handleNavigateToText called with text:', text);
-    console.log('🚀 state.hiLiteText:', state.hiLiteText);
-    
     const searchText = text || state.hiLiteText;
     if (!searchText || !bodyContentRef.current) {
       console.log('⚠️ Cannot navigate: no search text or body content ref');
-      console.log('⚠️ searchText:', searchText);
-      console.log('⚠️ bodyContentRef.current:', bodyContentRef.current);
       return;
     }
 
@@ -2025,7 +2020,6 @@ ${article.description}
       // Use the enhanced search system for better results
       if (text) {
         // If specific text is provided (from dock), use enhanced search
-        console.log('📋 Text provided from dock, calling performSearch...');
         performSearch(searchText);
       } else {
         // Fallback to direct navigation for existing highlights
@@ -2319,16 +2313,11 @@ ${article.description}
 
   // Enhanced search functionality with state management
   const performSearch = (query: string) => {
-    console.log('🔍 performSearch called with query:', query);
-    console.log('🔍 bodyContentRef.current:', bodyContentRef.current);
-    
     if (!bodyContentRef.current || !query.trim()) {
-      console.log('⚠️ Early return - no bodyContentRef or empty query');
       clearSearch();
       return;
     }
 
-    console.log('✅ Starting search process...');
     setSearchQuery(query);
     setIsSearchActive(true);
 
@@ -2336,7 +2325,6 @@ ${article.description}
     removeExistingHighlights(bodyContentRef.current);
 
     const matches = findAllTextMatches(bodyContentRef.current, query);
-    console.log('🎯 Found matches:', matches.length);
     setSearchResults({
       matches,
       currentIndex: matches.length > 0 ? 0 : -1,
@@ -2344,24 +2332,15 @@ ${article.description}
     });
 
     // Highlight all matches in the body
-    console.log('🎨 Calling highlightSearchTextInBody...');
     highlightSearchTextInBody(bodyContentRef.current, query);
 
     // Navigate to first match if available
     if (matches.length > 0) {
-      console.log('📍 Navigating to first match...');
       navigateToMatch(matches[0], query);
-    } else {
-      console.log('⚠️ No matches found for highlighting');
     }
   };
 
   const highlightSearchTextInBody = (container: Element, searchText: string) => {
-    console.log('🎨 highlightSearchTextInBody called with:', searchText);
-    console.log('🎨 Container element:', container);
-    console.log('🎨 Container tagName:', container.tagName);
-    console.log('🎨 Container textContent length:', container.textContent?.length || 0);
-    
     const targetText = searchText.trim().toLowerCase();
     
     // Find all text nodes in the container
@@ -2395,11 +2374,8 @@ ${article.description}
       }
     }
 
-    console.log('🔍 Found text nodes containing target text:', textNodes.length);
-
     // Process each text node and add highlights
     textNodes.forEach((textNode, nodeIndex) => {
-      console.log(`🎨 Processing text node ${nodeIndex}:`, textNode.textContent?.substring(0, 50) + '...');
       const parent = textNode.parentNode;
       if (parent && textNode.textContent) {
         const text = textNode.textContent;
