@@ -23,6 +23,7 @@ const manifest = {
   manifest_version: 3,
   default_locale: 'en',
   name: '__MSG_extensionName__',
+  key: readFileSync('./key.pem', 'utf8'),
   browser_specific_settings: {
     gecko: {
       id: 'example@example.com',

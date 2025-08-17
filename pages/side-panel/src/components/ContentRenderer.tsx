@@ -14,6 +14,7 @@ interface ContentRendererProps {
   onToggleSpeech: () => void;
   onOpenSource: () => void;
   contentRef: React.RefObject<HTMLDivElement>;
+  bodyContentRef: React.RefObject<HTMLDivElement>;
   footerH: number;
   sourceUrl?: string;
 }
@@ -28,6 +29,7 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
   onToggleSpeech,
   onOpenSource,
   contentRef,
+  bodyContentRef,
   footerH,
   sourceUrl
 }) => {
@@ -47,6 +49,7 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
           sections={sections}
           comments={comments}
           renderHighlighted={renderHighlighted}
+          bodyContentRef={bodyContentRef}
         />
       </ScrollArea>
     </div>

@@ -114,11 +114,25 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ className = "" }) => {
       }
     } catch (error) {
       console.error('Google authentication error:', error);
-      setAuthError(
-        error instanceof Error 
-          ? error.message 
-          : 'Google authentication failed. Please try again.'
-      );
+      
+      // Provide more specific error messages for common OAuth issues
+      let errorMessage = 'Google authentication failed. Please try again.';
+      
+      if (error instanceof Error) {
+        const errorText = error.message.toLowerCase();
+        
+        if (errorText.includes('bad client id') || errorText.includes('invalid client')) {
+          errorMessage = 'Google OAuth configuration error. The client ID is invalid or expired. Please contact support or check the extension configuration.';
+        } else if (errorText.includes('oauth2 request failed')) {
+          errorMessage = 'Google OAuth service error. Please check your internet connection and try again.';
+        } else if (errorText.includes('user denied')) {
+          errorMessage = 'Google authentication was cancelled. Please try again and allow access to continue.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setAuthError(errorMessage);
     } finally {
       setIsAuthenticating(false);
     }

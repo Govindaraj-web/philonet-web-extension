@@ -1,8 +1,8 @@
 
 import { philonetAuthStorage } from "../storage/auth-storage";
 
-// Temporary API configuration until the real config is available
-const getApiUrl = (endpoint: string) => `http://localhost:3000/v1/client${endpoint}`;
+// API configuration using environment variable
+const getApiUrl = (endpoint: string) => `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client${endpoint}`;
 const API_ENDPOINTS = {
   PARSE: '/parse',
   STORE_SUMMARY: '/store-summary',
@@ -12,7 +12,7 @@ const API_ENDPOINTS = {
   ADD_TO_ROOM: '/room/addtorooms',
   GET_ARTICLE_DETAILS: '/article-details',
   EXTRACT_ARTICLE: '/extract-article',
-  STORE_HIGHLIGHT: '/store-highlight',
+  STORE_HIGHLIGHT: '/room/storehighlight',
   CONTENT_HIGHLIGHTS: '/content-highlights'
 };
 
@@ -170,7 +170,7 @@ export const extractPdfFromUrl = async (url: string): Promise<PdfUploadResponse>
   formData.append('pdf', pdfBlob, filename);
   
   // Upload and extract PDF content
-  const response = await fetch('http://localhost:3000/v1/client/extract-pdf-content', {
+  const response = await fetch(`${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/extract-pdf-content`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -201,7 +201,7 @@ export const streamPdfSummaryFromEvents = async (
 ): Promise<void> => {
   const accessToken = await getAccessToken();
 
-  const response = await fetch('http://localhost:3000/v1/client/pdfsummary', {
+  const response = await fetch(`${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/pdfsummary`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -305,7 +305,7 @@ export const extractPdfArticleData = async (
 }> => {
   const accessToken = await getAccessToken();
 
-  const response = await fetch('http://localhost:3000/v1/client/extractpdfarticle', {
+  const response = await fetch(`${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/extractpdfarticle`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1012,7 +1012,7 @@ export async function addToRoom(
     hash?: string;
     pdf?: boolean;
   },
-  apiEndpoint: string = 'http://localhost:3000/v1/room/addtorooms'
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/room/addtorooms`
 ): Promise<any> {
   // Fetch access token from philonetAuthStorage
   const accessToken = await getAccessToken();
@@ -1199,8 +1199,9 @@ export async function storeSmartHighlight(
     url: string;
     is_private: boolean;
     invited_users: string[];
+    article_id?: string;
   },
-  apiEndpoint: string = getApiUrl(API_ENDPOINTS.STORE_HIGHLIGHT)
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/room/storehighlight`
 ): Promise<any> {
   // Fetch access token from philonetAuthStorage
   const accessToken = await getAccessToken();
@@ -1208,7 +1209,7 @@ export async function storeSmartHighlight(
     // Token validation is handled in getAccessToken()
   }
 
-  const payload = {
+  const payload: any = {
     content: params.content,
     highlighted_text: params.highlighted_text,
     start_index: params.start_index,
@@ -1218,6 +1219,11 @@ export async function storeSmartHighlight(
     is_private: params.is_private,
     invited_users: params.invited_users,
   };
+
+  // Add article_id to payload if provided
+  if (params.article_id) {
+    payload.article_id = params.article_id;
+  }
 
   const response = await fetch(apiEndpoint, {
     method: 'POST',
@@ -1249,7 +1255,7 @@ export async function fetchContentHighlights(
     page?: number;
     limit?: number;
   },
-  apiEndpoint: string = getApiUrl(API_ENDPOINTS.CONTENT_HIGHLIGHTS)
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/room/contenthighlights`
 ): Promise<any> {
   // Fetch access token from philonetAuthStorage
   const accessToken = await getAccessToken();
@@ -1258,7 +1264,7 @@ export async function fetchContentHighlights(
   }
 
   const payload: any = {
-    content: params.content,
+    content: "test content",
     page: params.page ?? 1,
     limit: params.limit ?? 20,
   };
@@ -1294,7 +1300,7 @@ export async function getStoredHighlights(
     page?: number;
     limit?: number;
   },
-  apiEndpoint: string = getApiUrl(API_ENDPOINTS.CONTENT_HIGHLIGHTS)
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/room/contenthighlights`
 ): Promise<any> {
   // Fetch access token from philonetAuthStorage
   const accessToken = await getAccessToken();
@@ -1304,7 +1310,7 @@ export async function getStoredHighlights(
 
   const payload = {
     articleId: params.articleId,
-    content: params.content,
+    content: "test content",
     page: params.page ?? 1,
     limit: params.limit ?? 20,
   };
@@ -1325,11 +1331,52 @@ export async function getStoredHighlights(
   return response.json();
 }
 
+/**
+ * Fetches stored highlights for a specific article ID to display in the side panel dock.
+ * @param articleId The ID of the article to fetch highlights for.
+ * @param page Optional page number for pagination (default: 1).
+ * @param limit Optional limit for number of highlights to fetch (default: 20).
+ * @param apiEndpoint Optional override for the API endpoint.
+ * @returns The API response with highlights for the article.
+ */
+export async function fetchHighlightsByArticleId(
+  articleId: string,
+  page: number = 1,
+  limit: number = 20,
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/room/contenthighlights`
+): Promise<any> {
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    // Token validation is handled in getAccessToken()
+  }
+
+  let payload = {
+    articleId,
+    page,
+    limit,
+  };
+payload["content"] = "test content";
+  const response = await fetch(apiEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
 
 
 export async function summarizePdfFile(
   file: File | Blob,
-  apiEndpoint: string = 'http://localhost:3000/v1/client/summarize-pdf'
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/summarize-pdf`
 ): Promise<any> {
   // Fetch access token from philonetAuthStorage
   const accessToken = await getAccessToken();

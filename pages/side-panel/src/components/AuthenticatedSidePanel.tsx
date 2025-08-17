@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context';
 import { LoadingSpinner } from '@extension/ui';
 import WelcomePage from './WelcomePage';
@@ -8,48 +8,13 @@ import { philonetAuthStorage } from '../storage/auth-storage';
 const AuthenticatedSidePanel: React.FC = () => {
   const { isAuthenticated, isLoading, user, dispatch } = useApp();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [apiConfig, setApiConfig] = useState<{baseUrl: string; apiKey?: string} | null>(null);
 
   console.log('AuthenticatedSidePanel render:', { 
     isAuthenticated, 
     isLoading, 
     user, 
-    isAuthenticating,
-    hasApiConfig: !!apiConfig,
-    apiKeyPresent: !!apiConfig?.apiKey
+    isAuthenticating 
   });
-
-  // Update API config when user authentication state changes
-  useEffect(() => {
-    const updateApiConfig = async () => {
-      try {
-        const authState = await philonetAuthStorage.get();
-        console.log('🔧 Auth state for API config:', { 
-          isAuthenticated: authState.isAuthenticated, 
-          hasToken: !!authState.token,
-          token: authState.token ? `${authState.token.substring(0, 10)}...` : 'none'
-        });
-        
-        if (authState.isAuthenticated && authState.token) {
-          const newApiConfig = {
-            baseUrl: process.env.CEB_API_URL || 'http://localhost:3000',
-            apiKey: authState.token // Use the stored access token as the API key
-          };
-          console.log('✅ Setting API config with access token');
-          setApiConfig(newApiConfig);
-        } else {
-          console.log('❌ No valid auth state, clearing API config');
-          setApiConfig(null);
-        }
-      } catch (error) {
-        console.error('❌ Error getting auth state for API config:', error);
-        setApiConfig(null);
-      }
-    };
-
-    // Update API config whenever authentication state changes
-    updateApiConfig();
-  }, [isAuthenticated, user]);
 
   // Handle Google authentication from welcome page
   const handleGoogleAuth = async () => {
@@ -141,7 +106,24 @@ const AuthenticatedSidePanel: React.FC = () => {
       }
     } catch (error) {
       console.error('Google authentication error:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Provide more specific error messages for common OAuth issues
+      let errorMessage = 'Google authentication failed. Please try again.';
+      
+      if (error instanceof Error) {
+        const errorText = error.message.toLowerCase();
+        
+        if (errorText.includes('bad client id') || errorText.includes('invalid client')) {
+          errorMessage = 'Google OAuth configuration error. The client ID is invalid or expired. Please contact support or check the extension configuration.';
+        } else if (errorText.includes('oauth2 request failed')) {
+          errorMessage = 'Google OAuth service error. Please check your internet connection and try again.';
+        } else if (errorText.includes('user denied')) {
+          errorMessage = 'Google authentication was cancelled. Please try again and allow access to continue.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       console.error(`Authentication failed: ${errorMessage}`);
       // Authentication failed - user can try again
     } finally {
@@ -175,7 +157,7 @@ const AuthenticatedSidePanel: React.FC = () => {
       user={user}
       onAuth={() => {}}
       onLogout={() => {}}
-      apiConfig={apiConfig}
+      apiConfig={null}
     />
   );
 };

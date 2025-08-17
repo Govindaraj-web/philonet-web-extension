@@ -16,6 +16,9 @@ tsconfig.tsbuildinfo
 **/.env.*
 **/.env
 
+# extension private key (keep secure!)
+chrome-extension/key.pem
+
 # etc
 .DS_Store
 .idea

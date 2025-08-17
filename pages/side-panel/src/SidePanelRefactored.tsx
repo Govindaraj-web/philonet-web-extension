@@ -21,6 +21,7 @@ import {
   useSelection,
   useClickOutside
 } from './hooks';
+import { clearSelectionHighlight } from './hooks/useSelection';
 
 import { SidePanelProps, MarkdownMeta } from './types';
 import { SAMPLE_MARKDOWNS } from './data/sampleContent';
@@ -129,6 +130,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
   
   // Refs
   const contentRef = useRef<HTMLDivElement>(null);
+  const bodyContentRef = useRef<HTMLDivElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +139,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
     state,
     updateState,
     submitComment,
+    submitCommentWithHighlight,
     adjustCommentRows,
     askAi,
     gotoDockIndex,
@@ -144,6 +147,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
     toggleMoreMenu,
     openSourcePage,
     openHistoryItem,
+    refreshHighlights,
+    clearHighlights,
+    setArticleIdAndRefreshHighlights,
   } = useSidePanelState();
 
   // Speech functionality
@@ -280,10 +286,154 @@ ${article.description}
     console.log('🚀 Showing encouraging content creation message');
   }
 
-  // Selection handling
-  useSelection(contentRef as React.RefObject<HTMLElement>, (text: string) => {
-    updateState({ hiLiteText: text, dockFilterText: text });
+  // Debug logging for current state
+  console.log('🔍 Current state values:', {
+    hiLiteText: state.hiLiteText,
+    dockFilterText: state.dockFilterText,
+    commentsCount: state.comments.length
   });
+
+  // Selection handling - limited to main article body content only
+  useSelection(bodyContentRef as React.RefObject<HTMLElement>, (text: string) => {
+    console.log('🔍 useSelection callback triggered with text:', text);
+    console.log('📍 bodyContentRef.current:', bodyContentRef.current);
+    
+    // Validate that the selection is actually from the article body
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      console.log('⚠️ No selection object or ranges available');
+      return;
+    }
+    
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    
+    // Log detailed selection information
+    console.log('📊 Selection Details:', {
+      text: text,
+      textLength: text.length,
+      startOffset: range.startOffset,
+      endOffset: range.endOffset,
+      startContainer: range.startContainer,
+      endContainer: range.endContainer,
+      collapsed: range.collapsed,
+      rangeText: range.toString(),
+      selectionText: selection.toString()
+    });
+    
+    // Get the full text content of the container for index calculation
+    const fullText = bodyContentRef.current?.textContent || '';
+    console.log('📝 Full body text length:', fullText.length);
+    
+    // Try to find the position of selected text within the full text
+    const selectionText = selection.toString();
+    const selectionIndex = fullText.indexOf(selectionText);
+    console.log('📍 Selection position in full text:', {
+      startIndex: selectionIndex,
+      endIndex: selectionIndex + selectionText.length,
+      selectedText: selectionText,
+      hasNewlines: selectionText.includes('\n'),
+      lineCount: selectionText.split('\n').length
+    });
+    
+    // Check if the selection is within the article body element
+    let element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container as Element;
+    let isWithinArticleBody = false;
+    
+    while (element && element !== document.body) {
+      if (element === bodyContentRef.current || element.hasAttribute('data-article-body')) {
+        isWithinArticleBody = true;
+        break;
+      }
+      element = element.parentElement;
+    }
+    
+    if (!isWithinArticleBody) {
+      console.log('⚠️ Selection is not from article body - ignoring');
+      return;
+    }
+    
+    // Additional validation: ensure we have meaningful text (removed character limit)
+    if (!text || text.trim().length < 1) {
+      console.log('⚠️ Selected text is empty:', text);
+      return;
+    }
+    
+    // For multi-line selections, preserve the text as-is (don't over-clean)
+    const cleanText = text.trim();
+    console.log('✅ Valid text selection detected from article body:', {
+      originalText: text,
+      cleanedText: cleanText,
+      isMultiLine: cleanText.includes('\n'),
+      preservedLength: cleanText.length
+    });
+    
+    // Update state to tag the selected text
+    updateState({ hiLiteText: cleanText, dockFilterText: cleanText });
+    console.log('📝 Text selected from article body:', cleanText.substring(0, 100) + (cleanText.length > 100 ? '...' : ''));
+    console.log('🏷️ Selection state updated - text should now be tagged');
+    
+    // Debug current state
+    console.log('📊 Current comments:', state.comments);
+    console.log('🏷️ Available comment tags:', state.comments.map(c => c.tag?.text));
+    
+    // Check if any comments will match this filter
+    const matchingComments = state.comments.filter((c) => 
+      (c.tag?.text || "").toLowerCase() === cleanText.toLowerCase()
+    );
+    console.log('🎯 Comments that will match this filter:', matchingComments.length);
+    
+    // Always open dock and show the filter indicator
+    updateState({ dockOpen: true });
+    
+    // If no matching comments exist, suggest creating one
+    if (matchingComments.length === 0) {
+      console.log('💡 No matching comments found - opening comment composer');
+      updateState({ 
+        composerTab: 'comments'
+        // Removed comment pre-filling since tagged text is displayed separately
+      });
+      
+      // Focus the comment textarea after a brief delay
+      setTimeout(() => {
+        if (commentRef.current) {
+          commentRef.current.focus();
+        }
+      }, 100);
+    }
+  });
+
+  // Clear selection when clicking outside comments or dock area
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      
+      // Check if click is outside comments dock and composer areas
+      const isInComments = target.closest('[data-comments-dock]');
+      const isInComposer = target.closest('[data-composer-footer]');
+      const isInTaggedText = target.closest('[data-tagged-text]');
+      
+      // If clicked outside these areas and we have selected text, clear it
+      if (!isInComments && !isInComposer && !isInTaggedText && state.hiLiteText) {
+        console.log('🧹 Clearing selection - clicked outside comments/dock area');
+        updateState({ hiLiteText: "", dockFilterText: "" });
+        
+        // Clear visual highlights
+        clearSelectionHighlight();
+        
+        // Also clear browser selection
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+        }
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [state.hiLiteText, updateState]);
 
   // Click outside handling for menus
   useClickOutside(state.showHistoryMenu, '[data-history-menu]', () => {
@@ -759,11 +909,7 @@ ${article.description}
         : `📄 Making API call to fetch article for hash: ${params.hash}`;
       console.log(logMessage);
 
-      const apiUrl = process.env.CEB_API_URL || 'http://localhost:3000';
-      console.log('🔧 Environment CEB_API_URL:', process.env.CEB_API_URL);
-      console.log('🔧 Using API URL:', apiUrl);
-
-      const response = await fetch(`${apiUrl}/v1/client/articles`, {
+      const response = await fetch(`${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/client/articles`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -888,6 +1034,10 @@ ${article.description}
         setArticle(convertedArticle);
         // Update the source URL to point to the actual article URL
         updateState({ currentSourceUrl: apiArticle.url });
+        
+        // Set article ID and fetch highlights for the dock
+        await setArticleIdAndRefreshHighlights(apiArticle.article_id.toString());
+        
         setContentGenerationStatus({
           stage: 'complete',
           streamingComplete: true,
@@ -907,6 +1057,7 @@ ${article.description}
         console.log('🔗 Source URL updated to:', apiArticle.url);
       } else {
         setArticle(null);
+        clearHighlights();
         // Clear the source URL when no article is found
         updateState({ currentSourceUrl: "" });
         setContentGenerationStatus({
@@ -934,6 +1085,7 @@ ${article.description}
     } catch (error) {
       console.error('❌ Error checking for article:', error);
       setArticle(null);
+      clearHighlights();
       // Clear the source URL when there's an error
       updateState({ currentSourceUrl: "" });
       
@@ -1001,6 +1153,10 @@ ${article.description}
           
           setArticle(convertedArticle);
           updateState({ currentSourceUrl: apiArticle.url });
+          
+          // Set article ID and fetch highlights for the dock
+          await setArticleIdAndRefreshHighlights(apiArticle.article_id.toString());
+          
           setContentGenerationStatus({
             stage: 'complete',
             streamingComplete: true,
@@ -1094,6 +1250,11 @@ ${article.description}
             const saveResult = await addToRoom(addToRoomParams);
             console.log('✅ Successfully saved PDF to room:', saveResult);
 
+            // Set article ID and fetch highlights for the dock
+            if (saveResult?.article_id) {
+              await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
+            }
+
             setContentGenerationStatus({
               stage: 'complete',
               streamingComplete: true,
@@ -1138,62 +1299,47 @@ ${article.description}
         }
       };
 
-      // Start both PDF operations only if we have a valid fileHash
+      // Start streaming PDF summary
       let streamingContent = '';
-      let streamingPromise: Promise<void>;
-      
-      console.log('📄 Starting PDF operations with hash:', pdfData.metadata.fileHash);
+      const streamingPromise = streamPdfSummaryFromEvents(
+        pdfData.metadata.fileHash,
+        (chunk: string) => {
+          console.log('📝 PDF streaming chunk received:', chunk);
+          streamingContent += chunk;
+          setStreamingContent(streamingContent);
+
+          // Set initial article when first chunk arrives to remove skeleton
+          setArticle(currentArticle => {
+            if (!currentArticle) {
+              // First chunk - create the initial article
+              return {
+                ...initialArticle,
+                description: streamingContent, // Start with the first chunk
+              };
+            } else {
+              // Update existing article with new streaming content
+              return {
+                ...currentArticle,
+                description: streamingContent, // Update description with streaming content
+              };
+            }
+          });
+        }
+      );
+
+      // Start extract PDF article data in parallel
+      console.log('📄 Starting PDF article extraction with hash:', pdfData.metadata.fileHash);
       console.log('📄 Full PDF data:', pdfData);
       
       if (!pdfData.metadata?.fileHash) {
         console.error('❌ PDF fileHash is missing or undefined:', pdfData.metadata);
-        // Set both operations as completed since we can't proceed
+        // Set extractComplete to true so we don't wait for it
         setContentGenerationStatus(prev => ({
           ...prev,
           extractComplete: true,
-          streamingComplete: true,
-          message: 'PDF processing failed: missing file hash'
+          message: streamingCompleted ? 'Finalizing...' : 'Content streaming in progress...'
         }));
-        
-        // Create a rejected promise for consistency
-        streamingPromise = Promise.reject(new Error('PDF fileHash is missing'));
-        
-        // Turn off loading states
-        setIsLoadingArticle(false);
-        setIsGeneratingContent(false);
-        endLoadingWithMinTimer();
-        
-        setArticleError('Failed to process PDF: missing file hash');
-        return;
       } else {
-        // Start streaming PDF summary
-        streamingPromise = streamPdfSummaryFromEvents(
-          pdfData.metadata.fileHash,
-          (chunk: string) => {
-            console.log('📝 PDF streaming chunk received:', chunk);
-            streamingContent += chunk;
-            setStreamingContent(streamingContent);
-
-            // Set initial article when first chunk arrives to remove skeleton
-            setArticle(currentArticle => {
-              if (!currentArticle) {
-                // First chunk - create the initial article
-                return {
-                  ...initialArticle,
-                  description: streamingContent, // Start with the first chunk
-                };
-              } else {
-                // Update existing article with new streaming content
-                return {
-                  ...currentArticle,
-                  description: streamingContent, // Update description with streaming content
-                };
-              }
-            });
-          }
-        );
-        
-        // Start extract PDF article data in parallel
         extractPdfArticleData(pdfData.metadata.fileHash).then((extractDetails: any) => {
           console.log('📄 PDF extract article completed:', extractDetails);
           extractCompleted = true;
@@ -1263,46 +1409,47 @@ ${article.description}
         setIsGeneratingContent(false);
         endLoadingWithMinTimer();
       });
-      
-        // Handle streaming completion
-        streamingPromise.then(() => {
-          console.log('✅ PDF streaming content generation completed');
-          console.log('📝 Final PDF streamed content length:', streamingContent.length);
-          streamingCompleted = true;
-          streamingResult = streamingContent;
+      } // Close the else block
 
-          // Update status for streaming completion
-          setContentGenerationStatus(prev => ({
-            ...prev,
-            streamingComplete: true,
-            message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
-          }));
+      // Handle streaming completion
+      streamingPromise.then(() => {
+        console.log('✅ PDF streaming content generation completed');
+        console.log('📝 Final PDF streamed content length:', streamingContent.length);
+        streamingCompleted = true;
+        streamingResult = streamingContent;
 
-          // Turn off loading states immediately when streaming completes
-          if (!extractCompleted) {
-            setIsLoadingArticle(false);
-            setIsGeneratingContent(false);
-            endLoadingWithMinTimer();
-          }
+        // Update status for streaming completion
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          streamingComplete: true,
+          message: extractCompleted ? 'Finalizing...' : 'Extracting metadata...'
+        }));
 
-          // Check if we can save to room now
-          checkAndSaveToRoom();
-        }).catch((error) => {
-          console.error('❌ PDF streaming failed:', error);
-          setArticleError(error instanceof Error ? error.message : 'Failed to generate PDF content');
-          
-          // Turn off loading states on streaming error
+        // Turn off loading states immediately when streaming completes
+        if (!extractCompleted) {
           setIsLoadingArticle(false);
           setIsGeneratingContent(false);
           endLoadingWithMinTimer();
-        });
-      } // Close the else block
+        }
+
+        // Check if we can save to room now
+        checkAndSaveToRoom();
+      }).catch((error) => {
+        console.error('❌ PDF streaming failed:', error);
+        setArticleError(error instanceof Error ? error.message : 'Failed to generate PDF content');
+        
+        // Turn off loading states on streaming error
+        setIsLoadingArticle(false);
+        setIsGeneratingContent(false);
+        endLoadingWithMinTimer();
+      });
 
       console.log('🎉 PDF operations started independently - they will update UI when ready');
 
     } catch (error) {
       console.error('❌ Error generating PDF content:', error);
       setArticle(null);
+      clearHighlights();
       updateState({ currentSourceUrl: "" });
       
       // Handle local file access restrictions specially
@@ -1580,6 +1727,11 @@ ${article.description}
             const saveResult = await addToRoom(addToRoomParams);
             console.log('✅ Successfully saved to room:', saveResult);
             
+            // Set article ID and fetch highlights for the dock
+            if (saveResult?.article_id) {
+              await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
+            }
+            
             setContentGenerationStatus({
               stage: 'complete',
               streamingComplete: true,
@@ -1744,6 +1896,7 @@ ${article.description}
     } catch (error) {
       console.error('❌ Error generating content:', error);
       setArticle(null);
+      clearHighlights();
       updateState({ currentSourceUrl: "" });
       
       // Handle local file access restrictions specially
@@ -1798,7 +1951,12 @@ ${article.description}
   };
 
   const handleCommentSubmit = () => {
-    submitComment();
+    // Use the enhanced function that stores highlights when available
+    if (state.hiLiteText && article && bodyContentRef) {
+      submitCommentWithHighlight(article, bodyContentRef);
+    } else {
+      submitComment();
+    }
     if (commentRef.current) commentRef.current.focus();
   };
 
@@ -1828,6 +1986,90 @@ ${article.description}
 
   const handleDockNavigate = (index: number) => {
     gotoDockIndex(index, dockList);
+  };
+
+  const handleNavigateToText = () => {
+    if (!state.hiLiteText || !bodyContentRef.current) {
+      console.log('⚠️ Cannot navigate: no highlighted text or body content ref');
+      return;
+    }
+
+    try {
+      const bodyElement = bodyContentRef.current;
+      const targetText = state.hiLiteText.trim().toLowerCase();
+      
+      console.log('🔍 Navigating to highlighted text:', state.hiLiteText);
+
+      // Find elements containing the target text
+      const walker = document.createTreeWalker(
+        bodyElement,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            const text = (node.textContent || '').toLowerCase();
+            return text.includes(targetText) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        }
+      );
+
+      let targetElement = null;
+      let node;
+
+      // Find the first element that contains our target text
+      while (node = walker.nextNode()) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          targetElement = node as Element;
+          break;
+        } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+          targetElement = node.parentElement;
+          break;
+        }
+      }
+
+      if (targetElement) {
+        console.log('✅ Found target element, scrolling to position');
+        
+        // Scroll to the element
+        targetElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+
+        // Add highlight effect
+        const htmlElement = targetElement as HTMLElement;
+        const originalStyle = htmlElement.style.cssText;
+        
+        htmlElement.style.backgroundColor = 'rgba(59, 130, 246, 0.3)';
+        htmlElement.style.transition = 'background-color 0.3s ease';
+        htmlElement.style.borderRadius = '4px';
+        htmlElement.style.padding = '2px 4px';
+        htmlElement.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.5)';
+        
+        // Remove highlight after 3 seconds
+        setTimeout(() => {
+          htmlElement.style.cssText = originalStyle;
+        }, 3000);
+        
+        console.log('🎯 Successfully navigated to highlighted text');
+      } else {
+        console.log('⚠️ Target text not found, scrolling to content start');
+        bodyElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Error navigating to text:', error);
+      // Fallback: scroll to content
+      if (bodyContentRef.current) {
+        bodyContentRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+    }
   };
 
   const handleRenderHighlighted = (text: string) => {
@@ -1947,6 +2189,11 @@ ${article.description}
 
             const saveResult = await addToRoom(addToRoomParams);
             console.log('✅ Successfully saved uploaded PDF to room:', saveResult);
+
+            // Set article ID and fetch highlights for the dock
+            if (saveResult?.article_id) {
+              await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
+            }
 
             setContentGenerationStatus({
               stage: 'complete',
@@ -2396,6 +2643,7 @@ ${article.description}
               onToggleSpeech={handleToggleSpeech}
               onOpenSource={openSourcePage}
               contentRef={contentRef as React.RefObject<HTMLDivElement>}
+              bodyContentRef={bodyContentRef as React.RefObject<HTMLDivElement>}
               footerH={state.footerH}
               sourceUrl={state.currentSourceUrl}
             />
@@ -2605,7 +2853,6 @@ ${article.description}
                               }}
                               className="hidden"
                               id="enhanced-pdf-upload-input"
-                              disabled={uploadStatus === 'uploading' || uploadStatus === 'success'}
                             />
                             
                             <motion.label
@@ -3029,7 +3276,11 @@ ${article.description}
                 onAiQuestionChange={(value: string) => updateState({ aiQuestion: value })}
                 onSubmitComment={handleCommentSubmit}
                 onAskAi={handleAskAi}
-                onClearSelection={() => updateState({ hiLiteText: "" })}
+                onClearSelection={() => {
+                  updateState({ hiLiteText: "", dockFilterText: "" });
+                  clearSelectionHighlight();
+                }}
+                onNavigateToText={handleNavigateToText}
                 onInsertEmoji={handleInsertEmoji}
                 commentRef={commentRef as React.RefObject<HTMLTextAreaElement>}
               />
@@ -3042,6 +3293,29 @@ ${article.description}
               className="absolute right-3 z-30"
               style={{ bottom: state.footerH + 12 }}
             >
+              {/* Filter indicator */}
+              {state.dockFilterText && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                  className="mb-2 bg-blue-600/90 backdrop-blur-sm text-white text-xs px-3 py-2 rounded-lg shadow-lg border border-blue-400/30"
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2 h-2 bg-blue-300 rounded-full animate-pulse"></span>
+                    <span>Filtering by: "{state.dockFilterText.substring(0, 30)}..."</span>
+                    <button
+                      onClick={() => updateState({ dockFilterText: "", hiLiteText: "" })}
+                      className="ml-2 text-blue-200 hover:text-white transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="text-xs text-blue-200 mt-1">
+                    {dockList.length} comment{dockList.length !== 1 ? 's' : ''} found
+                  </div>
+                </motion.div>
+              )}
               <CommentsDock
                 isOpen={state.dockOpen}
                 isMinimized={state.dockMinimized}

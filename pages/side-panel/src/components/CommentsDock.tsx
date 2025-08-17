@@ -39,6 +39,7 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ type: 'spring', stiffness: 250, damping: 20 }}
           className="relative w-[320px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur p-4 shadow-xl"
+          data-comments-dock
         >
           {/* Current comment */}
           <div className="flex items-start gap-3">

@@ -5,16 +5,23 @@ interface ContentSectionsProps {
   sections: ContentSections;
   comments: Comment[];
   renderHighlighted: (text: string) => { __html: string };
+  bodyContentRef: React.RefObject<HTMLDivElement>;
 }
 
 const ContentSectionsComponent: React.FC<ContentSectionsProps> = ({
   sections,
   comments,
-  renderHighlighted
+  renderHighlighted,
+  bodyContentRef
 }) => {
   return (
     <section className="px-4 md:px-6 lg:px-8 pb-6 mt-6 space-y-8">
-      <div className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl">
+      <div 
+        ref={bodyContentRef}
+        data-article-body="true"
+        className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl
+        selection:bg-philonet-blue-500/25 selection:text-philonet-blue-100 cursor-text"
+      >
         <div className="overflow-x-auto">
         
         {/* Introduction */}

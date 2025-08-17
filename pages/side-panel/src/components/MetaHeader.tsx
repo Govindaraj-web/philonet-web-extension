@@ -95,7 +95,8 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
                            shadow-sm hover:shadow-lg transition-all duration-400">
             
             {/* Perfect Medium reading typography - simplified for visibility */}
-            <p className="text-philonet-text-tertiary font-normal 
+            <p data-summary-content="true"
+               className="text-philonet-text-tertiary font-normal 
                        leading-[1.7] md:leading-[1.75] lg:leading-[1.8] 
                        tracking-[-0.004em] md:tracking-[-0.006em] 
                        text-lg md:text-xl lg:text-2xl xl:text-3xl
@@ -103,7 +104,8 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
                        selection:bg-philonet-blue-500/15 selection:text-philonet-text-primary
                        first-letter:text-4xl md:first-letter:text-5xl lg:first-letter:text-6xl 
                        first-letter:font-semibold first-letter:text-philonet-text-primary 
-                       first-letter:float-left first-letter:mr-3 first-letter:mt-1 first-letter:leading-[0.8]">
+                       first-letter:float-left first-letter:mr-3 first-letter:mt-1 first-letter:leading-[0.8]
+                       cursor-text select-text">
               {meta.description}
             </p>
             

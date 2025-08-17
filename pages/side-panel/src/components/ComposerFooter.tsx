@@ -17,6 +17,7 @@ interface ComposerFooterProps {
   onAskAi: () => void;
   onClearSelection: () => void;
   onInsertEmoji: () => void;
+  onNavigateToText?: () => void;
   commentRef: React.RefObject<HTMLTextAreaElement>;
 }
 
@@ -34,10 +35,11 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   onAskAi,
   onClearSelection,
   onInsertEmoji,
+  onNavigateToText,
   commentRef
 }) => {
   return (
-    <div className="absolute bottom-0 left-0 right-0 border-t border-philonet-border bg-philonet-panel px-4 py-3 md:px-6 md:py-4">
+    <div className="absolute bottom-0 left-0 right-0 border-t border-philonet-border bg-philonet-panel px-4 py-3 md:px-6 md:py-4" data-composer-footer>
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-3">
         <button
@@ -68,16 +70,29 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
 
       {/* Selection tag */}
       {hiLiteText && (
-        <div className="mb-2 flex items-center gap-2 text-sm">
-          <span className="px-2 py-1 rounded-full border border-philonet-blue-500/60 text-philonet-blue-400 bg-philonet-blue-500/10 truncate max-w-[80%]" title={hiLiteText}>
-            Tagged: "{hiLiteText}"
-          </span>
-          <button 
-            onClick={onClearSelection} 
-            className="text-philonet-text-muted hover:text-philonet-blue-500 text-sm"
-          >
-            Clear
-          </button>
+        <div className="mb-3 text-sm" data-tagged-text>
+          <div className="flex items-start gap-2">
+            <div 
+              className="flex-1 px-3 py-2 rounded-lg border border-philonet-blue-500/60 text-philonet-blue-400 bg-philonet-blue-500/10 min-h-0 cursor-pointer hover:bg-philonet-blue-500/20 hover:border-philonet-blue-500/80 transition-all duration-200 hover:shadow-sm" 
+              onClick={onNavigateToText}
+              title="Click to navigate to highlighted text in article"
+            >
+              <div className="text-xs text-philonet-blue-300 mb-1 flex items-center gap-1">
+                <span>Tagged text:</span>
+                <span className="text-xs opacity-70">📍 Click to navigate</span>
+              </div>
+              <div className="text-sm leading-relaxed max-h-16 overflow-y-auto whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-philonet-blue-500/30 scrollbar-track-transparent">
+                "{hiLiteText}"
+              </div>
+            </div>
+            <button 
+              onClick={onClearSelection} 
+              className="text-philonet-text-muted hover:text-philonet-blue-500 text-sm px-2 py-1 rounded hover:bg-philonet-blue-500/10 transition-colors flex-shrink-0 self-start"
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
