@@ -4,7 +4,12 @@ export interface Comment {
   author: string;
   text: string;
   ts: string;
-  tag?: { text: string } | null;
+  tag?: { 
+    text: string;
+    startIndex: number;
+    endIndex: number;
+  } | null;
+  profilePic?: string;
 }
 
 export interface AIAnswer {

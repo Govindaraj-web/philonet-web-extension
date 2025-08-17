@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Comment, AIAnswer, HistoryItem, SidePanelState, HighlightsResponse } from '../types';
 import { storeSmartHighlight, fetchHighlightsByArticleId } from '../services/gptSummary';
+import { formatTimeAgo } from '../utils';
 
 const INITIAL_COMMENTS: Comment[] = [];
 
@@ -44,7 +45,7 @@ export function useSidePanelState() {
       id: Date.now(), 
       author: "You", 
       text, 
-      ts: new Date().toLocaleTimeString(), 
+      ts: formatTimeAgo(new Date()), 
       tag: state.hiLiteText ? { text: state.hiLiteText } : null 
     };
     
@@ -68,7 +69,7 @@ export function useSidePanelState() {
       id: Date.now(), 
       author: "You", 
       text, 
-      ts: new Date().toLocaleTimeString(), 
+      ts: formatTimeAgo(new Date()), 
       tag: state.hiLiteText ? { text: state.hiLiteText } : null 
     };
     
@@ -121,7 +122,7 @@ export function useSidePanelState() {
   // Function to fetch and refresh highlights from the backend
   const refreshHighlights = useCallback(async (articleId: string) => {
     try {
-      setState(prev => ({ ...prev, highlightsLoading: true }));
+      setState(prev => ({ ...prev, highlightsLoading: true, dockOpen: true }));
       console.log('🔄 Fetching highlights for article:', articleId);
       
       const response: HighlightsResponse = await fetchHighlightsByArticleId(articleId);
@@ -132,8 +133,13 @@ export function useSidePanelState() {
         id: parseInt(highlight.id) || Date.now() + index,
         author: highlight.user_name || 'Unknown',
         text: highlight.message || 'No comment',
-        ts: new Date(highlight.created_at).toLocaleTimeString(),
-        tag: highlight.highlighted_text ? { text: highlight.highlighted_text } : null
+        ts: formatTimeAgo(new Date(highlight.created_at)),
+        tag: highlight.highlighted_text ? { 
+          text: highlight.highlighted_text,
+          startIndex: highlight.start_index,
+          endIndex: highlight.end_index
+        } : null,
+        profilePic: highlight.user_profile_pic || undefined
       }));
       
       console.log('🔄 Converted highlights to comments:', highlightComments);

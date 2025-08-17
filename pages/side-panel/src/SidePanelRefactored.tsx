@@ -44,6 +44,7 @@ import {
   type PageContent,
   type PdfUploadResponse 
 } from './services/gptSummary';
+import { formatTimeAgo } from './utils';
 
 // PageData interface for web extraction
 interface PageData {
@@ -189,6 +190,15 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [isLoadingArticle, setIsLoadingArticle] = useState(false);
   const [articleError, setArticleError] = useState<string | null>(null);
   const [showArticleContent, setShowArticleContent] = useState(false);
+  
+  // Enhanced search state management for text highlighting
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<{
+    matches: Element[];
+    currentIndex: number;
+    totalMatches: number;
+  }>({ matches: [], currentIndex: -1, totalMatches: 0 });
+  const [isSearchActive, setIsSearchActive] = useState(false);
   
   // Loading overlay state with minimum timer
   const [isLoadingWithMinTimer, setIsLoadingWithMinTimer] = useState(false);
@@ -472,6 +482,13 @@ ${article.description}
     });
   }, [state.dockFilterText, state.comments, state.dockActiveIndex, updateState]);
 
+  // Clear search highlights when dock filter changes to avoid conflicts
+  useEffect(() => {
+    if (state.dockFilterText && isSearchActive) {
+      clearSearch();
+    }
+  }, [state.dockFilterText, isSearchActive]);
+
   // Page change detection using content script injection
   useEffect(() => {
     if (!settings.autoUpdate) return;
@@ -715,6 +732,8 @@ ${article.description}
     }
     // Reset streaming state when URL changes
     resetStreamingState();
+    // Clear any active search highlights when URL changes
+    clearSearch();
   }, [currentUrl, settings.autoUpdate]);
 
   // Auto-hide notifications with timeout - TEMPORARILY DISABLED
@@ -1988,76 +2007,52 @@ ${article.description}
     gotoDockIndex(index, dockList);
   };
 
-  const handleNavigateToText = () => {
-    if (!state.hiLiteText || !bodyContentRef.current) {
-      console.log('⚠️ Cannot navigate: no highlighted text or body content ref');
+  const handleNavigateToText = (text?: string) => {
+    console.log('🚀 handleNavigateToText called with text:', text);
+    console.log('🚀 state.hiLiteText:', state.hiLiteText);
+    
+    const searchText = text || state.hiLiteText;
+    if (!searchText || !bodyContentRef.current) {
+      console.log('⚠️ Cannot navigate: no search text or body content ref');
+      console.log('⚠️ searchText:', searchText);
+      console.log('⚠️ bodyContentRef.current:', bodyContentRef.current);
       return;
     }
 
     try {
-      const bodyElement = bodyContentRef.current;
-      const targetText = state.hiLiteText.trim().toLowerCase();
-      
-      console.log('🔍 Navigating to highlighted text:', state.hiLiteText);
+      console.log('🔍 Navigating to highlighted text:', searchText);
 
-      // Find elements containing the target text
-      const walker = document.createTreeWalker(
-        bodyElement,
-        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            const text = (node.textContent || '').toLowerCase();
-            return text.includes(targetText) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
-          }
-        }
-      );
-
-      let targetElement = null;
-      let node;
-
-      // Find the first element that contains our target text
-      while (node = walker.nextNode()) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          targetElement = node as Element;
-          break;
-        } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
-          targetElement = node.parentElement;
-          break;
-        }
-      }
-
-      if (targetElement) {
-        console.log('✅ Found target element, scrolling to position');
-        
-        // Scroll to the element
-        targetElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-          inline: 'nearest'
-        });
-
-        // Add highlight effect
-        const htmlElement = targetElement as HTMLElement;
-        const originalStyle = htmlElement.style.cssText;
-        
-        htmlElement.style.backgroundColor = 'rgba(59, 130, 246, 0.3)';
-        htmlElement.style.transition = 'background-color 0.3s ease';
-        htmlElement.style.borderRadius = '4px';
-        htmlElement.style.padding = '2px 4px';
-        htmlElement.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.5)';
-        
-        // Remove highlight after 3 seconds
-        setTimeout(() => {
-          htmlElement.style.cssText = originalStyle;
-        }, 3000);
-        
-        console.log('🎯 Successfully navigated to highlighted text');
+      // Use the enhanced search system for better results
+      if (text) {
+        // If specific text is provided (from dock), use enhanced search
+        console.log('📋 Text provided from dock, calling performSearch...');
+        performSearch(searchText);
       } else {
-        console.log('⚠️ Target text not found, scrolling to content start');
-        bodyElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
+        // Fallback to direct navigation for existing highlights
+        const bodyElement = bodyContentRef.current;
+        let targetElement = findBestTextMatch(bodyElement, searchText);
+
+        if (targetElement) {
+          console.log('✅ Found target element, scrolling to position');
+          
+          // Scroll to the element with better positioning
+          targetElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          // Enhanced highlight effect with text content highlighting
+          highlightTextInElement(targetElement, searchText);
+          
+          console.log('🎯 Successfully navigated to highlighted text');
+        } else {
+          console.log('⚠️ Target text not found, scrolling to content start');
+          bodyElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
       }
       
     } catch (error) {
@@ -2070,6 +2065,564 @@ ${article.description}
         });
       }
     }
+  };
+
+  // Enhanced text search function with multiple matching strategies
+  const findBestTextMatch = (container: Element, searchText: string): Element | null => {
+    const targetText = searchText.trim().toLowerCase();
+    
+    // Strategy 1: Try exact text match first
+    let bestMatch = findTextByStrategy(container, searchText, 'exact');
+    
+    // Strategy 2: If exact match fails, try fuzzy matching
+    if (!bestMatch) {
+      bestMatch = findTextByStrategy(container, searchText, 'fuzzy');
+    }
+    
+    // Strategy 3: If still no match, try searching for significant words
+    if (!bestMatch && searchText.length > 10) {
+      const words = searchText.split(/\s+/).filter(word => word.length > 3);
+      for (const word of words) {
+        bestMatch = findTextByStrategy(container, word, 'word');
+        if (bestMatch) break;
+      }
+    }
+    
+    // Strategy 4: Try partial matching with substring
+    if (!bestMatch) {
+      bestMatch = findTextByStrategy(container, searchText, 'partial');
+    }
+    
+    return bestMatch;
+  };
+
+  // Helper function to find text using different strategies
+  const findTextByStrategy = (container: Element, searchText: string, strategy: 'exact' | 'fuzzy' | 'word' | 'partial'): Element | null => {
+    const targetText = searchText.trim().toLowerCase();
+    
+    // Use TreeWalker for efficient DOM traversal
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+
+    let bestMatch = null;
+    let bestScore = 0;
+    let node;
+
+    while (node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+        const text = (node.textContent || '').toLowerCase();
+        let score = 0;
+        
+        switch (strategy) {
+          case 'exact':
+            if (text.includes(targetText)) {
+              // Higher score for exact matches
+              score = targetText.length / text.length;
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = node.parentElement;
+              }
+            }
+            break;
+            
+          case 'fuzzy':
+            // Calculate similarity based on word overlap
+            const searchWords = targetText.split(/\s+/);
+            const textWords = text.split(/\s+/);
+            const matchedWords = searchWords.filter(word => 
+              textWords.some(textWord => textWord.includes(word) || word.includes(textWord))
+            );
+            score = matchedWords.length / searchWords.length;
+            
+            if (score > 0.5 && score > bestScore) {
+              bestScore = score;
+              bestMatch = node.parentElement;
+            }
+            break;
+            
+          case 'word':
+            // Single word matching
+            if (text.includes(targetText)) {
+              score = 0.8; // Good but not as high as exact
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = node.parentElement;
+              }
+            }
+            break;
+            
+          case 'partial':
+            // Try matching parts of the search text
+            const searchParts = targetText.split(/\s+/);
+            let partialMatches = 0;
+            for (const part of searchParts) {
+              if (part.length > 2 && text.includes(part)) {
+                partialMatches++;
+              }
+            }
+            score = partialMatches / searchParts.length;
+            
+            if (score > 0.3 && score > bestScore) {
+              bestScore = score;
+              bestMatch = node.parentElement;
+            }
+            break;
+        }
+      }
+    }
+
+    return bestMatch;
+  };
+
+  // Enhanced highlighting function that splits text and inserts highlight spans
+  const highlightTextInElement = (element: Element, searchText: string) => {
+    const htmlElement = element as HTMLElement;
+    const targetText = searchText.trim().toLowerCase();
+    
+    // Remove any existing highlights first
+    removeExistingHighlights(element);
+    
+    // Apply general element highlight
+    const originalStyle = htmlElement.style.cssText;
+    htmlElement.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+    htmlElement.style.transition = 'background-color 0.3s ease';
+    htmlElement.style.borderRadius = '4px';
+    htmlElement.style.padding = '4px 6px';
+    htmlElement.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.3)';
+    htmlElement.style.border = '1px solid rgba(59, 130, 246, 0.4)';
+    htmlElement.setAttribute('data-philonet-highlighted', 'true');
+
+    // Enhanced text highlighting with text node splitting
+    try {
+      highlightTextNodes(element, searchText);
+    } catch (error) {
+      console.warn('Could not highlight specific text, using general highlight:', error);
+    }
+    
+    // Remove highlight after 5 seconds
+    setTimeout(() => {
+      htmlElement.style.cssText = originalStyle;
+      htmlElement.removeAttribute('data-philonet-highlighted');
+      removeTextHighlights(element);
+    }, 5000);
+  };
+
+  // Function to highlight text within text nodes by splitting and inserting spans
+  const highlightTextNodes = (element: Element, searchText: string) => {
+    const targetText = searchText.trim().toLowerCase();
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+        const text = node.textContent.toLowerCase();
+        if (text.includes(targetText)) {
+          textNodes.push(node);
+        }
+      }
+    }
+
+    // Process text nodes and insert highlight spans
+    textNodes.forEach(textNode => {
+      const parent = textNode.parentNode;
+      if (parent && textNode.textContent) {
+        const text = textNode.textContent;
+        const lowerText = text.toLowerCase();
+        
+        // Find all occurrences of the target text
+        const highlights = [];
+        let startIndex = 0;
+        let index;
+        
+        while ((index = lowerText.indexOf(targetText, startIndex)) !== -1) {
+          highlights.push({
+            start: index,
+            end: index + targetText.length,
+            text: text.substring(index, index + targetText.length)
+          });
+          startIndex = index + targetText.length;
+        }
+        
+        if (highlights.length > 0) {
+          // Create document fragment with highlighted text
+          const fragment = document.createDocumentFragment();
+          let lastEnd = 0;
+          
+          highlights.forEach(highlight => {
+            // Add text before highlight
+            if (highlight.start > lastEnd) {
+              fragment.appendChild(document.createTextNode(text.substring(lastEnd, highlight.start)));
+            }
+            
+            // Add highlighted text
+            const highlightSpan = document.createElement('span');
+            highlightSpan.style.backgroundColor = 'rgba(59, 130, 246, 0.6)';
+            highlightSpan.style.fontWeight = 'bold';
+            highlightSpan.style.borderRadius = '2px';
+            highlightSpan.style.padding = '1px 2px';
+            highlightSpan.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
+            highlightSpan.textContent = highlight.text;
+            highlightSpan.className = 'philonet-text-highlight';
+            fragment.appendChild(highlightSpan);
+            
+            lastEnd = highlight.end;
+          });
+          
+          // Add remaining text after last highlight
+          if (lastEnd < text.length) {
+            fragment.appendChild(document.createTextNode(text.substring(lastEnd)));
+          }
+          
+          // Replace the original text node with the highlighted fragment
+          parent.replaceChild(fragment, textNode);
+        }
+      }
+    });
+  };
+
+  // Function to remove existing highlights before applying new ones
+  const removeExistingHighlights = (container: Element) => {
+    // Remove element-level highlights
+    const highlightedElements = container.querySelectorAll('[data-philonet-highlighted]');
+    highlightedElements.forEach(el => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.cssText = '';
+      htmlEl.removeAttribute('data-philonet-highlighted');
+    });
+    
+    // Remove text-level highlights
+    removeTextHighlights(container);
+    
+    // Remove search highlights
+    removeSearchHighlights(container);
+  };
+
+  // Function to remove text highlights and merge text nodes
+  const removeTextHighlights = (container: Element) => {
+    const highlights = container.querySelectorAll('.philonet-text-highlight');
+    highlights.forEach(highlight => {
+      const parent = highlight.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(highlight.textContent || ''), highlight);
+        parent.normalize(); // Merge adjacent text nodes
+      }
+    });
+  };
+
+  // Enhanced search functionality with state management
+  const performSearch = (query: string) => {
+    console.log('🔍 performSearch called with query:', query);
+    console.log('🔍 bodyContentRef.current:', bodyContentRef.current);
+    
+    if (!bodyContentRef.current || !query.trim()) {
+      console.log('⚠️ Early return - no bodyContentRef or empty query');
+      clearSearch();
+      return;
+    }
+
+    console.log('✅ Starting search process...');
+    setSearchQuery(query);
+    setIsSearchActive(true);
+
+    // Clear any existing highlights first
+    removeExistingHighlights(bodyContentRef.current);
+
+    const matches = findAllTextMatches(bodyContentRef.current, query);
+    console.log('🎯 Found matches:', matches.length);
+    setSearchResults({
+      matches,
+      currentIndex: matches.length > 0 ? 0 : -1,
+      totalMatches: matches.length
+    });
+
+    // Highlight all matches in the body
+    console.log('🎨 Calling highlightSearchTextInBody...');
+    highlightSearchTextInBody(bodyContentRef.current, query);
+
+    // Navigate to first match if available
+    if (matches.length > 0) {
+      console.log('📍 Navigating to first match...');
+      navigateToMatch(matches[0], query);
+    } else {
+      console.log('⚠️ No matches found for highlighting');
+    }
+  };
+
+  const highlightSearchTextInBody = (container: Element, searchText: string) => {
+    console.log('🎨 highlightSearchTextInBody called with:', searchText);
+    console.log('🎨 Container element:', container);
+    console.log('🎨 Container tagName:', container.tagName);
+    console.log('🎨 Container textContent length:', container.textContent?.length || 0);
+    
+    const targetText = searchText.trim().toLowerCase();
+    
+    // Find all text nodes in the container
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          // Skip script, style, and other non-content elements
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          
+          const tagName = parent.tagName.toLowerCase();
+          if (['script', 'style', 'noscript', 'svg'].includes(tagName)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+        const text = node.textContent.toLowerCase();
+        if (text.includes(targetText)) {
+          textNodes.push(node);
+        }
+      }
+    }
+
+    console.log('🔍 Found text nodes containing target text:', textNodes.length);
+
+    // Process each text node and add highlights
+    textNodes.forEach((textNode, nodeIndex) => {
+      console.log(`🎨 Processing text node ${nodeIndex}:`, textNode.textContent?.substring(0, 50) + '...');
+      const parent = textNode.parentNode;
+      if (parent && textNode.textContent) {
+        const text = textNode.textContent;
+        const lowerText = text.toLowerCase();
+        
+        // Find all occurrences in this text node
+        const highlights = [];
+        let startIndex = 0;
+        let index;
+        
+        while ((index = lowerText.indexOf(targetText, startIndex)) !== -1) {
+          highlights.push({
+            start: index,
+            end: index + targetText.length,
+            text: text.substring(index, index + targetText.length)
+          });
+          startIndex = index + targetText.length;
+        }
+        
+        if (highlights.length > 0) {
+          // Create document fragment with highlighted text
+          const fragment = document.createDocumentFragment();
+          let lastEnd = 0;
+          
+          highlights.forEach((highlight, highlightIndex) => {
+            // Add text before highlight
+            if (highlight.start > lastEnd) {
+              fragment.appendChild(document.createTextNode(text.substring(lastEnd, highlight.start)));
+            }
+            
+            // Add highlighted text with improved styling
+            const highlightSpan = document.createElement('span');
+            highlightSpan.style.backgroundColor = 'rgba(255, 235, 59, 0.9)'; // Bright yellow highlight
+            highlightSpan.style.color = '#000'; // Black text for contrast
+            highlightSpan.style.fontWeight = '600'; // Semi-bold
+            highlightSpan.style.borderRadius = '3px';
+            highlightSpan.style.padding = '2px 4px';
+            highlightSpan.style.boxShadow = '0 2px 4px rgba(0,0,0,0.15)';
+            highlightSpan.style.border = '1px solid rgba(255, 193, 7, 0.8)';
+            highlightSpan.style.display = 'inline';
+            highlightSpan.style.lineHeight = 'inherit';
+            highlightSpan.style.margin = '0 1px';
+            highlightSpan.style.transition = 'all 0.2s ease';
+            highlightSpan.style.cursor = 'pointer';
+            highlightSpan.textContent = highlight.text;
+            highlightSpan.className = 'philonet-search-highlight';
+            highlightSpan.setAttribute('data-search-text', searchText);
+            highlightSpan.setAttribute('data-highlight-index', `${nodeIndex}-${highlightIndex}`);
+            highlightSpan.title = `Search match: "${highlight.text}"`;
+            
+            // Add hover effect
+            highlightSpan.addEventListener('mouseenter', () => {
+              highlightSpan.style.backgroundColor = 'rgba(255, 193, 7, 1)';
+              highlightSpan.style.transform = 'scale(1.02)';
+            });
+            
+            highlightSpan.addEventListener('mouseleave', () => {
+              highlightSpan.style.backgroundColor = 'rgba(255, 235, 59, 0.9)';
+              highlightSpan.style.transform = 'scale(1)';
+            });
+            
+            fragment.appendChild(highlightSpan);
+            
+            lastEnd = highlight.end;
+          });
+          
+          // Add remaining text after last highlight
+          if (lastEnd < text.length) {
+            fragment.appendChild(document.createTextNode(text.substring(lastEnd)));
+          }
+          
+          // Replace the original text node with the highlighted fragment
+          parent.replaceChild(fragment, textNode);
+        }
+      }
+    });
+
+    console.log(`🎨 Highlighted ${textNodes.length} text nodes containing "${searchText}"`);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults({ matches: [], currentIndex: -1, totalMatches: 0 });
+    setIsSearchActive(false);
+    
+    // Clear all search highlights from the body
+    if (bodyContentRef.current) {
+      removeSearchHighlights(bodyContentRef.current);
+      removeExistingHighlights(bodyContentRef.current);
+    }
+  };
+
+  const removeSearchHighlights = (container: Element) => {
+    // Remove search-specific highlights
+    const searchHighlights = container.querySelectorAll('.philonet-search-highlight');
+    searchHighlights.forEach(highlight => {
+      const parent = highlight.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(highlight.textContent || ''), highlight);
+        parent.normalize(); // Merge adjacent text nodes
+      }
+    });
+  };
+
+  const findAllTextMatches = (container: Element, searchText: string): Element[] => {
+    const matches: Element[] = [];
+    const targetText = searchText.trim().toLowerCase();
+    
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+        const text = (node.textContent || '').toLowerCase();
+        if (text.includes(targetText)) {
+          matches.push(node.parentElement);
+        }
+      }
+    }
+
+    return matches;
+  };
+
+  const highlightAllMatches = (matches: Element[], searchText: string) => {
+    matches.forEach((element, index) => {
+      const htmlElement = element as HTMLElement;
+      
+      // Apply different highlighting for current vs other matches
+      const isCurrent = index === searchResults.currentIndex;
+      const bgColor = isCurrent ? 'rgba(59, 130, 246, 0.4)' : 'rgba(59, 130, 246, 0.2)';
+      const borderColor = isCurrent ? 'rgba(59, 130, 246, 0.6)' : 'rgba(59, 130, 246, 0.3)';
+      
+      htmlElement.style.backgroundColor = bgColor;
+      htmlElement.style.border = `1px solid ${borderColor}`;
+      htmlElement.style.borderRadius = '3px';
+      htmlElement.style.padding = '2px 4px';
+      htmlElement.setAttribute('data-search-match', index.toString());
+      
+      // Also highlight the actual text within
+      highlightTextNodes(element, searchText);
+    });
+  };
+
+  const navigateToMatch = (element: Element, searchText: string) => {
+    element.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest'
+    });
+
+    // Temporarily emphasize the current match
+    emphasizeCurrentMatch(element, searchText);
+  };
+
+  const emphasizeCurrentMatch = (element: Element, searchText: string) => {
+    // Find search highlights within this element and emphasize the current one
+    const highlights = element.querySelectorAll('.philonet-search-highlight');
+    highlights.forEach((highlight, index) => {
+      const span = highlight as HTMLElement;
+      const isCurrentMatch = element.contains(highlight);
+      
+      if (isCurrentMatch) {
+        // Emphasize current match
+        span.style.backgroundColor = 'rgba(255, 87, 34, 0.9)'; // Orange emphasis
+        span.style.transform = 'scale(1.05)';
+        span.style.transition = 'all 0.3s ease';
+        span.style.zIndex = '1000';
+        span.style.position = 'relative';
+        
+        // Reset emphasis after 2 seconds
+        setTimeout(() => {
+          span.style.backgroundColor = 'rgba(255, 235, 59, 0.8)'; // Back to yellow
+          span.style.transform = 'scale(1)';
+          span.style.zIndex = 'auto';
+          span.style.position = 'static';
+        }, 2000);
+      }
+    });
+  };
+
+  const navigateToNextMatch = () => {
+    if (searchResults.matches.length === 0) return;
+    
+    const nextIndex = (searchResults.currentIndex + 1) % searchResults.matches.length;
+    setSearchResults(prev => ({ ...prev, currentIndex: nextIndex }));
+    
+    // Navigate to the next match
+    navigateToMatch(searchResults.matches[nextIndex], searchQuery);
+  };
+
+  const navigateToPrevMatch = () => {
+    if (searchResults.matches.length === 0) return;
+    
+    const prevIndex = searchResults.currentIndex === 0 
+      ? searchResults.matches.length - 1 
+      : searchResults.currentIndex - 1;
+    setSearchResults(prev => ({ ...prev, currentIndex: prevIndex }));
+    
+    // Navigate to the previous match
+    navigateToMatch(searchResults.matches[prevIndex], searchQuery);
+  };
+
+  // Function to get all search highlights in order for better navigation
+  const getAllSearchHighlights = (): HTMLElement[] => {
+    if (!bodyContentRef.current) return [];
+    
+    const highlights = Array.from(bodyContentRef.current.querySelectorAll('.philonet-search-highlight')) as HTMLElement[];
+    
+    // Sort highlights by their position in the document
+    return highlights.sort((a, b) => {
+      const aRect = a.getBoundingClientRect();
+      const bRect = b.getBoundingClientRect();
+      
+      // Sort by top position first, then by left position
+      if (Math.abs(aRect.top - bRect.top) > 5) {
+        return aRect.top - bRect.top;
+      }
+      return aRect.left - bRect.left;
+    });
   };
 
   const handleRenderHighlighted = (text: string) => {
@@ -2626,13 +3179,8 @@ ${article.description}
 
 
           {/* Content Renderer, Skeleton Loading, or Encouraging Message */}
-          {(isLoadingWithMinTimer || isLoadingArticle || isGeneratingContent) ? (
-            <div className="absolute left-0 right-0" style={{ top: 68, bottom: state.footerH }}>
-              <div className="h-full overflow-y-auto pr-1">
-                <ContentSkeleton />
-              </div>
-            </div>
-          ) : article ? (
+          {article ? (
+            // Show article content immediately when available, regardless of highlights loading
             <ContentRenderer
               meta={meta}
               sections={sections}
@@ -2647,6 +3195,13 @@ ${article.description}
               footerH={state.footerH}
               sourceUrl={state.currentSourceUrl}
             />
+          ) : (isLoadingWithMinTimer || isLoadingArticle || isGeneratingContent) ? (
+            // Show skeleton only when article is still loading (not highlights)
+            <div className="absolute left-0 right-0" style={{ top: 68, bottom: state.footerH }}>
+              <div className="h-full overflow-y-auto pr-1">
+                <ContentSkeleton />
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="max-w-md text-center space-y-8 px-6">
@@ -3287,8 +3842,8 @@ ${article.description}
             </div>
           )}
 
-          {/* Comments Dock - only show when article exists */}
-          {article && (
+          {/* Comments Dock - show when article exists or when highlights are loading independently */}
+          {(article || state.highlightsLoading) && (
             <div 
               className="absolute right-3 z-30"
               style={{ bottom: state.footerH + 12 }}
@@ -3316,14 +3871,35 @@ ${article.description}
                   </div>
                 </motion.div>
               )}
+
+              {/* Highlights loading indicator - separate from article loading */}
+              {state.highlightsLoading && article && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                  className="mb-2 bg-philonet-blue-600/80 backdrop-blur-sm text-white text-xs px-3 py-2 rounded-lg shadow-lg border border-philonet-blue-400/30"
+                >
+                  <div className="flex items-center space-x-2">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-3 h-3 border border-philonet-blue-300 border-t-transparent rounded-full"
+                    />
+                    <span>Loading highlights...</span>
+                  </div>
+                </motion.div>
+              )}
               <CommentsDock
                 isOpen={state.dockOpen}
                 isMinimized={state.dockMinimized}
                 activeIndex={state.dockActiveIndex}
                 dockList={dockList}
+                isLoading={state.highlightsLoading}
                 onNavigate={handleDockNavigate}
                 onMinimize={() => updateState({ dockMinimized: true })}
                 onExpand={() => updateState({ dockMinimized: false })}
+                onNavigateToText={handleNavigateToText}
               />
             </div>
           )}
@@ -3716,7 +4292,7 @@ ${article.description}
                   {lastFetchedTime && (
                     <div className="flex items-center gap-2 px-2 py-1 bg-philonet-blue-600/20 border border-philonet-blue-500/50 rounded-md">
                       <span className="text-xs text-philonet-blue-400 font-medium">
-                        Last fetched: {lastFetchedTime.toLocaleTimeString()}
+                        Last fetched: {formatTimeAgo(lastFetchedTime)}
                       </span>
                     </div>
                   )}
@@ -3835,7 +4411,7 @@ ${article.description}
                     {article.title}
                   </h1>
                   <div className="flex flex-wrap gap-4 text-sm text-philonet-text-secondary">
-                    <span><strong>Created:</strong> {new Date(article.created_at).toLocaleDateString()}</span>
+                    <span><strong>Created:</strong> {formatTimeAgo(new Date(article.created_at))}</span>
                     <span><strong>Room:</strong> {article.room_name}</span>
                     <span><strong>Article ID:</strong> {article.article_id}</span>
                   </div>

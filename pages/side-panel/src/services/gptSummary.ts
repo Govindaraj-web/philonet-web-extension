@@ -210,7 +210,7 @@ export const streamPdfSummaryFromEvents = async (
     body: JSON.stringify({ 
       pdfHash, 
       stream: true, 
-      ignoreCache: true
+      ignoreCache: false
     }),
   });
 
@@ -506,7 +506,7 @@ export const streamWebSummaryFromEvents = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ content: pageContent, stream: true, ignoreCache: true, deep_summary: true }),
+      body: JSON.stringify({ content: pageContent, stream: true, ignoreCache: false, deep_summary: true }),
     });
 
     if (!response.ok) {
