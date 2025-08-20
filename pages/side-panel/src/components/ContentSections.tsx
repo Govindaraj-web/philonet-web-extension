@@ -53,13 +53,13 @@ const ContentSectionsComponent: React.FC<ContentSectionsProps> = ({
           <div className="mt-10" dangerouslySetInnerHTML={renderHighlighted(sections.rest)} />
         )}
 
-        {/* Recent comments preview */}
+        {/* Recent thoughts preview */}
         {comments && comments.length > 0 && (
           <div className="mt-12 pt-6 border-t border-philonet-border">
             <div className="flex items-center justify-between mb-4">
-              <h4 className="text-lg md:text-xl font-light tracking-philonet-wider text-philonet-text-secondary">Recent Comments</h4>
+              <h4 className="text-lg md:text-xl font-light tracking-philonet-wider text-philonet-text-secondary">Recent Thoughts</h4>
               <span className="text-sm text-philonet-text-muted tracking-philonet-wide">
-                {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+                {comments.length} {comments.length === 1 ? 'thought' : 'thoughts'}
               </span>
             </div>
             <div className="space-y-4">

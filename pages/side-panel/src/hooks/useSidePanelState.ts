@@ -16,7 +16,7 @@ export function useSidePanelState() {
     comment: "",
     commentRows: 1,
     comments: INITIAL_COMMENTS,
-    composerTab: "comments",
+    composerTab: "thoughts",
     aiQuestion: "",
     aiBusy: false,
     aiAnswers: [],

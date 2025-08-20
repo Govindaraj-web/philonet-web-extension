@@ -20,6 +20,8 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
+  Cloud,
 } from "lucide-react";
 import MarkdownIt from "markdown-it";
 
@@ -131,7 +133,7 @@ This is the content from the current webpage you're viewing.
 ${textContent || 'No readable content found on this page.'}
 
 ## Philonet Analysis
-You can use Philonet to analyze, comment on, and interact with any webpage content. Select text to create highlights and add contextual comments.
+You can use Philonet to analyze, think about, and interact with any webpage content. Select text to create highlights and add contextual thoughts.
 `,
   };
 };
@@ -161,7 +163,7 @@ const SidePanelOverlay: React.FC<SidePanelOverlayProps> = ({ onClose }) => {
       tag: null
     },
   ]);
-  const [composerTab, setComposerTab] = useState("comments");
+  const [composerTab, setComposerTab] = useState("thoughts");
   const [aiQuestion, setAiQuestion] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiAnswers, setAiAnswers] = useState<Array<{ id: number; q: string; a: string }>>([]);
@@ -463,48 +465,9 @@ I can help you analyze the content, structure, and context of this webpage. What
             {/* Meta header */}
             <section className="px-5 pt-6">
               {meta.title && (
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <h2 className="text-3xl md:text-4xl font-light tracking-wider text-white flex-1">
-                    {meta.title}
-                  </h2>
-                  <Button 
-                    className="h-10 px-3 flex-shrink-0 bg-blue-600/20 hover:bg-blue-600/30 border-blue-500/50 hover:border-blue-400"
-                    onClick={() => {
-                      // Get article content for TTS
-                      const contentToRead = [
-                        meta.title,
-                        meta.description,
-                        sections.introduction,
-                        sections.details,
-                        sections.conclusion
-                      ].filter(Boolean).join('. ');
-                      
-                      if ('speechSynthesis' in window) {
-                        // Stop any current speech
-                        window.speechSynthesis.cancel();
-                        
-                        // Create and configure speech
-                        const utterance = new SpeechSynthesisUtterance(contentToRead);
-                        utterance.rate = 0.9;
-                        utterance.pitch = 1;
-                        utterance.volume = 0.8;
-                        
-                        // Speak the content
-                        window.speechSynthesis.speak(utterance);
-                        
-                        console.log('[Philonet] Started text-to-speech for article content');
-                      } else {
-                        alert('Text-to-speech is not supported in your browser');
-                      }
-                    }}
-                    title="Listen to article content"
-                  >
-                    <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M9 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="hidden sm:inline">Listen</span>
-                  </Button>
-                </div>
+                <h2 className="text-3xl md:text-4xl font-light tracking-wider text-white">
+                  {meta.title}
+                </h2>
               )}
 
               {meta.description && (
@@ -582,9 +545,9 @@ I can help you analyze the content, structure, and context of this webpage. What
                 {comments && comments.length > 0 && (
                   <div className="mt-12 pt-6 border-t border-gray-700">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-light tracking-wider text-gray-300">Recent Comments</h4>
+                      <h4 className="text-lg font-light tracking-wider text-gray-300">Recent Thoughts</h4>
                       <span className="text-xs text-gray-400 tracking-wide">
-                        {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+                        {comments.length} {comments.length === 1 ? 'thought' : 'thoughts'}
                       </span>
                     </div>
                     <div className="space-y-4">
@@ -623,15 +586,15 @@ I can help you analyze the content, structure, and context of this webpage. What
           {/* Tabs */}
           <div className="flex items-center gap-2 mb-3">
             <button
-              onClick={() => setComposerTab("comments")}
+              onClick={() => setComposerTab("thoughts")}
               className={cn(
                 'h-8 px-3 rounded-full border text-xs tracking-wider',
-                composerTab === 'comments' 
+                composerTab === 'thoughts' 
                   ? 'text-blue-500 border-blue-500' 
                   : 'text-gray-400 border-gray-600'
               )}
             >
-              <MessageSquare className="inline h-3.5 w-3.5 mr-2" /> Comments
+              <Cloud className="inline h-3.5 w-3.5 mr-2" /> Thoughts
             </button>
             <button
               onClick={() => setComposerTab("ai")}
@@ -659,7 +622,7 @@ I can help you analyze the content, structure, and context of this webpage. What
           )}
 
           {/* Content */}
-          {composerTab === 'comments' ? (
+          {composerTab === 'thoughts' ? (
             <div>
               <div className="flex items-start gap-3">
                 <div className="self-center h-10 w-10 rounded-full border border-gray-600 bg-gray-800 grid place-items-center text-gray-400 flex-shrink-0 p-1">
@@ -673,7 +636,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                   <div className="rounded-full border border-gray-600 bg-gray-800 focus-within:border-blue-500 flex items-center px-4 py-2">
                     <Textarea
                       ref={commentRef}
-                      placeholder="Add a comment about this page…"
+                      placeholder="Add a thought about this page…"
                       value={comment}
                       rows={commentRows}
                       className="flex-1"

@@ -1,16 +1,16 @@
 import React from 'react';
-import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2 } from 'lucide-react';
+import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2, MessageCircle } from 'lucide-react';
 import { Button, Textarea } from './ui';
 import { cn } from '@extension/ui';
 
 interface ComposerFooterProps {
-  composerTab: 'comments' | 'ai';
+  composerTab: 'thoughts' | 'ai';
   comment: string;
   commentRows: number;
   aiQuestion: string;
   aiBusy: boolean;
   hiLiteText: string;
-  onTabChange: (tab: 'comments' | 'ai') => void;
+  onTabChange: (tab: 'thoughts' | 'ai') => void;
   onCommentChange: (value: string) => void;
   onAiQuestionChange: (value: string) => void;
   onSubmitComment: () => void;
@@ -43,16 +43,16 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-3">
         <button
-          onClick={() => onTabChange("comments")}
+          onClick={() => onTabChange("thoughts")}
           className={cn(
             'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base',
-            composerTab === 'comments' 
+            composerTab === 'thoughts' 
               ? 'text-philonet-blue-500 border-philonet-blue-500' 
               : 'text-philonet-text-muted border-philonet-border-light'
           )}
         >
-          <MessageSquare className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
-          <span className="hidden sm:inline">Comments</span>
+          <MessageCircle className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
+          <span className="hidden sm:inline">Thoughts</span>
         </button>
         <button
           onClick={() => onTabChange("ai")}
@@ -97,12 +97,12 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
       )}
 
       {/* Content */}
-      {composerTab === 'comments' ? (
+      {composerTab === 'thoughts' ? (
         <div>
           <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
             <Textarea
               ref={commentRef}
-              placeholder="Add a comment…"
+              placeholder="Add a thought…"
               value={comment}
               rows={commentRows}
               className="flex-1 text-sm md:text-base"
@@ -141,29 +141,40 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
           <div className="mb-2 flex items-center gap-2 text-philonet-text-muted tracking-philonet-wider text-sm md:text-base">
             <Bot className="h-4 w-4 md:h-5 md:w-5" />
             <span>ASK AI</span>
+            {aiBusy && (
+              <span className="text-xs text-philonet-blue-400 ml-2">
+                🤖 Processing...
+              </span>
+            )}
           </div>
           <Textarea
-            placeholder="Ask a question about this document…"
+            placeholder={aiBusy ? "AI is processing your question..." : "Ask a question about this document…"}
             value={aiQuestion}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onAiQuestionChange(e.target.value)}
             rows={3}
-            className="bg-transparent text-sm md:text-base"
+            className={`bg-transparent text-sm md:text-base ${aiBusy ? 'opacity-70' : ''}`}
+            disabled={aiBusy}
             onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { 
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !aiBusy) { 
                 e.preventDefault(); 
                 onAskAi(); 
               } 
             }}
           />
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-philonet-text-muted text-sm md:text-base">Press Cmd/Ctrl+Enter to ask</span>
+            <span className="text-philonet-text-muted text-sm md:text-base">
+              {aiBusy ? "AI is thinking..." : "Press Cmd/Ctrl+Enter to ask"}
+            </span>
             <Button 
               disabled={!aiQuestion.trim() || aiBusy} 
               onClick={onAskAi} 
               className="h-10 px-4 md:h-11 md:px-5"
             >
               {aiBusy ? (
-                <Loader2 className="animate-spin h-4 w-4 md:h-5 md:w-5" />
+                <>
+                  <Loader2 className="animate-spin h-4 w-4 md:h-5 md:w-5" />
+                  <span className="hidden sm:inline ml-2">Thinking...</span>
+                </>
               ) : (
                 <>
                   <Bot className="mr-2 h-4 w-4 md:h-5 md:w-5" />

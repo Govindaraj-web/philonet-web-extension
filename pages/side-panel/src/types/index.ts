@@ -120,7 +120,7 @@ export interface SidePanelState {
   comment: string;
   commentRows: number;
   comments: Comment[];
-  composerTab: 'comments' | 'ai';
+  composerTab: 'thoughts' | 'ai';
   aiQuestion: string;
   aiBusy: boolean;
   aiAnswers: AIAnswer[];

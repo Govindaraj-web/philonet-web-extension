@@ -43,7 +43,7 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ type: 'spring', stiffness: 250, damping: 20 }}
           className="relative w-[320px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur p-4 shadow-xl"
-          data-comments-dock
+          data-thoughts-dock
         >
           {/* Loading content skeleton */}
           <div className="space-y-4">
@@ -140,9 +140,9 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ type: 'spring', stiffness: 250, damping: 20 }}
           className="relative w-[320px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur p-4 shadow-xl"
-          data-comments-dock
+          data-thoughts-dock
         >
-          {/* Loading overlay when refreshing comments */}
+          {/* Loading overlay when refreshing thoughts */}
           {isLoading && dockList.length > 0 && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -309,7 +309,7 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center gap-1">
-                  <span className="text-philonet-text-muted">Comment</span>
+                  <span className="text-philonet-text-muted">Thought</span>
                   <span className="text-philonet-blue-400 font-medium">{activeIndex + 1}</span>
                   <span className="text-philonet-text-muted">of</span>
                   <span className="text-philonet-blue-400 font-medium">{dockList.length}</span>

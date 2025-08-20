@@ -67,6 +67,7 @@ interface Article {
   created_at: string;
   is_deleted: boolean;
   pdf: boolean;
+  hash?: string; // Add hash field for PDF files
   category: string;
   sparked_by: string | null;
   url: string;
@@ -217,6 +218,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [generatedCategories, setGeneratedCategories] = useState<Array<string | [string, number]>>([]);
   const [generatedTitle, setGeneratedTitle] = useState<string>('');
   const [showStreamingProgress, setShowStreamingProgress] = useState(false);
+  
+  // Persistent state for parallel operations to prevent data loss during page switches
+  const [streamingCompleted, setStreamingCompleted] = useState(false);
+  const [extractCompleted, setExtractCompleted] = useState(false);
+  const [streamingResult, setStreamingResult] = useState<string>('');
+  const [extractResult, setExtractResult] = useState<any>(null);
   
   // Status tracking for content generation flow
   const [contentGenerationStatus, setContentGenerationStatus] = useState<{
@@ -384,23 +391,23 @@ ${article.description}
     console.log('🏷️ Selection state updated - text should now be tagged');
     
     // Debug current state
-    console.log('📊 Current comments:', state.comments);
-    console.log('🏷️ Available comment tags:', state.comments.map(c => c.tag?.text));
+    console.log('📊 Current thoughts:', state.comments);
+    console.log('🏷️ Available thought tags:', state.comments.map(c => c.tag?.text));
     
-    // Check if any comments will match this filter
+    // Check if any thoughts will match this filter
     const matchingComments = state.comments.filter((c) => 
       (c.tag?.text || "").toLowerCase() === cleanText.toLowerCase()
     );
-    console.log('🎯 Comments that will match this filter:', matchingComments.length);
+    console.log('🎯 Thoughts that will match this filter:', matchingComments.length);
     
     // Always open dock and show the filter indicator
     updateState({ dockOpen: true });
     
-    // If no matching comments exist, suggest creating one
+    // If no matching thoughts exist, suggest creating one
     if (matchingComments.length === 0) {
-      console.log('💡 No matching comments found - opening comment composer');
+      console.log('💡 No matching thoughts found - opening thought composer');
       updateState({ 
-        composerTab: 'comments'
+        composerTab: 'thoughts'
         // Removed comment pre-filling since tagged text is displayed separately
       });
       
@@ -419,13 +426,13 @@ ${article.description}
       const target = event.target as Element;
       
       // Check if click is outside comments dock and composer areas
-      const isInComments = target.closest('[data-comments-dock]');
+      const isInComments = target.closest('[data-thoughts-dock]');
       const isInComposer = target.closest('[data-composer-footer]');
       const isInTaggedText = target.closest('[data-tagged-text]');
       
       // If clicked outside these areas and we have selected text, clear it
       if (!isInComments && !isInComposer && !isInTaggedText && state.hiLiteText) {
-        console.log('🧹 Clearing selection - clicked outside comments/dock area');
+        console.log('🧹 Clearing selection - clicked outside thoughts/dock area');
         updateState({ hiLiteText: "", dockFilterText: "" });
         
         // Clear visual highlights
@@ -1206,6 +1213,7 @@ ${article.description}
         created_at: new Date().toISOString(),
         is_deleted: false,
         pdf: true, // Mark as PDF
+        hash: pdfData.metadata.fileHash, // Store PDF hash for auto-save
         category: 'Generated',
         sparked_by: null,
         url: pdfUrl,
@@ -1234,89 +1242,11 @@ ${article.description}
         message: 'Generating content and extracting metadata...'
       });
 
-      // Track completion of both operations for saving to DB
-      let streamingCompleted = false;
-      let extractCompleted = false;
-      let streamingResult = '';
-      let extractResult: any = null;
-
-      // Function to check if both operations are complete and save to DB
-      const checkAndSaveToRoom = async () => {
-        if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
-          try {
-            setContentGenerationStatus(prev => ({
-              ...prev,
-              stage: 'saving',
-              message: 'Saving to database...'
-            }));
-
-            console.log('💾 Both PDF operations completed - saving to room...');
-
-            const addToRoomParams = {
-              url: pdfUrl,
-              title: extractResult.title || pdfData.metadata.title || 'PDF Document',
-              summary: extractResult.summary || 'AI generated summary from PDF',
-              thumbnail_url: pdfData.imageUrl || null,
-              tags: extractResult.tags || [],
-              categories: extractResult.categories?.map((cat: any) => 
-                typeof cat === 'string' ? cat : cat[0]
-              ) || [],
-              description: streamingResult,
-              hash: pdfData.metadata.fileHash,
-              pdf: true
-            };
-
-            const saveResult = await addToRoom(addToRoomParams);
-            console.log('✅ Successfully saved PDF to room:', saveResult);
-
-            // Set article ID and fetch highlights for the dock
-            if (saveResult?.article_id) {
-              await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
-            }
-
-            setContentGenerationStatus({
-              stage: 'complete',
-              streamingComplete: true,
-              extractComplete: true,
-              savingComplete: true,
-              message: 'PDF content generated and saved successfully!'
-            });
-
-            // Auto-hide status after 1.5 seconds
-            setTimeout(() => {
-              setContentGenerationStatus(prev => 
-                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
-              );
-            }, 1500);
-
-            // Update the article with the saved data if it has an ID
-            if (saveResult?.article_id) {
-              setArticle(currentArticle => {
-                if (!currentArticle) return currentArticle;
-                return {
-                  ...currentArticle,
-                  article_id: saveResult.article_id,
-                  room_id: saveResult.room_id || currentArticle.room_id
-                };
-              });
-            }
-          } catch (error) {
-            console.error('❌ Failed to save PDF to room:', error);
-            setContentGenerationStatus(prev => ({
-              ...prev,
-              stage: 'complete',
-              message: 'PDF content generated but failed to save to database'
-            }));
-
-            // Auto-hide status after 2 seconds even on error
-            setTimeout(() => {
-              setContentGenerationStatus(prev => 
-                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
-              );
-            }, 2000);
-          }
-        }
-      };
+      // Reset persistent state for new generation
+      setStreamingCompleted(false);
+      setExtractCompleted(false);
+      setStreamingResult('');
+      setExtractResult(null);
 
       // Start streaming PDF summary
       let streamingContent = '';
@@ -1361,8 +1291,8 @@ ${article.description}
       } else {
         extractPdfArticleData(pdfData.metadata.fileHash).then((extractDetails: any) => {
           console.log('📄 PDF extract article completed:', extractDetails);
-          extractCompleted = true;
-          extractResult = extractDetails;
+          setExtractCompleted(true);
+          setExtractResult(extractDetails);
 
           // Update status for extract completion
           setContentGenerationStatus(prev => ({
@@ -1417,8 +1347,7 @@ ${article.description}
           endLoadingWithMinTimer();
         }
 
-        // Check if we can save to room now
-        checkAndSaveToRoom();
+        // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
         console.error('❌ PDF extract article failed:', error);
         setArticleError(error instanceof Error ? error.message : 'Failed to extract PDF metadata');
@@ -1434,8 +1363,8 @@ ${article.description}
       streamingPromise.then(() => {
         console.log('✅ PDF streaming content generation completed');
         console.log('📝 Final PDF streamed content length:', streamingContent.length);
-        streamingCompleted = true;
-        streamingResult = streamingContent;
+        setStreamingCompleted(true);
+        setStreamingResult(streamingContent);
 
         // Update status for streaming completion
         setContentGenerationStatus(prev => ({
@@ -1451,8 +1380,7 @@ ${article.description}
           endLoadingWithMinTimer();
         }
 
-        // Check if we can save to room now
-        checkAndSaveToRoom();
+        // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
         console.error('❌ PDF streaming failed:', error);
         setArticleError(error instanceof Error ? error.message : 'Failed to generate PDF content');
@@ -1684,6 +1612,23 @@ ${article.description}
       
       // Start both operations in parallel, but handle them independently
       let streamingContent = '';
+      let streamingStarted = false;
+      
+      // Set up a timeout to show immediate feedback if streaming takes too long to start
+      const streamingTimeoutId = setTimeout(() => {
+        if (!streamingStarted) {
+          console.log('⏰ Streaming taking longer than expected - showing loading feedback');
+          setArticle(currentArticle => {
+            if (!currentArticle) {
+              return {
+                ...initialArticle,
+                description: '🔄 Connecting to AI service...', // Timeout feedback
+              };
+            }
+            return currentArticle;
+          });
+        }
+      }, 2000); // 2 second timeout
       
       // Start streaming operation
       const streamingPromise = streamWebSummaryFromEvents(
@@ -1691,6 +1636,30 @@ ${article.description}
         streamEndpoint,
         (chunk: string) => {
           console.log('📝 Streaming chunk received:', chunk);
+          
+          // Clear timeout once streaming starts
+          if (!streamingStarted) {
+            streamingStarted = true;
+            clearTimeout(streamingTimeoutId);
+          }
+          
+          // Handle immediate start signal (empty chunk)
+          if (chunk === '' && streamingContent === '') {
+            console.log('🚀 Streaming connection established - showing initial feedback');
+            
+            // Show immediate visual feedback that streaming has started
+            setArticle(currentArticle => {
+              if (!currentArticle) {
+                return {
+                  ...initialArticle,
+                  description: '✨ Generating content...', // Immediate feedback
+                };
+              }
+              return currentArticle;
+            });
+            return;
+          }
+          
           streamingContent += chunk;
           setStreamingContent(streamingContent);
           
@@ -1713,85 +1682,13 @@ ${article.description}
         }
       );
       
-      // Track completion of both operations for saving to DB
-      let streamingCompleted = false;
-      let extractCompleted = false;
-      let streamingResult = '';
-      let extractResult: any = null;
+      // Reset persistent state for new web content generation
+      setStreamingCompleted(false);
+      setExtractCompleted(false);
+      setStreamingResult('');
+      setExtractResult(null);
       
-      // Function to check if both operations are complete and save to DB
-      const checkAndSaveToRoom = async () => {
-        if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
-          try {
-            setContentGenerationStatus(prev => ({
-              ...prev,
-              stage: 'saving',
-              message: 'Saving to database...'
-            }));
-
-            console.log('💾 Both operations completed - saving to room...');
-            
-            const addToRoomParams = {
-              url: pageContent.url,
-              title: extractResult.title || pageContent.title || 'Generated Content',
-              summary: extractResult.summary || 'AI generated summary',
-              thumbnail_url: pageContent.thumbnailUrl || null,
-              tags: extractResult.tags || [],
-              categories: extractResult.categories?.map((cat: any) => 
-                typeof cat === 'string' ? cat : cat[0]
-              ) || [],
-              description: streamingResult
-            };
-            
-            const saveResult = await addToRoom(addToRoomParams);
-            console.log('✅ Successfully saved to room:', saveResult);
-            
-            // Set article ID and fetch highlights for the dock
-            if (saveResult?.article_id) {
-              await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
-            }
-            
-            setContentGenerationStatus({
-              stage: 'complete',
-              streamingComplete: true,
-              extractComplete: true,
-              savingComplete: true,
-              message: 'Content generated and saved successfully!'
-            });
-            
-          // Auto-hide status after 1.5 seconds
-          setTimeout(() => {
-            setContentGenerationStatus(prev => 
-              prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
-            );
-          }, 1500);            // Update the article with the saved data if it has an ID
-            if (saveResult?.article_id) {
-              setArticle(currentArticle => {
-                if (!currentArticle) return currentArticle;
-                return {
-                  ...currentArticle,
-                  article_id: saveResult.article_id,
-                  room_id: saveResult.room_id || currentArticle.room_id
-                };
-              });
-            }
-          } catch (error) {
-            console.error('❌ Failed to save to room:', error);
-            setContentGenerationStatus(prev => ({
-              ...prev,
-              stage: 'complete',
-              message: 'Content generated but failed to save to database'
-            }));
-            
-            // Auto-hide status after 2 seconds even on error
-            setTimeout(() => {
-              setContentGenerationStatus(prev => 
-                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
-              );
-            }, 2000);
-          }
-        }
-      };      // Start extract operation in parallel - render immediately when ready
+      // Start extract operation in parallel - render immediately when ready
       extractArticleData({
         rawText: pageContent.visibleText,
         content: {
@@ -1806,8 +1703,8 @@ ${article.description}
         }
       }, extractEndpoint).then((extractDetails: any) => {
         console.log('📄 Extract article completed:', extractDetails);
-        extractCompleted = true;
-        extractResult = extractDetails;
+        setExtractCompleted(true);
+        setExtractResult(extractDetails);
         
         // Update status for extract completion
         setContentGenerationStatus(prev => ({
@@ -1862,8 +1759,7 @@ ${article.description}
           endLoadingWithMinTimer();
         }
         
-        // Check if we can save to room now
-        checkAndSaveToRoom();
+        // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
         console.error('❌ Extract article failed:', error);
         setArticleError(error instanceof Error ? error.message : 'Failed to extract article metadata');
@@ -1878,8 +1774,12 @@ ${article.description}
       streamingPromise.then(() => {
         console.log('✅ Streaming content generation completed independently');
         console.log('📝 Final streamed content length:', streamingContent.length);
-        streamingCompleted = true;
-        streamingResult = streamingContent;
+        
+        // Clear timeout on successful completion
+        clearTimeout(streamingTimeoutId);
+        
+        setStreamingCompleted(true);
+        setStreamingResult(streamingContent);
         
         // Update status for streaming completion
         setContentGenerationStatus(prev => ({
@@ -1895,10 +1795,13 @@ ${article.description}
           endLoadingWithMinTimer();
         }
         
-        // Check if we can save to room now
-        checkAndSaveToRoom();
+        // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
         console.error('❌ Streaming failed:', error);
+        
+        // Clear timeout on error
+        clearTimeout(streamingTimeoutId);
+        
         setArticleError(error instanceof Error ? error.message : 'Failed to generate streaming content');
         
         // Turn off loading states on streaming error
@@ -1953,6 +1856,37 @@ ${article.description}
       console.log('🔄 Page data modal automatically refreshed with new data');
     }
   }, [pageData, showPageData]);
+
+  // Auto-save to room when both streaming and extraction are completed
+  useEffect(() => {
+    const autoSaveToRoom = async () => {
+      if (streamingCompleted && extractCompleted && streamingResult && extractResult && currentUrl) {
+        try {
+          console.log('🔄 Auto-saving to room - both operations completed');
+          console.log('📊 Streaming result length:', streamingResult.length);
+          console.log('📊 Extract result:', extractResult);
+          
+          // Check if current context is PDF-related
+          const isCurrentUrlPdf = isPdfUrl(currentUrl);
+          let pdfHash: string | undefined;
+          
+          // Get PDF hash from article state if available
+          if (isCurrentUrlPdf && article?.pdf && article?.hash) {
+            pdfHash = article.hash;
+            console.log('📄 Using PDF hash from article state:', pdfHash);
+          }
+          
+          await checkAndSaveToRoom(currentUrl, isCurrentUrlPdf, pdfHash);
+          
+        } catch (error) {
+          console.error('❌ Auto-save to room failed:', error);
+          // Don't throw the error to avoid breaking the UI flow
+        }
+      }
+    };
+
+    autoSaveToRoom();
+  }, [streamingCompleted, extractCompleted, streamingResult, extractResult, currentUrl, article]);
 
   // Settings handlers
   const handleSettingsChange = (newSettings: Partial<Settings>) => {
@@ -2624,6 +2558,13 @@ ${article.description}
     setGeneratedCategories([]);
     setGeneratedTitle('');
     setIsGeneratingContent(false);
+    
+    // Reset persistent streaming state
+    setStreamingCompleted(false);
+    setExtractCompleted(false);
+    setStreamingResult('');
+    setExtractResult(null);
+    
     setContentGenerationStatus({
       stage: 'idle',
       streamingComplete: false,
@@ -2631,6 +2572,113 @@ ${article.description}
       savingComplete: false
     });
     // Don't clear the source URL since we want to preserve navigation context
+  };
+
+  // Shared function to check and save content to room using persistent state
+  const checkAndSaveToRoom = async (pageUrl: string, isPdf: boolean = false, pdfHash?: string) => {
+    if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
+      try {
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          stage: 'saving',
+          message: 'Saving to database...'
+        }));
+
+        console.log('💾 Both operations completed - saving to room...');
+        
+        // Get thumbnail URL from multiple sources
+        let thumbnailUrl = null;
+        
+        // Priority 1: Use thumbnail from current article if available
+        if (article?.thumbnail_url) {
+          thumbnailUrl = article.thumbnail_url;
+        }
+        // Priority 2: Try to extract from extract result
+        else if (extractResult?.metadata?.thumbnail_url) {
+          thumbnailUrl = extractResult.metadata.thumbnail_url;
+        }
+        // Priority 3: Try to extract from page data
+        else if (pageData?.thumbnailUrl) {
+          thumbnailUrl = pageData.thumbnailUrl;
+        }
+        
+        console.log('🖼️ Thumbnail URL resolution:', {
+          articleThumbnail: article?.thumbnail_url,
+          extractResultThumbnail: extractResult?.metadata?.thumbnail_url,
+          pageDataThumbnail: pageData?.thumbnailUrl,
+          finalThumbnail: thumbnailUrl
+        });
+        
+        const addToRoomParams = {
+          url: pageUrl,
+          title: extractResult.title || 'Generated Content',
+          summary: extractResult.summary || 'AI generated summary',
+          thumbnail_url: thumbnailUrl,
+          tags: extractResult.tags || [],
+          categories: extractResult.categories?.map((cat: any) => 
+            typeof cat === 'string' ? cat : cat[0]
+          ) || [],
+          description: streamingResult,
+          ...(isPdf && pdfHash ? { hash: pdfHash, pdf: true } : {})
+        };
+
+        const saveResult = await addToRoom(addToRoomParams);
+        console.log('✅ Successfully saved to room:', saveResult);
+
+        // Set article ID and fetch highlights for the dock
+        if (saveResult?.article_id) {
+          await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
+        }
+
+        setContentGenerationStatus({
+          stage: 'complete',
+          streamingComplete: true,
+          extractComplete: true,
+          savingComplete: true,
+          message: 'Content generated and saved successfully!'
+        });
+
+        // Auto-hide status after 1.5 seconds
+        setTimeout(() => {
+          setContentGenerationStatus(prev => 
+            prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+          );
+        }, 1500);
+
+        // Update the article with the saved data if it has an ID
+        if (saveResult?.article_id) {
+          setArticle(currentArticle => {
+            if (!currentArticle) return currentArticle;
+            return {
+              ...currentArticle,
+              article_id: saveResult.article_id,
+              room_id: saveResult.room_id || currentArticle.room_id
+            };
+          });
+        }
+      } catch (error) {
+        console.error('❌ Failed to save to room:', error);
+        setContentGenerationStatus(prev => ({
+          ...prev,
+          stage: 'complete',
+          message: 'Content generated but failed to save to database'
+        }));
+        
+        // Auto-hide status after 2 seconds even on error
+        setTimeout(() => {
+          setContentGenerationStatus(prev => 
+            prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
+          );
+        }, 2000);
+      }
+    } else {
+      console.log('💭 Not ready to save yet:', {
+        streamingCompleted,
+        extractCompleted,
+        hasStreamingResult: !!streamingResult,
+        hasExtractResult: !!extractResult
+      });
+    }
   };
 
   const handleViewArticleContent = () => {
@@ -2653,6 +2701,7 @@ ${article.description}
         created_at: new Date().toISOString(),
         is_deleted: false,
         pdf: true,
+        hash: pdfData.metadata.fileHash, // Store PDF hash for auto-save
         category: 'Generated',
         sparked_by: null,
         url: currentUrl, // Keep the original file:// URL for context
@@ -2684,89 +2733,12 @@ ${article.description}
         message: 'Generating content from uploaded PDF...'
       });
 
-      // Track completion of both operations for saving to DB
-      let streamingCompleted = false;
-      let extractCompleted = false;
-      let streamingResult = '';
-      let extractResult: any = null;
-
-      // Function to check if both operations are complete and save to DB
-      const checkAndSaveToRoom = async () => {
-        if (streamingCompleted && extractCompleted && streamingResult && extractResult) {
-          try {
-            setContentGenerationStatus(prev => ({
-              ...prev,
-              stage: 'saving',
-              message: 'Saving to database...'
-            }));
-
-            console.log('💾 Both uploaded PDF operations completed - saving to room...');
-
-            const addToRoomParams = {
-              url: currentUrl,
-              title: extractResult.title || pdfData.metadata.title || 'Uploaded PDF Document',
-              summary: extractResult.summary || 'AI generated summary from uploaded PDF',
-              thumbnail_url: pdfData.imageUrl || null,
-              tags: extractResult.tags || [],
-              categories: extractResult.categories?.map((cat: any) => 
-                typeof cat === 'string' ? cat : cat[0]
-              ) || [],
-              description: streamingResult,
-              hash: pdfData.metadata.fileHash,
-              pdf: true
-            };
-
-            const saveResult = await addToRoom(addToRoomParams);
-            console.log('✅ Successfully saved uploaded PDF to room:', saveResult);
-
-            // Set article ID and fetch highlights for the dock
-            if (saveResult?.article_id) {
-              await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
-            }
-
-            setContentGenerationStatus({
-              stage: 'complete',
-              streamingComplete: true,
-              extractComplete: true,
-              savingComplete: true,
-              message: 'Uploaded PDF content generated and saved successfully!'
-            });
-
-            // Auto-hide status after 1.5 seconds
-            setTimeout(() => {
-              setContentGenerationStatus(prev => 
-                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
-              );
-            }, 1500);
-
-            // Update the article with the saved data if it has an ID
-            if (saveResult?.article_id) {
-              setArticle(currentArticle => {
-                if (!currentArticle) return currentArticle;
-                return {
-                  ...currentArticle,
-                  article_id: saveResult.article_id,
-                  room_id: saveResult.room_id || currentArticle.room_id
-                };
-              });
-            }
-          } catch (error) {
-            console.error('❌ Failed to save uploaded PDF to room:', error);
-            setContentGenerationStatus(prev => ({
-              ...prev,
-              stage: 'complete',
-              message: 'PDF content generated but failed to save to database'
-            }));
-
-            // Auto-hide status after 2 seconds even on error
-            setTimeout(() => {
-              setContentGenerationStatus(prev => 
-                prev.stage === 'complete' ? { ...prev, stage: 'idle' } : prev
-              );
-            }, 2000);
-          }
-        }
-      };
+      
+      // Reset persistent state for uploaded PDF generation
+      setStreamingCompleted(false);
+      setExtractCompleted(false);
+      setStreamingResult('');
+      setExtractResult(null);
 
       // Start streaming PDF summary with uploaded data
       let streamingContent = '';
@@ -2801,8 +2773,8 @@ ${article.description}
       
       extractPdfArticleData(pdfData.metadata.fileHash).then((extractDetails: any) => {
         console.log('📄 Uploaded PDF extract article completed:', extractDetails);
-        extractCompleted = true;
-        extractResult = extractDetails;
+        setExtractCompleted(true);
+        setExtractResult(extractDetails);
 
         // Update status for extract completion
         setContentGenerationStatus(prev => ({
@@ -2850,8 +2822,7 @@ ${article.description}
           endLoadingWithMinTimer();
         }
 
-        // Check if we can save to room now
-        checkAndSaveToRoom();
+        // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
         console.error('❌ Uploaded PDF extract article failed:', error);
         setArticleError(error instanceof Error ? error.message : 'Failed to extract uploaded PDF metadata');
@@ -2866,8 +2837,8 @@ ${article.description}
       streamingPromise.then(() => {
         console.log('✅ Uploaded PDF streaming content generation completed');
         console.log('📝 Final uploaded PDF streamed content length:', streamingContent.length);
-        streamingCompleted = true;
-        streamingResult = streamingContent;
+        setStreamingCompleted(true);
+        setStreamingResult(streamingContent);
 
         // Update status for streaming completion
         setContentGenerationStatus(prev => ({
@@ -2883,8 +2854,7 @@ ${article.description}
           endLoadingWithMinTimer();
         }
 
-        // Check if we can save to room now
-        checkAndSaveToRoom();
+        // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
         console.error('❌ Uploaded PDF streaming failed:', error);
         setArticleError(error instanceof Error ? error.message : 'Failed to generate content from uploaded PDF');
@@ -3802,7 +3772,7 @@ ${article.description}
                 aiQuestion={state.aiQuestion}
                 aiBusy={state.aiBusy}
                 hiLiteText={state.hiLiteText}
-                onTabChange={(tab: 'comments' | 'ai') => updateState({ composerTab: tab })}
+                onTabChange={(tab: 'thoughts' | 'ai') => updateState({ composerTab: tab })}
                 onCommentChange={handleCommentChange}
                 onAiQuestionChange={(value: string) => updateState({ aiQuestion: value })}
                 onSubmitComment={handleCommentSubmit}

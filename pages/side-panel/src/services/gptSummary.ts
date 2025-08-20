@@ -506,7 +506,7 @@ export const streamWebSummaryFromEvents = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ content: pageContent, stream: true, ignoreCache: false, deep_summary: true }),
+      body: JSON.stringify({ content: pageContent, stream: true, ignoreCache: false, deep_summary: false }),
     });
 
     if (!response.ok) {
@@ -518,10 +518,14 @@ export const streamWebSummaryFromEvents = async (
     }
 
     const reader = response.body.getReader();
-    console.log(  'Response body reader created', reader);
+    console.log('Response body reader created', reader);
     const decoder = new TextDecoder('utf-8');
     let done = false;
     let buffer = '';
+
+    // Send an immediate signal that streaming has started
+    // This provides immediate visual feedback to users
+    onChunk('');
 
 
     while (!done) {
@@ -530,7 +534,10 @@ export const streamWebSummaryFromEvents = async (
         done = streamDone;
         if (value) {
           buffer += decoder.decode(value, { stream: !done });
-          const lines = buffer.split('\n');
+          
+          // Process buffer more aggressively to reduce perceived delay
+          // Split on both \n and \r\n to handle different line endings
+          const lines = buffer.split(/\r?\n/);
           buffer = lines.pop() || '';
           
           for (const line of lines) {
@@ -550,12 +557,35 @@ export const streamWebSummaryFromEvents = async (
               const json = JSON.parse(dataLine);
               // Use the correct field for your API
               if (json.text !== undefined) {
-                onChunk(json.text);
+                // Immediately send any non-empty content
+                if (json.text.length > 0) {
+                  onChunk(json.text);
+                }
               } else if (json.content !== undefined) {
-                onChunk(json.content);
+                // Immediately send any non-empty content
+                if (json.content.length > 0) {
+                  onChunk(json.content);
+                }
               }
             } catch (e) {
               console.warn('Failed to parse line:', line);
+            }
+          }
+          
+          // Also check if there's partial data in the buffer that looks like JSON
+          // This helps handle cases where the buffer contains incomplete JSON
+          if (buffer.trim() && !buffer.includes('\n')) {
+            try {
+              const json = JSON.parse(buffer.trim());
+              if (json.text !== undefined && json.text.length > 0) {
+                onChunk(json.text);
+                buffer = '';
+              } else if (json.content !== undefined && json.content.length > 0) {
+                onChunk(json.content);
+                buffer = '';
+              }
+            } catch (e) {
+              // Not a complete JSON yet, keep buffering
             }
           }
         }
@@ -1351,7 +1381,7 @@ export async function fetchHighlightsByArticleId(
     // Token validation is handled in getAccessToken()
   }
 
-  let payload = {
+  let payload: any = {
     articleId,
     page,
     limit,

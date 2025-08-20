@@ -877,11 +877,11 @@ export default function App() {
               </table>
             </div>
 
-            <!-- Recent Comments -->
+            <!-- Recent Thoughts -->
             <div class="philonet-comments-section">
               <div class="philonet-comments-header">
-                <h4 class="philonet-comments-title">Recent Comments</h4>
-                <span class="philonet-comments-count">1 comment</span>
+                <h4 class="philonet-comments-title">Recent Thoughts</h4>
+                <span class="philonet-comments-count">1 thought</span>
               </div>
               <div class="philonet-comment">
                 <div class="philonet-comment-avatar">Y</div>
@@ -899,11 +899,11 @@ export default function App() {
         <div class="philonet-footer">
           <!-- Tabs -->
           <div class="philonet-tabs">
-            <button class="philonet-tab philonet-tab-active" data-tab="comments">
+            <button class="philonet-tab philonet-tab-active" data-tab="thoughts">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
               </svg>
-              Comments
+              Thoughts
             </button>
             <button class="philonet-tab" data-tab="ai">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -927,7 +927,7 @@ export default function App() {
               <div class="philonet-composer-input-container">
                 <textarea 
                   class="philonet-composer-input" 
-                  placeholder="Add a comment…"
+                  placeholder="Add a thought…"
                   rows="1"
                 ></textarea>
                 <div class="philonet-composer-actions">
@@ -954,22 +954,22 @@ export default function App() {
       });
 
       // Add interactive functionality for tabs and composer
-      const commentTab = panel.querySelector('[data-tab="comments"]');
+      const thoughtTab = panel.querySelector('[data-tab="thoughts"]');
       const aiTab = panel.querySelector('[data-tab="ai"]');
       const composerInput = panel.querySelector('.philonet-composer-input');
       const submitButton = panel.querySelector('.philonet-composer-submit');
       const charCount = panel.querySelector('.philonet-char-count');
 
       // Tab switching
-      if (commentTab && aiTab) {
-        commentTab.addEventListener('click', () => {
-          commentTab.classList.add('philonet-tab-active');
+      if (thoughtTab && aiTab) {
+        thoughtTab.addEventListener('click', () => {
+          thoughtTab.classList.add('philonet-tab-active');
           aiTab.classList.remove('philonet-tab-active');
         });
 
         aiTab.addEventListener('click', () => {
           aiTab.classList.add('philonet-tab-active');
-          commentTab.classList.remove('philonet-tab-active');
+          thoughtTab.classList.remove('philonet-tab-active');
         });
       }
 
@@ -991,7 +991,7 @@ export default function App() {
             keyEvent.preventDefault();
             const input = keyEvent.target as HTMLTextAreaElement;
             if (input.value.trim()) {
-              console.log('[Philonet] Comment submitted:', input.value);
+              console.log('[Philonet] Thought submitted:', input.value);
               input.value = '';
               input.style.height = 'auto';
               charCount.textContent = '280 characters left';
@@ -1005,7 +1005,7 @@ export default function App() {
         submitButton.addEventListener('click', () => {
           const input = composerInput as HTMLTextAreaElement;
           if (input.value.trim()) {
-            console.log('[Philonet] Comment submitted:', input.value);
+            console.log('[Philonet] Thought submitted:', input.value);
             input.value = '';
             input.style.height = 'auto';
             if (charCount) charCount.textContent = '280 characters left';
