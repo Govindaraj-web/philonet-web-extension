@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Minus, Maximize2, MessageSquare } from 'lucide-react';
 import ConversationRoom from './ConversationRoom';
-import { thoughtRoomsAPI } from '../services/thoughtRoomsApi';
+import { thoughtRoomsAPI, addComment } from '../services/thoughtRoomsApi';
+import { philonetAuthStorage } from '../storage/auth-storage';
 
 interface ConversationDrawerProps {
   isOpen: boolean;
@@ -53,7 +54,22 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   const [conversationErrors, setConversationErrors] = useState<{[key: string]: string}>({});
   const [selectedThoughtId, setSelectedThoughtId] = useState<string | null>(null);
   
+  // State for tracking message sending
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [sendingError, setSendingError] = useState<string | null>(null);
+  
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Get current user ID from auth storage
+  const getCurrentUserId = async (): Promise<string | null> => {
+    try {
+      const authState = await philonetAuthStorage.get();
+      return authState.user?.id || null;
+    } catch (error) {
+      console.error('❌ Failed to get current user ID:', error);
+      return null;
+    }
+  };
 
   // Function to fetch thought room conversations
   const fetchThoughtRoomData = async (articleId: number) => {
@@ -74,8 +90,12 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       
       console.log('✅ Successfully fetched comments:', response);
       
+      // Get current user ID for ownership detection
+      const currentUserId = await getCurrentUserId();
+      console.log('👤 Current user ID for thought starter ownership detection:', currentUserId);
+      
       const transformedThoughts = response.comments.map(comment => 
-        thoughtRoomsAPI.transformCommentToThoughtStarter(comment)
+        thoughtRoomsAPI.transformCommentToThoughtStarter(comment, currentUserId || undefined)
       );
       
       console.log('🔄 Transformed thoughts:', transformedThoughts);
@@ -140,7 +160,17 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
 
     try {
       console.log('📞 Calling thoughtRoomsAPI.fetchConversationThread...');
-      const conversationData = await thoughtRoomsAPI.fetchConversationThread(articleId, parentCommentId, 20);
+      
+      // Get current user ID for message ownership detection
+      const currentUserId = await getCurrentUserId();
+      console.log('👤 Current user ID for ownership detection:', currentUserId);
+      
+      const conversationData = await thoughtRoomsAPI.fetchConversationThread(
+        articleId, 
+        parentCommentId, 
+        20, 
+        currentUserId || undefined
+      );
       
       console.log('✅ Successfully fetched conversation thread:', conversationData);
       
@@ -175,6 +205,8 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
 
   // Get article ID from storage (passed via props) or fallback
   const getArticleId = () => {
+    console.log('🔍 Getting article ID - currentArticleId:', currentArticleId, 'article?.url:', article?.url);
+    
     if (currentArticleId) {
       console.log('📦 Using article ID from storage:', currentArticleId);
       return parseInt(currentArticleId, 10);
@@ -186,6 +218,8 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       if (urlMatch) {
         console.log('🔗 Extracted article ID from URL:', urlMatch[1]);
         return parseInt(urlMatch[1], 10);
+      } else {
+        console.warn('⚠️ Could not extract article ID from URL pattern:', article.url);
       }
     }
     
@@ -194,6 +228,86 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
     return 5598;
   };
 
+  // Handle sending a new message/comment
+  const handleSendMessage = async (message: string, thoughtId?: string) => {
+    if (!message.trim()) {
+      console.warn('⚠️ Cannot send empty message');
+      return;
+    }
+
+    const articleId = getArticleId();
+    console.log('💬 Sending message:', message, 'to thought:', thoughtId, 'article:', articleId);
+
+    setSendingMessage(true);
+    setSendingError(null);
+
+    try {
+      // Determine if this is a reply to a specific thought or a new top-level comment
+      const isReply = thoughtId && thoughtId !== 'new';
+      const parentCommentId = isReply ? parseInt(thoughtId, 10) : undefined;
+
+      const addCommentParams = {
+        articleId,
+        content: message,
+        ...(parentCommentId && { parentCommentId }),
+        // Add tagged content as quote if available
+        ...(taggedContent?.highlightedText && { quote: taggedContent.highlightedText })
+      };
+
+      console.log('📤 Sending comment with params:', addCommentParams);
+
+      const response = await addComment(addCommentParams);
+      console.log('✅ Comment sent successfully:', response);
+
+      // Call the original onSendMessage callback for any additional handling
+      onSendMessage(message, thoughtId);
+
+      // Refresh the conversation thread to show the new message
+      if (isReply && parentCommentId) {
+        console.log('🔄 Refreshing conversation thread after new message');
+        await fetchConversationThread(thoughtId, parentCommentId);
+      } else {
+        // If it's a new top-level comment, refresh the entire thought starters list
+        console.log('🔄 Refreshing thought starters after new comment');
+        await fetchThoughtRoomData(articleId);
+      }
+
+    } catch (error) {
+      console.error('❌ Failed to send message:', error);
+      
+      // Show user-friendly error message
+      let errorMessage = 'Failed to send message. Please try again.';
+      if (error instanceof Error && error.message.includes('authorization token')) {
+        errorMessage = 'Authentication required. Please log in to send messages.';
+      } else if (error instanceof Error && error.message.includes('401')) {
+        errorMessage = 'Authentication expired. Please log in again.';
+      }
+      
+      setSendingError(errorMessage);
+      
+      // Still call the original callback even if sending failed
+      onSendMessage(message, thoughtId);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // Track the last fetched article ID to detect changes
+  const [lastFetchedArticleId, setLastFetchedArticleId] = useState<number | null>(null);
+
+  // Clear data when drawer is closed to ensure fresh data when reopening
+  useEffect(() => {
+    if (!isOpen) {
+      console.log('🚪 Drawer closed - clearing conversation data for fresh start');
+      setThoughtStarters([]);
+      setConversationDetails({});
+      setLoadingConversations({});
+      setConversationErrors({});
+      setSelectedThoughtId(null);
+      setLastFetchedArticleId(null);
+    }
+  }, [isOpen]);
+
   // Fetch conversations when drawer opens or when article ID changes
   useEffect(() => {
     console.log('🔄 useEffect triggered:', { isOpen, currentArticleId, article: !!article });
@@ -201,8 +315,22 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       const articleId = getArticleId();
       console.log('🚀 Triggering fetchThoughtRoomData with articleId:', articleId);
       
-      // Only fetch if we don't already have data or if the article ID changed
-      if (thoughtStarters.length === 0 || !isLoadingThoughts) {
+      // Check if article ID has changed
+      const hasArticleChanged = lastFetchedArticleId !== null && lastFetchedArticleId !== articleId;
+      
+      if (hasArticleChanged) {
+        console.log('📄 Article changed from', lastFetchedArticleId, 'to', articleId, '- clearing existing data');
+        // Clear existing data when article changes
+        setThoughtStarters([]);
+        setConversationDetails({});
+        setLoadingConversations({});
+        setConversationErrors({});
+        setSelectedThoughtId(null);
+      }
+      
+      // Fetch if we don't have data, article changed, or not currently loading
+      if (thoughtStarters.length === 0 || hasArticleChanged || !isLoadingThoughts) {
+        setLastFetchedArticleId(articleId);
         fetchThoughtRoomData(articleId);
       } else {
         console.log('⏭️ Skipping fetch - data already loaded or currently loading');
@@ -237,7 +365,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         setThoughtStarters(enhancedThoughts);
       }
     }
-  }, [loadingConversations, conversationErrors, conversationDetails]);
+  }, [loadingConversations, conversationErrors, conversationDetails, lastFetchedArticleId]);
 
   // Set initial selected thought ID when thought starters are loaded
   useEffect(() => {
@@ -465,11 +593,49 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                       </button>
                     </div>
                   </div>
+                ) : thoughtStarters.length === 0 ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center max-w-sm px-6">
+                      <div className="w-16 h-16 mx-auto mb-4 bg-philonet-blue-500 bg-opacity-10 rounded-full flex items-center justify-center">
+                        <MessageSquare className="w-8 h-8 text-philonet-blue-500" />
+                      </div>
+                      <h3 className="text-lg font-medium text-philonet-text-primary mb-2">
+                        No Conversations Yet
+                      </h3>
+                      <p className="text-philonet-text-secondary mb-4 leading-relaxed">
+                        Be the first to start a conversation! Go to the article page and share your thoughts to begin engaging with other readers.
+                      </p>
+                      <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-philonet-blue-500 hover:bg-philonet-blue-600 rounded-md text-white text-sm font-medium transition-colors duration-150"
+                      >
+                        Go to Article
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="h-full flex flex-col bg-philonet-background">
                     
+                    {/* Error notification for message sending */}
+                    {sendingError && (
+                      <div className="mx-4 mt-2 mb-2 p-3 bg-red-500 bg-opacity-10 border border-red-500 border-opacity-20 rounded-md">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <X className="w-4 h-4 text-red-400 mr-2" />
+                            <span className="text-red-400 text-sm">{sendingError}</span>
+                          </div>
+                          <button
+                            onClick={() => setSendingError(null)}
+                            className="text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
                     <ConversationRoom
-                      thoughtStarters={thoughtStarters.length > 0 ? thoughtStarters : []}
+                      thoughtStarters={thoughtStarters}
                       selectedThoughtId={selectedThoughtId || (thoughtStarters.length > 0 ? thoughtStarters[0]?.id : "1")}
                       currentUser={user}
                       messages={
@@ -496,7 +662,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                           ? conversationErrors[thoughtStarters[0]?.id] || null
                           : null
                       }
-                      onSendMessage={(message: string, thoughtId: string) => onSendMessage(message, thoughtId)}
+                      onSendMessage={(message: string, thoughtId: string) => handleSendMessage(message, thoughtId)}
                       onAskAI={(question: string, thoughtId: string) => onAskAI(question, thoughtId)}
                       onThoughtSelect={(thoughtId: string) => {
                         console.log('🎯 Thought selected:', thoughtId);

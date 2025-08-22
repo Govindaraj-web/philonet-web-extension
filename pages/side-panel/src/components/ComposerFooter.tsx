@@ -73,21 +73,37 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
         <div className="mb-3 text-sm" data-tagged-text>
           <div className="flex items-start gap-2">
             <div 
-              className="flex-1 px-3 py-2 rounded-lg border border-yellow-500/60 text-yellow-400 bg-yellow-500/10 min-h-0 cursor-pointer hover:bg-yellow-500/20 hover:border-yellow-500/80 transition-all duration-200 hover:shadow-sm selection:bg-yellow-400/20 selection:text-yellow-100" 
+              className="flex-1 px-3 py-2 rounded-lg border cursor-pointer min-h-0 transition-all duration-200 hover:shadow-sm" 
+              style={{
+                borderColor: 'rgba(203, 163, 57, 0.6)',
+                color: '#CBA339',
+                backgroundColor: 'rgba(203, 163, 57, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(203, 163, 57, 0.2)';
+                e.currentTarget.style.borderColor = 'rgba(203, 163, 57, 0.8)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(203, 163, 57, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(203, 163, 57, 0.6)';
+              }} 
               onClick={onNavigateToText}
               title="Click to navigate to highlighted text in article"
             >
-              <div className="text-xs text-yellow-300 mb-1 flex items-center gap-1">
+              <div className="text-xs mb-1 flex items-center gap-1" style={{ color: '#CBA339' }}>
                 <span>Tagged text:</span>
                 <span className="text-xs opacity-70">📍 Click to navigate</span>
               </div>
-              <div className="text-sm leading-relaxed max-h-16 overflow-y-auto whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-yellow-500/30 scrollbar-track-transparent selection:bg-yellow-400/20 selection:text-yellow-100">
+              <div className="text-sm leading-relaxed max-h-16 overflow-y-auto whitespace-pre-wrap break-words scrollbar-thin scrollbar-track-transparent" 
+                style={{ 
+                  scrollbarColor: 'rgba(203, 163, 57, 0.3) transparent'
+                }}>
                 "{hiLiteText}"
               </div>
             </div>
             <button 
               onClick={onClearSelection} 
-              className="text-philonet-text-muted hover:text-yellow-500 text-sm px-2 py-1 rounded hover:bg-yellow-500/10 transition-colors flex-shrink-0 self-start"
+              className="text-philonet-text-muted text-sm px-2 py-1 rounded transition-colors flex-shrink-0 self-start hover:text-[#CBA339] hover:bg-[#CBA339]/10"
               title="Clear selection"
             >
               ✕

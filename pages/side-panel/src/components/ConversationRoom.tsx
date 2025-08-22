@@ -158,6 +158,9 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   const [selectedReactionCategory, setSelectedReactionCategory] = useState<keyof typeof reactionCategories | 'recent'>('popular');
   const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
   const [isLeftSidebarHovered, setIsLeftSidebarHovered] = useState(false);
+  const [showSendEffect, setShowSendEffect] = useState(false);
+  const [particles, setParticles] = useState<Array<{id: number, x: number, y: number, emoji: string}>>([]);
+  const [successPulse, setSuccessPulse] = useState<string | null>(null);
 
   // Close reaction picker when clicking outside
   useEffect(() => {
@@ -174,6 +177,134 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showReactionPicker, showEmojiPicker]);
+
+  // Prevent any unwanted form submissions or page navigation
+  useEffect(() => {
+    const preventNavigation = (e: Event): boolean => {
+      // Only prevent if this comes from our conversation input area
+      const target = e.target as HTMLElement;
+      const conversationForm = target?.closest?.('form');
+      if (conversationForm && conversationForm.closest('.conversation-room')) {
+        console.log('Preventing form submission from conversation room');
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      return true;
+    };
+
+    const preventBeforeUnload = (e: BeforeUnloadEvent): string | undefined => {
+      // Only prevent if we're in the middle of sending a message
+      const pendingMessages = document.querySelectorAll('[data-status="sending"]');
+      if (pendingMessages.length > 0) {
+        console.log('Preventing page unload due to pending messages');
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+      return undefined;
+    };
+
+    // Only add form prevention, not general document prevention
+    window.addEventListener('beforeunload', preventBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', preventBeforeUnload);
+    };
+  }, []);
+
+  // Play sound effect function
+  const playSound = (soundType: 'send' | 'success' | 'celebration') => {
+    try {
+      // Create audio context for better sound synthesis
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      if (soundType === 'send') {
+        // Swoosh sound for sending
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } else if (soundType === 'success') {
+        // Success chime
+        const oscillator1 = audioContext.createOscillator();
+        const oscillator2 = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator1.connect(gainNode);
+        oscillator2.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator1.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+        oscillator2.frequency.setValueAtTime(659.25, audioContext.currentTime); // E5
+        
+        gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator1.start(audioContext.currentTime);
+        oscillator2.start(audioContext.currentTime);
+        oscillator1.stop(audioContext.currentTime + 0.5);
+        oscillator2.stop(audioContext.currentTime + 0.5);
+      } else if (soundType === 'celebration') {
+        // Celebration sound with multiple tones
+        const frequencies = [523.25, 659.25, 783.99]; // C5, E5, G5
+        frequencies.forEach((freq, index) => {
+          setTimeout(() => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.03, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.2);
+          }, index * 100);
+        });
+      }
+    } catch (error) {
+      console.log('Audio not supported or blocked:', error);
+    }
+  };
+
+  // Create particle effect
+  const createParticles = (centerX: number, centerY: number) => {
+    const newParticles = [];
+    const emojis = ['✨', '🎉', '💫', '⭐', '🌟', '💥'];
+    
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * 2 * Math.PI;
+      const velocity = 50 + Math.random() * 30;
+      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+      
+      newParticles.push({
+        id: Date.now() + i,
+        x: centerX + Math.cos(angle) * velocity,
+        y: centerY + Math.sin(angle) * velocity,
+        emoji
+      });
+    }
+    
+    setParticles(newParticles);
+    
+    // Clear particles after animation
+    setTimeout(() => {
+      setParticles([]);
+    }, 1000);
+  };
 
   const handleAddReaction = (messageId: string, emoji: string) => {
     // Add to recent emojis
@@ -246,268 +377,52 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     setShowEmojiPicker(false);
   };
 
-  // Initialize messages from external prop or fall back to demo messages
-  const getDemoMessages = (): Message[] => [
-    {
-      id: '1',
-      text: 'What\'s the hardest language you\'ve learnt/you\'re learning? 🤔',
-      author: 'Mehul Aryanraj',
-      timestamp: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
-      isOwn: false,
-      type: 'thought-starter',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face',
-      isRead: true,
-      status: 'read'
-    },
-    {
-      id: '2',
-      text: 'Rust for sure! The ownership model and borrowing concepts took me months to really understand. But once it clicked, it completely changed how I think about memory management.',
-      author: 'Sarah Chen',
-      timestamp: new Date(Date.now() - 6900000).toISOString(),
-      isOwn: false,
-      type: 'text',
-      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b3e9?w=40&h=40&fit=crop&crop=face',
-      reactions: [
-        { emoji: '👍', count: 8, users: ['user1', 'user2', 'user3'] },
-        { emoji: '💯', count: 3, users: ['user4', 'user5'] }
-      ],
-      isRead: true,
-      status: 'read'
-    },
-    {
-      id: '3',
-      text: 'Haskell was my biggest challenge. The functional programming paradigm was so different from imperative languages. Monads still give me nightmares sometimes 😅',
-      author: 'Alex Rodriguez',
-      timestamp: new Date(Date.now() - 6300000).toISOString(),
-      isOwn: false,
-      type: 'text',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=40&h=40&fit=crop&crop=face',
-      reactions: [{ emoji: '😂', count: 12, users: ['user1', 'user2', 'user3', 'user4'] }],
-      isRead: true,
-      status: 'read'
-    },
-    {
-      id: '4',
-      text: 'Assembly language was brutal when I had to learn it for embedded systems. Every single instruction matters and debugging is like solving puzzles blindfolded.',
-      author: currentUser?.name || 'You',
-      timestamp: new Date(Date.now() - 5400000).toISOString(),
-      isOwn: true,
-      type: 'text',
-      reactions: [
-        { emoji: '🔥', count: 5, users: ['user1', 'user2'] },
-        { emoji: '💪', count: 7, users: ['user3', 'user4', 'user5'] }
-      ],
-      isRead: true,
-      status: 'read'
-    },
-    {
-      id: '5',
-      text: 'Based on your experiences, it seems like languages with paradigm shifts (functional programming, memory management concepts, low-level control) tend to be the most challenging. These often require unlearning previous assumptions about programming.',
-      author: 'AI Assistant',
-      timestamp: new Date(Date.now() - 4800000).toISOString(),
-      isOwn: false,
-      type: 'ai-response',
-      isRead: true,
-      status: 'read'
-    },
-    {
-      id: '6',
-      text: 'C++ templates and metaprogramming... still learning after 5 years. The error messages alone could fill a book 📚',
-      author: 'David Kim',
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      isOwn: false,
-      type: 'text',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=40&h=40&fit=crop&crop=face',
-      reactions: [{ emoji: '📚', count: 4, users: ['user1', 'user2'] }],
-      isRead: true,
-      status: 'read'
-    },
-    {
-      id: '7',
-      text: 'Prolog was mind-bending. Logic programming is so different from everything else.\n\nYou have to think backwards from the solution.\n\nCheck out this resource: https://www.linkedin.com/learning/courses/advanced-prolog-programming',
-      author: 'Priya Sharma',
-      timestamp: new Date(Date.now() - 1200000).toISOString(), // 20 minutes ago
-      isOwn: false,
-      type: 'text',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=40&h=40&fit=crop&crop=face',
-      reactions: [{ emoji: '🤯', count: 6, users: ['user1', 'user2', 'user3'] }],
-      isRead: true,
-      status: 'read'
-    }
-  ];
-
   const [messages, setMessages] = useState<Message[]>(() => {
-    // Use external messages if provided and not empty, otherwise fall back to demo messages
+    // Use external messages if provided, otherwise start with empty array
     if (externalMessages && externalMessages.length > 0) {
       console.log('🔄 ConversationRoom: Using external messages:', externalMessages.length);
       return externalMessages;
     } else {
-      console.log('🎭 ConversationRoom: Using demo messages (no external messages provided)');
-      return getDemoMessages();
+      console.log('📭 ConversationRoom: No external messages provided, starting with empty conversation');
+      return [];
     }
   });
 
   // Update messages when external messages change
   useEffect(() => {
     if (externalMessages && externalMessages.length > 0) {
-      console.log('📨 ConversationRoom: External messages updated, setting new messages:', externalMessages.length);
-      setMessages(externalMessages);
+      console.log('📨 ConversationRoom: External messages updated, merging with local messages:', externalMessages.length);
+      
+      // Merge external messages with any local pending messages
+      setMessages(prevMessages => {
+        const pendingMessages = prevMessages.filter(msg => 
+          (msg.status === 'sending' || msg.status === 'sent') && 
+          (msg.isOwn && !externalMessages.some(extMsg => extMsg.id === msg.id))
+        );
+        
+        // Combine external messages with pending local messages
+        const mergedMessages = [...externalMessages, ...pendingMessages];
+        
+        // Sort by timestamp to maintain chronological order
+        return mergedMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
+    } else if (externalMessages && externalMessages.length === 0) {
+      console.log('📭 ConversationRoom: External messages cleared, keeping only local pending messages');
+      
+      // Keep only local pending messages when external messages are cleared
+      setMessages(prevMessages => 
+        prevMessages.filter(msg => 
+          msg.status === 'sending' || msg.status === 'sent' ||
+          (msg.isOwn && msg.status && msg.status !== 'delivered')
+        )
+      );
     }
   }, [externalMessages]);
 
-  // Sample thought starters data
-  const defaultThoughtStarters: ThoughtStarter[] = [
-    {
-      id: 'thought-1',
-      title: 'Renewable Energy Future',
-      description: 'Discussion on the transition to renewable energy sources and their economic impact',
-      category: 'Environment',
-      tags: ['energy', 'economics', 'environment'],
-      lastActivity: '2 min ago',
-      messageCount: 12,
-      participants: 4,
-      isActive: true,
-      hasUnread: true,
-      unreadCount: 3,
-      lastMessage: {
-        text: 'The battery storage costs have really...',
-        author: 'Alex Chen',
-        timestamp: '2 min ago',
-        isRead: false
-      },
-      thumbnail: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=60&h=60&fit=crop',
-      taggedContent: {
-        sourceText: 'renewable energy sources have become 85% cheaper over the past decade',
-        sourceUrl: 'https://example.com/energy-report-2024',
-        highlightedText: '85% cheaper over the past decade'
-      },
-      thoughtBody: 'This represents a major inflection point in global energy markets. The cost reduction combined with improving storage technology creates a compelling economic case for transition.',
-      author: {
-        id: 'user-alex',
-        name: 'Alex Chen',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop',
-        role: 'Energy Analyst'
-      },
-      reactions: {
-        likes: 8,
-        hearts: 3,
-        stars: 2,
-        thumbsUp: 12
-      },
-      participantsList: [
-        { id: 'user-alex', name: 'Alex Chen', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-sarah', name: 'Sarah Kim', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b789?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-mike', name: 'Mike Johnson', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=32&h=32&fit=crop', isOnline: false, lastSeen: '1h ago' },
-        { id: 'user-emma', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=32&h=32&fit=crop', isOnline: true }
-      ],
-      readStatus: {
-        totalParticipants: 4,
-        readBy: 1,
-        unreadBy: 3
-      }
-    },
-    {
-      id: 'thought-2',
-      title: 'AI Ethics in Healthcare',
-      description: 'Exploring the ethical implications of AI in medical diagnosis and treatment',
-      category: 'Technology',
-      tags: ['ai', 'ethics', 'healthcare'],
-      lastActivity: '1 hour ago',
-      messageCount: 8,
-      participants: 6,
-      isPinned: true,
-      lastMessage: {
-        text: 'Privacy concerns are definitely valid',
-        author: 'Dr. Sarah Kim',
-        timestamp: '1 hour ago',
-        isRead: true
-      },
-      thumbnail: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=60&h=60&fit=crop',
-      taggedContent: {
-        sourceText: 'AI diagnostic systems can process medical images 40x faster than human radiologists',
-        sourceUrl: 'https://example.com/ai-healthcare-study',
-        highlightedText: '40x faster than human radiologists'
-      },
-      thoughtBody: 'While the efficiency gains are impressive, we need robust frameworks to ensure AI recommendations don\'t override critical human judgment in complex cases.',
-      author: {
-        id: 'user-sarah',
-        name: 'Dr. Sarah Kim',
-        avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b789?w=40&h=40&fit=crop',
-        role: 'Medical Ethicist'
-      },
-      reactions: {
-        likes: 15,
-        hearts: 7,
-        stars: 5,
-        thumbsUp: 18
-      },
-      participantsList: [
-        { id: 'user-sarah', name: 'Dr. Sarah Kim', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b789?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-david', name: 'Dr. David Lee', avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-lisa', name: 'Lisa Wong', avatar: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=32&h=32&fit=crop', isOnline: false, lastSeen: '30m ago' },
-        { id: 'user-james', name: 'James Brown', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-maria', name: 'Maria Garcia', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b789?w=32&h=32&fit=crop', isOnline: false, lastSeen: '2h ago' },
-        { id: 'user-tom', name: 'Tom Anderson', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop', isOnline: true }
-      ],
-      readStatus: {
-        totalParticipants: 6,
-        readBy: 4,
-        unreadBy: 2
-      }
-    },
-    {
-      id: 'thought-3',
-      title: 'Future of Work',
-      description: 'How remote work and automation are reshaping traditional employment',
-      category: 'Society',
-      tags: ['work', 'automation', 'remote'],
-      lastActivity: '3 hours ago',
-      messageCount: 15,
-      participants: 8,
-      lastMessage: {
-        text: 'Companies need to adapt quickly',
-        author: 'Marcus Johnson',
-        timestamp: '3 hours ago',
-        isRead: true
-      },
-      thumbnail: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=60&h=60&fit=crop',
-      taggedContent: {
-        sourceText: '40% of jobs could be automated within the next 15 years according to recent studies',
-        sourceUrl: 'https://example.com/automation-future-report',
-        highlightedText: '40% of jobs could be automated within the next 15 years'
-      },
-      thoughtBody: 'The key isn\'t just technological capability, but social and economic readiness. We need to rethink education, social safety nets, and what "work" means in an automated world.',
-      author: {
-        id: 'user-marcus',
-        name: 'Marcus Johnson',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=40&h=40&fit=crop',
-        role: 'Future of Work Researcher'
-      },
-      reactions: {
-        likes: 22,
-        hearts: 4,
-        stars: 8,
-        thumbsUp: 19
-      },
-      participantsList: [
-        { id: 'user-marcus', name: 'Marcus Johnson', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-anna', name: 'Anna Smith', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=32&h=32&fit=crop', isOnline: false, lastSeen: '1h ago' },
-        { id: 'user-kevin', name: 'Kevin Park', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-rachel', name: 'Rachel Davis', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b789?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-chris', name: 'Chris Wilson', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=32&h=32&fit=crop', isOnline: false, lastSeen: '45m ago' },
-        { id: 'user-jenny', name: 'Jenny Liu', avatar: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-alex2', name: 'Alex Thompson', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop', isOnline: true },
-        { id: 'user-sofia', name: 'Sofia Rodriguez', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=32&h=32&fit=crop', isOnline: false, lastSeen: '2h ago' }
-      ],
-      readStatus: {
-        totalParticipants: 8,
-        readBy: 5,
-        unreadBy: 3
-      }
-    }
-  ];
-
-  const displayThoughtStarters = thoughtStarters.length > 0 ? thoughtStarters : defaultThoughtStarters;
+  // Remove fallback to mock data - show empty state instead
+  const displayThoughtStarters = thoughtStarters.length > 0 ? thoughtStarters : [];
   const selectedThought = displayThoughtStarters.find(t => t.id === selectedThoughtId) || displayThoughtStarters[0];
 
   // Filter thought starters based on search
@@ -539,7 +454,10 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   useEffect(() => {
     // Scroll to bottom when messages are first loaded or when new messages arrive
     if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      });
     }
   }, [messages.length]); // Trigger on message count change
 
@@ -549,8 +467,10 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     if (messages.length > 0) {
       // Use timeout to ensure DOM has updated
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        });
+      }, 50); // Reduced timeout for faster response
     }
   }, [selectedThoughtId, messages.length]);
 
@@ -559,18 +479,71 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     // When loading finishes and we have messages, scroll to the most recent
     if (!isLoadingMessages && messages.length > 0) {
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 150); // Slightly longer delay to ensure messages are rendered
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        });
+      }, 100); // Reduced timeout for faster response
     }
   }, [isLoadingMessages, messages.length]);
 
+  // Cleanup effect for stuck "sending" messages
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      setMessages(prevMessages => {
+        const now = Date.now();
+        return prevMessages.map(msg => {
+          // If a message has been "sending" for more than 10 seconds, mark it as failed
+          if (msg.status === 'sending') {
+            const messageTime = new Date(msg.timestamp).getTime();
+            if (now - messageTime > 10000) { // 10 seconds
+              console.warn('Message stuck in sending state, marking as failed:', msg.id);
+              return {
+                ...msg,
+                status: 'sent',
+                text: `${msg.text} ⚠️ Send timeout`
+              };
+            }
+          }
+          return msg;
+        });
+      });
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
+
   // Handle sending messages
-  const handleSendMessage = () => {
+  const handleSendMessage = async (event?: React.MouseEvent | React.KeyboardEvent | React.FormEvent) => {
     if (!messageText.trim() || !selectedThought) return;
 
+    // Prevent any form submission or navigation
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    
+    // Prevent default browser behavior
+    if (typeof window !== 'undefined' && window.event) {
+      window.event.preventDefault?.();
+      window.event.stopPropagation?.();
+    }
+
+    console.log('📤 Sending message (seamless mode):', messageText);
+
+    // Trigger special effects
+    setShowSendEffect(true);
+    playSound('send');
+    
+    // Create particle effect at send button location
+    const sendButton = document.querySelector('button[title="Send message"]') as HTMLElement;
+    if (sendButton) {
+      const rect = sendButton.getBoundingClientRect();
+      createParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    }
+
+    const messageTextToSend = messageText; // Store the message text before clearing
+    const tempId = `temp-${Date.now()}`;
     const newMessage: Message = {
-      id: Date.now().toString(),
-      text: messageText,
+      id: tempId,
+      text: messageTextToSend,
       author: currentUser.name,
       timestamp: new Date().toISOString(),
       isOwn: true,
@@ -578,31 +551,104 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
       status: 'sending'
     };
 
+    // Add message to UI immediately for seamless experience
     setMessages(prev => [...prev, newMessage]);
-    onSendMessage(messageText, selectedThought.id);
+    
+    // Clear input immediately
     setMessageText('');
 
-    // Simulate message status updates
+    // Reset send effect
     setTimeout(() => {
-      setMessages(prev => prev.map(msg => 
-        msg.id === newMessage.id ? { ...msg, status: 'sent' } : msg
-      ));
-    }, 500);
+      setShowSendEffect(false);
+    }, 600);
 
-    setTimeout(() => {
+    try {
+      // Update status to sent immediately for better UX (optimistic update)
+      setTimeout(() => {
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId ? { ...msg, status: 'sent' } : msg
+        ));
+        playSound('success');
+        setSuccessPulse(tempId);
+        setTimeout(() => setSuccessPulse(null), 800);
+      }, 300);
+
+      // Call the parent handler in a non-blocking way
+      const sendPromise = new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            onSendMessage(messageTextToSend, selectedThought.id);
+            resolve();
+          } catch (error) {
+            console.error('Error in parent onSendMessage:', error);
+            reject(error);
+          }
+        }, 0);
+      });
+
+      // Mark as delivered after a reasonable delay (simulating real send)
+      setTimeout(() => {
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId ? { ...msg, status: 'delivered' } : msg
+        ));
+        
+        // Play celebration sound for longer messages (more than 20 characters)
+        if (messageTextToSend.length > 20) {
+          playSound('celebration');
+          // Extra sparkle effect for long messages
+          setTimeout(() => {
+            const messageElement = document.querySelector(`[data-message-id="${tempId}"]`) as HTMLElement;
+            if (messageElement) {
+              const rect = messageElement.getBoundingClientRect();
+              createParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            }
+          }, 100);
+        }
+      }, 600);
+
+      // Wait for send completion in background
+      await sendPromise;
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Update message status to failed
       setMessages(prev => prev.map(msg => 
-        msg.id === newMessage.id ? { ...msg, status: 'delivered' } : msg
+        msg.id === tempId ? { ...msg, status: 'sent', text: `${msg.text} ❌ Failed to send` } : msg
       ));
-    }, 1000);
+    }
   };
 
   // Handle AI questions
-  const handleAskAI = () => {
+  const handleAskAI = async (event?: React.MouseEvent | React.KeyboardEvent | React.FormEvent) => {
     if (!aiQuestion.trim() || !selectedThought) return;
 
+    // Prevent any form submission or navigation
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    
+    // Prevent default browser behavior
+    if (typeof window !== 'undefined' && window.event) {
+      window.event.preventDefault?.();
+      window.event.stopPropagation?.();
+    }
+
+    console.log('🤖 Asking AI (seamless mode):', aiQuestion);
+
+    // Trigger special effects for AI questions
+    setShowSendEffect(true);
+    playSound('send');
+    
+    // Create particle effect at send button location
+    const sendButton = document.querySelector('button[title="Send message"]') as HTMLElement;
+    if (sendButton) {
+      const rect = sendButton.getBoundingClientRect();
+      createParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    }
+
+    const questionToSend = aiQuestion; // Store before clearing
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: `🤖 ${aiQuestion}`,
+      text: `🤖 ${questionToSend}`,
       author: currentUser.name,
       timestamp: new Date().toISOString(),
       isOwn: true,
@@ -610,24 +656,54 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
       status: 'sent'
     };
 
+    // Add message to UI immediately
     setMessages(prev => [...prev, userMessage]);
-    onAskAI(aiQuestion, selectedThought.id);
+    
+    // Clear input and reset mode immediately
     setAiQuestion('');
     setInputMode('message');
 
-    // Simulate AI response
+    // Reset send effect
     setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        text: 'Let me analyze that question based on the article content...',
-        author: 'AI Assistant',
-        timestamp: new Date().toISOString(),
-        isOwn: false,
-        type: 'ai-response',
-        status: 'delivered'
-      };
-      setMessages(prev => [...prev, aiResponse]);
-    }, 1500);
+      setShowSendEffect(false);
+    }, 600);
+
+    try {
+      // Call the parent handler in a non-blocking way
+      setTimeout(() => {
+        try {
+          onAskAI(questionToSend, selectedThought.id);
+        } catch (error) {
+          console.error('Error in parent onAskAI:', error);
+        }
+      }, 0);
+
+      // Play success sound for AI question
+      setTimeout(() => {
+        playSound('success');
+        setSuccessPulse(userMessage.id);
+        setTimeout(() => setSuccessPulse(null), 800);
+      }, 300);
+
+      // Simulate AI response with special sound (keep this for demo purposes)
+      setTimeout(() => {
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          text: 'Let me analyze that question based on the article content...',
+          author: 'AI Assistant',
+          timestamp: new Date().toISOString(),
+          isOwn: false,
+          type: 'ai-response',
+          status: 'delivered'
+        };
+        setMessages(prev => [...prev, aiResponse]);
+        // Play a different sound for AI response
+        playSound('celebration');
+      }, 1500);
+
+    } catch (error) {
+      console.error('Error sending AI question:', error);
+    }
   };
 
   // Format timestamp
@@ -753,8 +829,61 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     return colors[Math.abs(hash) % colors.length];
   };
 
+  // Safety check - this should be handled by parent component, but just in case
+  if (displayThoughtStarters.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full bg-philonet-background">
+        <div className="text-center max-w-sm px-6">
+          <div className="w-16 h-16 mx-auto mb-4 bg-philonet-blue-500 bg-opacity-10 rounded-full flex items-center justify-center">
+            <MessageSquare className="w-8 h-8 text-philonet-blue-500" />
+          </div>
+          <h3 className="text-lg font-medium text-philonet-text-primary mb-2">
+            No Conversations Yet
+          </h3>
+          <p className="text-philonet-text-secondary leading-relaxed">
+            Be the first to start a conversation! Go to the article page and share your thoughts to begin engaging with other readers.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full bg-philonet-background">
+    <div className="flex h-full bg-philonet-background relative conversation-room">
+      {/* Particle Effect Overlay */}
+      <div className="fixed inset-0 pointer-events-none z-50">
+        <AnimatePresence>
+          {particles.map((particle) => (
+            <motion.div
+              key={particle.id}
+              className="absolute text-2xl select-none"
+              initial={{ 
+                x: particle.x - 50, 
+                y: particle.y - 50, 
+                scale: 0,
+                opacity: 1,
+                rotate: 0
+              }}
+              animate={{ 
+                x: particle.x + (Math.random() - 0.5) * 100,
+                y: particle.y - 100 - Math.random() * 50,
+                scale: [0, 1.2, 0.8, 0],
+                opacity: [1, 1, 0.8, 0],
+                rotate: 360
+              }}
+              exit={{ opacity: 0, scale: 0 }}
+              transition={{ 
+                duration: 1,
+                ease: "easeOut",
+                times: [0, 0.2, 0.8, 1]
+              }}
+            >
+              {particle.emoji}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* Left Sidebar - Thought Starters - Hidden on mobile when conversation is selected */}
       <div 
         className={cn(
@@ -803,7 +932,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                 "p-3 border-b border-philonet-border cursor-pointer transition-all duration-200",
                 "hover:bg-philonet-card hover:bg-opacity-50",
                 selectedThought?.id === thought.id 
-                  ? "bg-philonet-blue-500 bg-opacity-15 border-r-4 border-r-philonet-blue-500" 
+                  ? "bg-philonet-blue-500 bg-opacity-15 border-l-4 border-l-philonet-blue-500" 
                   : ""
               )}
               onClick={() => onThoughtSelect(thought.id)}
@@ -1014,18 +1143,39 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                   </div>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-philonet-text-secondary text-center">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No messages yet. Start the conversation!</p>
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center max-w-sm">
+                    <div className="w-12 h-12 mx-auto mb-4 bg-philonet-blue-500 bg-opacity-10 rounded-full flex items-center justify-center">
+                      <MessageSquare className="w-6 h-6 text-philonet-blue-500" />
+                    </div>
+                    <h3 className="text-base font-medium text-philonet-text-primary mb-2">
+                      Start the Conversation
+                    </h3>
+                    <p className="text-sm text-philonet-text-secondary mb-4 leading-relaxed">
+                      Be the first to join this conversation! Share your thoughts and engage with the community.
+                    </p>
                   </div>
                 </div>
               ) : (
                 messages.map((message) => (
                 <motion.div
                   key={message.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ 
+                    opacity: 0, 
+                    y: message.isOwn ? 30 : 20,
+                    scale: message.isOwn ? 0.9 : 1
+                  }}
+                  animate={{ 
+                    opacity: 1, 
+                    y: 0,
+                    scale: 1
+                  }}
+                  transition={{
+                    type: "spring",
+                    stiffness: message.isOwn ? 400 : 300,
+                    damping: message.isOwn ? 25 : 20,
+                    duration: message.isOwn ? 0.6 : 0.3
+                  }}
                   className={cn(
                     "flex gap-3 min-w-0 w-full",
                     message.isOwn ? "justify-end" : "justify-start"
@@ -1081,6 +1231,8 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     )}
 
                     <div
+                      data-message-id={message.id}
+                      data-status={message.status}
                       className={cn(
                         "px-4 py-3 group relative min-w-0 transition-all duration-200",
                         message.isOwn
@@ -1089,10 +1241,20 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                           ? "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-[#3772FF]/10"
                           : message.type === 'thought-starter'
                           ? "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-[#3772FF]/10"
-                          : "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-gray-600/20"
+                          : "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-gray-600/20",
+                        successPulse === message.id && "animate-pulse",
+                        message.isOwn && message.status === 'sending' && "scale-105"
                       )}
                       style={{
-                        backgroundColor: message.isOwn ? '#3772FF' : undefined
+                        backgroundColor: message.isOwn ? '#3772FF' : undefined,
+                        ...(message.isOwn && message.status === 'sending' ? {
+                          boxShadow: "0 0 20px rgba(55, 114, 255, 0.4), 0 4px 12px rgba(55, 114, 255, 0.2)",
+                          transform: "scale(1.02)"
+                        } : {}),
+                        ...(successPulse === message.id ? {
+                          boxShadow: "0 0 30px rgba(34, 197, 94, 0.6), 0 4px 16px rgba(34, 197, 94, 0.3)",
+                          borderColor: "rgba(34, 197, 94, 0.5)"
+                        } : {})
                       }}
                     >
                       <div className="text-[16px] leading-[1.6] break-words overflow-wrap-anywhere font-normal">
@@ -1337,7 +1499,12 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
               {/* Mode Toggle */}
               <div className="flex items-center gap-2 mb-2">
                 <button
-                  onClick={() => setInputMode('message')}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setInputMode('message');
+                  }}
                   className={cn(
                     "px-3 py-1 rounded-full text-sm transition-colors",
                     inputMode === 'message'
@@ -1349,7 +1516,12 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                   Message
                 </button>
                 <button
-                  onClick={() => setInputMode('ai')}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setInputMode('ai');
+                  }}
                   className={cn(
                     "px-3 py-1 rounded-full text-sm transition-colors",
                     inputMode === 'ai'
@@ -1401,13 +1573,21 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                         onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
-                            handleSendMessage();
+                            e.stopPropagation();
+                            if (messageText.trim()) {
+                              handleSendMessage();
+                            }
                           }
                         }}
                       />
                       <Button
+                        type="button"
                         className="h-8 w-8 p-0 rounded-full flex-shrink-0"
-                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setShowEmojiPicker(!showEmojiPicker);
+                        }}
                         title="Add emoji"
                       >
                         <Smile className="w-4 h-4" />
@@ -1425,7 +1605,10 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                         onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
-                            handleAskAI();
+                            e.stopPropagation();
+                            if (aiQuestion.trim()) {
+                              handleAskAI();
+                            }
                           }
                         }}
                       />
@@ -1434,11 +1617,50 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                 </div>
 
                 <Button
-                  onClick={inputMode === 'message' ? handleSendMessage : handleAskAI}
+                  type="button"
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (inputMode === 'message' && messageText.trim()) {
+                      handleSendMessage();
+                    } else if (inputMode === 'ai' && aiQuestion.trim()) {
+                      handleAskAI();
+                    }
+                  }}
                   disabled={inputMode === 'message' ? !messageText.trim() : !aiQuestion.trim()}
-                  className="h-10 w-10 rounded-full bg-philonet-blue-500 hover:bg-philonet-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  title="Send message"
+                  className={cn(
+                    "h-10 w-10 rounded-full bg-philonet-blue-500 hover:bg-philonet-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 relative overflow-hidden transition-all duration-300",
+                    showSendEffect && "scale-110 shadow-lg shadow-philonet-blue-500/50"
+                  )}
                 >
-                  <Send className="w-4 h-4 text-white" />
+                  {/* Ripple effect */}
+                  <motion.div
+                    key={showSendEffect ? 'active' : 'inactive'}
+                    className="absolute inset-0 bg-white rounded-full"
+                    initial={{ scale: 0, opacity: 0.8 }}
+                    animate={showSendEffect ? { scale: 2, opacity: 0 } : { scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                  />
+                  {/* Pulse effect */}
+                  <motion.div
+                    className="absolute inset-0 bg-philonet-blue-300 rounded-full"
+                    animate={showSendEffect ? {
+                      scale: [1, 1.5, 1],
+                      opacity: [0.5, 0, 0.5]
+                    } : {}}
+                    transition={{ duration: 0.8, repeat: showSendEffect ? 2 : 0 }}
+                  />
+                  <motion.div
+                    className="relative z-10"
+                    animate={showSendEffect ? {
+                      rotate: [0, 360],
+                      scale: [1, 1.2, 1]
+                    } : {}}
+                    transition={{ duration: 0.6 }}
+                  >
+                    <Send className="w-4 h-4 text-white" />
+                  </motion.div>
                 </Button>
               </div>
 
@@ -1716,6 +1938,76 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
         .group div[class*="text-[16px]"] {
           font-weight: 400;
           letter-spacing: 0.01em;
+        }
+
+        /* Special send effect animations */
+        @keyframes messageSuccess {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(34, 197, 94, 0.8); }
+          100% { transform: scale(1); }
+        }
+
+        @keyframes sendButtonPulse {
+          0% { transform: scale(1); box-shadow: 0 0 0 rgba(55, 114, 255, 0); }
+          50% { transform: scale(1.1); box-shadow: 0 0 20px rgba(55, 114, 255, 0.6); }
+          100% { transform: scale(1); box-shadow: 0 0 0 rgba(55, 114, 255, 0); }
+        }
+
+        @keyframes particleFloat {
+          0% { transform: translateY(0) scale(0) rotate(0deg); opacity: 1; }
+          25% { transform: translateY(-20px) scale(1.2) rotate(90deg); opacity: 1; }
+          75% { transform: translateY(-60px) scale(0.8) rotate(270deg); opacity: 0.8; }
+          100% { transform: translateY(-100px) scale(0) rotate(360deg); opacity: 0; }
+        }
+
+        /* Enhanced hover effects with sound-like visual feedback */
+        .send-button-active {
+          animation: sendButtonPulse 0.6s ease-out;
+        }
+
+        .message-success {
+          animation: messageSuccess 0.8s ease-out;
+        }
+
+        /* Ripple effect for successful actions */
+        @keyframes ripple {
+          0% { transform: scale(0); opacity: 1; }
+          100% { transform: scale(4); opacity: 0; }
+        }
+
+        .ripple-effect::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(34, 197, 94, 0.6);
+          transform: translate(-50%, -50%) scale(0);
+          animation: ripple 0.6s linear;
+        }
+
+        /* Subtle screen shake for haptic feedback simulation */
+        @keyframes screenShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-1px); }
+          75% { transform: translateX(1px); }
+        }
+
+        .shake-screen {
+          animation: screenShake 0.3s ease-in-out;
+        }
+
+        /* Glowing effect for successful messages */
+        @keyframes messageGlow {
+          0% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.3); }
+          50% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.6), 0 0 30px rgba(34, 197, 94, 0.4); }
+          100% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.3); }
+        }
+
+        .glow-success {
+          animation: messageGlow 1s ease-in-out;
         }
       `}</style>
     </div>

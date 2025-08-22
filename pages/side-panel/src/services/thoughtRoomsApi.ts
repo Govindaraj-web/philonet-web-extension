@@ -112,6 +112,52 @@ interface SubCommentsResponse {
   comments: SubComment[];
 }
 
+interface AddCommentParams {
+  articleId: string | number;
+  content: string;
+  title?: string;
+  parentCommentId?: string | number;
+  replyMessageId?: string | number;
+  minimessage?: string;
+  quote?: string;
+  emotion?: string;
+}
+
+interface AddCommentResponse {
+  comment: {
+    id: number;
+    title: string | null;
+    content: string;
+    quote: string;
+    minimessage: string;
+    emotion: string | null;
+    created_at: string;
+    parent_comment_id: number | null;
+    reply_message_id: number | null;
+    parent_content: string;
+    parent_user_id: string;
+    parent_user_name: string;
+    senderId: string;
+    senderName: string;
+    profileImage: string;
+    reactionCount: number;
+    reactions: any[];
+    replyCount: number;
+    userReacted: boolean;
+    userReactionType: string | null;
+    status: string;
+    reply_message: string | null;
+    mentions: any[];
+    comment_id: number;
+    user_id: string;
+    user_picture: string;
+    user_name: string;
+    original_content: string;
+    mentioned_users: any[];
+  };
+  room_id: number;
+}
+
 export class ThoughtRoomsAPI {
   private baseUrl = 'http://localhost:3000/v1';
 
@@ -205,8 +251,60 @@ export class ThoughtRoomsAPI {
     }
   }
 
+  async addComment(params: AddCommentParams): Promise<AddCommentResponse> {
+    const { articleId, content, title, parentCommentId, replyMessageId, minimessage = '', quote, emotion } = params;
+    
+    // Get authorization token from storage
+    const token = await philonetAuthStorage.getToken();
+    if (!token) {
+      console.error('🚫 No authorization token found in storage');
+      throw new Error('No authorization token found. Please log in.');
+    }
+    
+    console.log('💬 Adding comment to article:', articleId, 'parent:', parentCommentId);
+    
+    const requestBody: any = {
+      articleId,
+      content,
+      minimessage
+    };
+
+    // Add optional parameters only if they're provided
+    if (title) requestBody.title = title;
+    if (parentCommentId) requestBody.parentCommentId = parentCommentId;
+    if (replyMessageId) requestBody.replyMessageId = replyMessageId;
+    if (quote) requestBody.quote = quote;
+    if (emotion) requestBody.emotion = emotion;
+
+    try {
+      const response = await fetch(`${this.baseUrl}/room/addcommentnew`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - token may be expired');
+          throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+        }
+        throw new Error(`Add comment API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data: AddCommentResponse = await response.json();
+      console.log('✅ Comment added successfully, comment ID:', data.comment?.comment_id);
+      return data;
+    } catch (error) {
+      console.error('❌ Add comment API request failed:', error);
+      throw error;
+    }
+  }
+
   // Transform API comment to our thought starter format
-  transformCommentToThoughtStarter(comment: Comment) {
+  transformCommentToThoughtStarter(comment: Comment, currentUserId?: string) {
     return {
       id: comment.comment_id.toString(),
       title: comment.title || comment.content.substring(0, 100) + (comment.content.length > 100 ? '...' : ''),
@@ -219,6 +317,7 @@ export class ThoughtRoomsAPI {
       isActive: true,
       hasUnread: false,
       unreadCount: 0,
+      isOwn: currentUserId ? comment.user_id === currentUserId : false, // Detect if thought starter is from current user
       taggedContent: comment.quote ? {
         sourceText: comment.quote,
         sourceUrl: '',
@@ -253,7 +352,7 @@ export class ThoughtRoomsAPI {
   }
 
   // Convenience method to fetch a conversation thread (main comment + sub-comments)
-  async fetchConversationThread(articleId: number, parentCommentId: number, limit: number = 10) {
+  async fetchConversationThread(articleId: number, parentCommentId: number, limit: number = 10, currentUserId?: string) {
     try {
       console.log('🧵 Fetching conversation thread for comment:', parentCommentId);
       
@@ -264,9 +363,9 @@ export class ThoughtRoomsAPI {
         limit
       });
 
-      // Transform sub-comments to message format
+      // Transform sub-comments to message format with current user detection
       const messages = subCommentsResponse.comments.map(subComment => 
-        this.transformSubCommentToMessage(subComment)
+        this.transformSubCommentToMessage(subComment, currentUserId)
       );
 
       console.log('✅ Fetched conversation thread with', messages.length, 'messages');
@@ -289,7 +388,7 @@ export class ThoughtRoomsAPI {
   }
 
   // New method: Fetch messages for a specific conversation (separate call)
-  async fetchConversationMessages(articleId: number, parentCommentId: number, limit: number = 10) {
+  async fetchConversationMessages(articleId: number, parentCommentId: number, limit: number = 10, currentUserId?: string) {
     try {
       console.log('💬 Fetching messages for conversation:', parentCommentId);
       
@@ -300,7 +399,7 @@ export class ThoughtRoomsAPI {
       });
 
       const messages = subCommentsResponse.comments.map(subComment => 
-        this.transformSubCommentToMessage(subComment)
+        this.transformSubCommentToMessage(subComment, currentUserId)
       );
 
       console.log('✅ Fetched', messages.length, 'messages for conversation');
@@ -317,13 +416,13 @@ export class ThoughtRoomsAPI {
   }
 
   // Transform API sub-comment to conversation message format
-  transformSubCommentToMessage(subComment: SubComment) {
+  transformSubCommentToMessage(subComment: SubComment, currentUserId?: string) {
     return {
       id: subComment.comment_id.toString(),
       text: subComment.content,
       author: subComment.user_name, // ConversationRoom expects string, not object
       timestamp: subComment.created_at,
-      isOwn: false, // Add isOwn property that ConversationRoom expects
+      isOwn: currentUserId ? subComment.user_id === currentUserId : false, // Detect if message is from current user
       type: 'text' as const, // Add type property that ConversationRoom expects
       avatar: subComment.user_picture,
       isRead: true,
@@ -396,8 +495,8 @@ export class ThoughtRoomsAPI {
 }
 
 // Export convenience functions for external use
-export const fetchConversationForComment = async (articleId: number, parentCommentId: number, limit: number = 10) => {
-  return thoughtRoomsAPI.fetchConversationThread(articleId, parentCommentId, limit);
+export const fetchConversationForComment = async (articleId: number, parentCommentId: number, limit: number = 10, currentUserId?: string) => {
+  return thoughtRoomsAPI.fetchConversationThread(articleId, parentCommentId, limit, currentUserId);
 };
 
 // New: Export non-blocking API functions
@@ -405,8 +504,16 @@ export const fetchCommentsListingOnly = async (params: FetchCommentsParams) => {
   return thoughtRoomsAPI.fetchCommentsListingOnly(params);
 };
 
-export const fetchConversationMessages = async (articleId: number, parentCommentId: number, limit: number = 10) => {
-  return thoughtRoomsAPI.fetchConversationMessages(articleId, parentCommentId, limit);
+export const fetchConversationMessages = async (articleId: number, parentCommentId: number, limit: number = 10, currentUserId?: string) => {
+  return thoughtRoomsAPI.fetchConversationMessages(articleId, parentCommentId, limit, currentUserId);
+};
+
+// Export add comment function
+export const addComment = async (params: AddCommentParams) => {
+  return thoughtRoomsAPI.addComment(params);
 };
 
 export const thoughtRoomsAPI = new ThoughtRoomsAPI();
+
+// Export types for external use
+export type { AddCommentParams, AddCommentResponse };

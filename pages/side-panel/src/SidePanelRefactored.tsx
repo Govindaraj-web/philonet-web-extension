@@ -3556,8 +3556,8 @@ ${article.description}
                     {/* Tag Extraction */}
                     {generatedTags.length > 0 && (
                       <div className="flex items-center gap-3 p-3 bg-philonet-panel/50 rounded-lg border border-philonet-border/50">
-                        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-                        <span className="text-sm text-yellow-400 font-medium">Extracting tags and categories...</span>
+                        <div className="w-2 h-2 bg-[#CBA339] rounded-full animate-pulse"></div>
+                        <span className="text-sm font-medium" style={{ color: '#CBA339' }}>Extracting tags and categories...</span>
                       </div>
                     )}
                   </div>
@@ -3732,7 +3732,7 @@ ${article.description}
                     transition={{ duration: 0.2, ease: "easeOut" }}
                     className={`relative bg-philonet-card/95 backdrop-blur-md border shadow-2xl text-white px-4 py-3 rounded-xl text-sm pr-10 ${
                       articleError?.includes('No article found') 
-                        ? 'border-yellow-500/30'
+                        ? 'border-[#CBA339]/30'
                         : articleError?.includes('Local PDF Access Info') 
                         ? 'border-blue-500/30'
                         : 'border-red-500/30'
@@ -3741,14 +3741,14 @@ ${article.description}
                     <div className="flex items-center gap-3 mb-2">
                       <div className={`w-3 h-3 rounded-full ${
                         articleError?.includes('No article found') 
-                          ? 'bg-yellow-400' 
+                          ? 'bg-[#CBA339]' 
                           : articleError?.includes('Local PDF Access Info')
                           ? 'bg-blue-400'
                           : 'bg-red-400'
                       }`}></div>
                       <span className={`font-semibold ${
                         articleError?.includes('No article found') 
-                          ? 'text-yellow-400' 
+                          ? 'text-[#CBA339]' 
                           : articleError?.includes('Local PDF Access Info')
                           ? 'text-blue-400'
                           : 'text-red-400'
@@ -3768,7 +3768,7 @@ ${article.description}
                     {articleError?.includes('No article found') && !shouldShowPdfUpload() && (
                       <button
                         onClick={handleGenerateContent}
-                        className="text-yellow-400 hover:text-yellow-300 underline text-xs font-medium transition-colors"
+                        className="text-[#CBA339] hover:text-[#CBA339]/80 underline text-xs font-medium transition-colors"
                       >
                         Generate Content →
                       </button>
@@ -3831,7 +3831,7 @@ ${article.description}
                             strokeDasharray={`${2 * Math.PI * 14}`}
                             strokeDashoffset={`${2 * Math.PI * 14 * (1 - timeoutProgress / 100)}`}
                             className={`transition-all duration-100 ease-linear ${
-                              articleError?.includes('No article found') ? 'text-yellow-400' : 'text-red-400'
+                              articleError?.includes('No article found') ? 'text-[#CBA339]' : 'text-red-400'
                             }`}
                             strokeLinecap="round"
                           />
@@ -4240,7 +4240,16 @@ ${article.description}
 
                       <button
                         onClick={debugAuthStatus}
-                        className="px-3 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors text-sm font-medium"
+                        className="px-3 py-2.5 text-white rounded-lg transition-colors text-sm font-medium"
+                        style={{
+                          backgroundColor: '#CBA339'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(203, 163, 57, 0.8)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#CBA339';
+                        }}
                       >
                         🔍
                       </button>
@@ -4311,7 +4320,7 @@ ${article.description}
                         animate={{ opacity: 1, y: 0 }}
                         className={`p-3 rounded-lg border text-sm ${
                           articleError.includes('No article found') 
-                            ? 'bg-yellow-900/20 border-yellow-700/50 text-yellow-400'
+                            ? 'bg-[#CBA339]/20 border-[#CBA339]/50 text-[#CBA339]'
                             : 'bg-red-900/20 border-red-700/50 text-red-400'
                         }`}
                       >

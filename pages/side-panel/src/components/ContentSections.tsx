@@ -20,8 +20,12 @@ const ContentSectionsComponent: React.FC<ContentSectionsProps> = ({
       <div 
         ref={bodyContentRef}
         data-article-body="true"
-        className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-yellow-400 prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl
-        selection:bg-yellow-400/20 selection:text-yellow-100 cursor-text"
+        className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-[#CBA339] prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl
+        cursor-text"
+        style={{
+          '--tw-prose-selection-bg': 'rgba(203, 163, 57, 0.2)',
+          '--tw-prose-selection-color': '#CBA339'
+        } as React.CSSProperties}
       >
         <div className="overflow-x-auto">
         
@@ -59,16 +63,16 @@ const ContentSectionsComponent: React.FC<ContentSectionsProps> = ({
           <div className="mt-12 pt-6 border-t border-philonet-border">
             <div className="flex items-baseline justify-between mb-4">
               <div className="flex items-baseline gap-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-amber-400 rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
+                <div className="w-8 h-8 bg-gradient-to-r from-[#CBA339] to-amber-400 rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
                   <MessageCircle className="w-4 h-4 text-black" />
                 </div>
-                <h4 className="text-lg md:text-xl font-semibold tracking-philonet-wider text-yellow-400 bg-gradient-to-r from-yellow-400 to-amber-300 bg-clip-text text-transparent">Recent Thoughts</h4>
+                <h4 className="text-lg md:text-xl font-semibold tracking-philonet-wider bg-gradient-to-r from-[#CBA339] to-amber-300 bg-clip-text text-transparent">Recent Thoughts</h4>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-philonet-text-muted tracking-philonet-wide">
                   {comments.length} {comments.length === 1 ? 'thought' : 'thoughts'}
                 </span>
-                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-[#CBA339] rounded-full animate-pulse"></div>
               </div>
             </div>
             <div className="space-y-4">

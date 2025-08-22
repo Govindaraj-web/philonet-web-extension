@@ -36,7 +36,7 @@ const Button = ({ className = "", children, ...props }: any) => (
     className={cn(
       "inline-flex items-center justify-center select-none outline-none transition-colors",
       "rounded-2xl border border-gray-600 bg-transparent text-white font-light tracking-wide",
-      "hover:text-yellow-300 hover:border-yellow-300 focus-visible:ring-0",
+      "hover:text-[#CBA339] hover:border-[#CBA339] focus-visible:ring-0",
       className
     )}
   >
@@ -195,7 +195,7 @@ const SidePanelOverlay: React.FC<SidePanelOverlayProps> = ({ onClose }) => {
       const re = new RegExp(safe, "i");
       const marked = html.replace(
         re,
-        (m: string) => `<mark data-philo-mark="1" class="bg-yellow-300/15 text-yellow-200 rounded px-0.5">${m}</mark>`
+        (m: string) => `<mark data-philo-mark="1" class="rounded px-0.5" style="background-color: rgba(203, 163, 57, 0.15); color: #CBA339;">${m}</mark>`
       );
       return { __html: marked };
     } catch {
@@ -521,7 +521,7 @@ I can help you analyze the content, structure, and context of this webpage. What
 
             {/* Content sections */}
             <section className="px-5 pb-6 mt-6 space-y-8">
-              <div className="prose prose-invert max-w-[80ch] prose-hr:hidden prose-headings:font-light prose-headings:tracking-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-yellow-400 prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-tight prose-p:text-gray-300 prose-strong:text-white prose-a:text-gray-400 hover:prose-a:text-blue-500 prose-li:marker:text-gray-600 prose-blockquote:border-l-gray-600 prose-table:rounded-lg prose-table:overflow-hidden prose-table:border prose-table:border-gray-600 prose-th:bg-gray-800 prose-td:bg-gray-900">
+              <div className="prose prose-invert max-w-[80ch] prose-hr:hidden prose-headings:font-light prose-headings:tracking-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-[#CBA339] prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-tight prose-p:text-gray-300 prose-strong:text-white prose-a:text-gray-400 hover:prose-a:text-blue-500 prose-li:marker:text-gray-600 prose-blockquote:border-l-gray-600 prose-table:rounded-lg prose-table:overflow-hidden prose-table:border prose-table:border-gray-600 prose-th:bg-gray-800 prose-td:bg-gray-900">
                 
                 {/* Introduction */}
                 {sections.introduction && (
@@ -601,9 +601,10 @@ I can help you analyze the content, structure, and context of this webpage. What
               className={cn(
                 'h-8 px-3 rounded-full border text-xs tracking-wider',
                 composerTab === 'thoughts' 
-                  ? 'text-yellow-300 border-yellow-300' 
+                  ? 'border-[#CBA339]' 
                   : 'text-gray-400 border-gray-600'
               )}
+              style={composerTab === 'thoughts' ? { color: '#CBA339' } : {}}
             >
               <MessageCircle className="inline h-3.5 w-3.5 mr-2" /> Thoughts
             </button>
@@ -612,9 +613,10 @@ I can help you analyze the content, structure, and context of this webpage. What
               className={cn(
                 'h-8 px-3 rounded-full border text-xs tracking-wider',
                 composerTab === 'ai' 
-                  ? 'text-yellow-300 border-yellow-300' 
+                  ? 'border-[#CBA339]' 
                   : 'text-gray-400 border-gray-600'
               )}
+              style={composerTab === 'ai' ? { color: '#CBA339' } : {}}
             >
               <Bot className="inline h-3.5 w-3.5 mr-2" /> Ask AI
             </button>
@@ -623,10 +625,10 @@ I can help you analyze the content, structure, and context of this webpage. What
           {/* Selection tag */}
           {hiLiteText && (
             <div className="mb-2 flex items-center gap-2 text-[11px]">
-              <span className="px-2 py-1 rounded-full border border-yellow-400/50 text-yellow-300 bg-yellow-400/8 truncate max-w-[70%]" title={hiLiteText}>
+              <span className="px-2 py-1 rounded-full border border-[#CBA339]/50 bg-[#CBA339]/8 truncate max-w-[70%]" style={{ color: '#CBA339' }} title={hiLiteText}>
                 Tagged: "{hiLiteText}"
               </span>
-              <button onClick={() => setHiLiteText("")} className="text-gray-400 hover:text-yellow-300">
+              <button onClick={() => setHiLiteText("")} className="text-gray-400 hover:text-[#CBA339]">
                 Clear
               </button>
             </div>
@@ -644,7 +646,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="rounded-full border border-gray-600 bg-gray-800 focus-within:border-yellow-300 flex items-center px-4 py-2">
+                  <div className="rounded-full border border-gray-600 bg-gray-800 focus-within:border-[#CBA339] flex items-center px-4 py-2">
                     <Textarea
                       ref={commentRef}
                       placeholder="Add a thought about this page…"
@@ -666,7 +668,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                     <button
                       type="button"
                       title="Insert emoji"
-                      className="ml-2 h-8 w-8 rounded-full grid place-items-center text-gray-500 hover:text-yellow-300"
+                      className="ml-2 h-8 w-8 rounded-full grid place-items-center text-gray-500 hover:text-[#CBA339]"
                       onClick={() => {
                         const ta = commentRef.current;
                         const start = (ta?.selectionStart ?? comment.length);
@@ -728,7 +730,7 @@ I can help you analyze the content, structure, and context of this webpage. What
           aria-label={expanded ? "Compact view" : "Expand to full width"}
           aria-pressed={expanded}
           onClick={() => setExpanded((v) => !v)}
-          className="group absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 z-50 h-12 w-12 rounded-full bg-gray-900 border border-gray-600 transition-colors shadow-2xl backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-yellow-300 hover:border-yellow-300 focus:outline-none"
+          className="group absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 z-50 h-12 w-12 rounded-full bg-gray-900 border border-gray-600 transition-colors shadow-2xl backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-[#CBA339] hover:border-[#CBA339] focus:outline-none"
           title={expanded ? "Compact view" : "Expand to full width"}
         >
           {expanded ? (

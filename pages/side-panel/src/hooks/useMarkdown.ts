@@ -18,7 +18,7 @@ export function useMarkdown() {
       const re = new RegExp(safe, "i");
       const marked = html.replace(
         re,
-        (m) => `<mark data-philo-mark="1" class="bg-yellow-400/20 text-yellow-100 rounded px-0.5">${m}</mark>`
+        (m) => `<mark data-philo-mark="1" class="rounded px-0.5" style="background-color: rgba(203, 163, 57, 0.2); color: #CBA339;">${m}</mark>`
       );
       return { __html: marked };
     } catch {
