@@ -11,6 +11,7 @@ interface MetaHeaderProps {
   onToggleSpeech: () => void;
   onOpenSource: () => void;
   sourceUrl?: string;
+  joinedRoomName?: string | null;
 }
 
 const MetaHeader: React.FC<MetaHeaderProps> = ({
@@ -19,7 +20,8 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
   speechSupported,
   onToggleSpeech,
   onOpenSource,
-  sourceUrl
+  sourceUrl,
+  joinedRoomName
 }) => {
   return (
     <section className="px-6 md:px-8 lg:px-10 xl:px-12">
@@ -47,6 +49,19 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
                 console.log('📸 Image loaded successfully:', meta.image);
               }}
             />
+            
+            {/* Room name badge overlay */}
+            {joinedRoomName && (
+              <div className="absolute top-4 left-4 z-10">
+                <div className="flex items-center gap-2 px-4 py-2 bg-philonet-blue-500/90 backdrop-blur-md border border-philonet-blue-400/30 rounded-full shadow-lg">
+                  <div className="h-2 w-2 bg-philonet-blue-200 rounded-full animate-pulse"></div>
+                  <span className="text-white text-sm font-medium truncate max-w-[200px]">
+                    {joinedRoomName}
+                  </span>
+                </div>
+              </div>
+            )}
+            
             {/* Sophisticated overlay gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-philonet-black/15 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             {/* Subtle inner shadow for depth */}
@@ -58,6 +73,18 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
       {/* Premium title section with perfect Medium-style typography */}
       {meta.title && (
         <div className="mb-12 md:mb-16">
+          {/* Room name badge when no image */}
+          {!meta.image && joinedRoomName && (
+            <div className="flex justify-start mb-6">
+              <div className="flex items-center gap-2 px-4 py-2 bg-philonet-blue-500/90 backdrop-blur-md border border-philonet-blue-400/30 rounded-full shadow-lg">
+                <div className="h-2 w-2 bg-philonet-blue-200 rounded-full animate-pulse"></div>
+                <span className="text-white text-sm font-medium truncate max-w-[250px]">
+                  {joinedRoomName}
+                </span>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-start gap-4 md:gap-6">
             <div className="flex-1">
               {/* Perfect Medium-style title */}

@@ -136,7 +136,8 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs text-green-400 hidden lg:inline"></span>
           </div>
-        )}      </div>
+        )}
+      </div>
       
       {/* Right side - Action buttons */}
       <div className="flex items-center gap-2 flex-shrink-0">

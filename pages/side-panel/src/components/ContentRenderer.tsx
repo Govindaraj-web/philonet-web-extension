@@ -17,6 +17,7 @@ interface ContentRendererProps {
   bodyContentRef: React.RefObject<HTMLDivElement>;
   footerH: number;
   sourceUrl?: string;
+  joinedRoomName?: string | null;
 }
 
 const ContentRenderer: React.FC<ContentRendererProps> = ({
@@ -31,7 +32,8 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
   contentRef,
   bodyContentRef,
   footerH,
-  sourceUrl
+  sourceUrl,
+  joinedRoomName
 }) => {
   return (
     <div className="absolute left-0 right-0" style={{ top: 68, bottom: footerH }}>
@@ -43,6 +45,7 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
           onToggleSpeech={onToggleSpeech}
           onOpenSource={onOpenSource}
           sourceUrl={sourceUrl}
+          joinedRoomName={joinedRoomName}
         />
         
         <ContentSections

@@ -21,7 +21,7 @@ const ContentSectionsComponent: React.FC<ContentSectionsProps> = ({
         ref={bodyContentRef}
         data-article-body="true"
         className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-yellow-400 prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl
-        selection:bg-philonet-blue-500/25 selection:text-philonet-blue-100 cursor-text"
+        selection:bg-yellow-400/20 selection:text-yellow-100 cursor-text"
       >
         <div className="overflow-x-auto">
         

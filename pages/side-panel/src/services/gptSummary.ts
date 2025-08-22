@@ -1080,6 +1080,51 @@ export async function addToRoom(
 }
 
 /**
+ * Joins a room as a guest for a specific article.
+ * @param articleId The ID of the article to join the room for.
+ * @param apiEndpoint Optional override for the API endpoint.
+ * @returns The API response containing success status, message, and article details.
+ */
+export async function joinRoomAsGuest(
+  articleId: number | string,
+  apiEndpoint: string = `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1/room/article/join-as-guest`
+): Promise<{
+  success: boolean;
+  message: string;
+  article: {
+    article_id: number;
+    title: string;
+    room_id: number;
+    room_name: string;
+  };
+}> {
+  // Fetch access token from philonetAuthStorage
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    // Token validation is handled in getAccessToken()
+  }
+
+  const payload = {
+    articleId: Number(articleId)
+  };
+
+  const response = await fetch(apiEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Fetches detailed information about an article from the backend API.
  * @param articleId The ID of the article to fetch details for.
  * @param apiEndpoint Optional override for the API endpoint.
@@ -1248,6 +1293,7 @@ export async function storeSmartHighlight(
     url: params.url,
     is_private: params.is_private,
     invited_users: params.invited_users,
+    conversation_starter: true
   };
 
   // Add article_id to payload if provided

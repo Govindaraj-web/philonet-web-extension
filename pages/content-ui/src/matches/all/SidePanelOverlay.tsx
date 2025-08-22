@@ -36,7 +36,7 @@ const Button = ({ className = "", children, ...props }: any) => (
     className={cn(
       "inline-flex items-center justify-center select-none outline-none transition-colors",
       "rounded-2xl border border-gray-600 bg-transparent text-white font-light tracking-wide",
-      "hover:text-blue-500 hover:border-blue-500 focus-visible:ring-0",
+      "hover:text-yellow-300 hover:border-yellow-300 focus-visible:ring-0",
       className
     )}
   >
@@ -195,7 +195,7 @@ const SidePanelOverlay: React.FC<SidePanelOverlayProps> = ({ onClose }) => {
       const re = new RegExp(safe, "i");
       const marked = html.replace(
         re,
-        (m: string) => `<mark data-philo-mark="1" class="bg-blue-500/20 text-inherit rounded px-0.5">${m}</mark>`
+        (m: string) => `<mark data-philo-mark="1" class="bg-yellow-300/15 text-yellow-200 rounded px-0.5">${m}</mark>`
       );
       return { __html: marked };
     } catch {
@@ -367,8 +367,20 @@ I can help you analyze the content, structure, and context of this webpage. What
       
       if (!isFromOverlay(anchorNode) && !isFromOverlay(focusNode)) {
         if (text.length >= 3 && text.length <= 160) {
+          // Immediate state update for instant feedback
           setHiLiteText(text);
           setDockFilterText(text);
+          
+          // Force immediate DOM update by using flushSync if available
+          try {
+            const { flushSync } = require('react-dom');
+            flushSync(() => {
+              setHiLiteText(text);
+              setDockFilterText(text);
+            });
+          } catch {
+            // flushSync not available, continue with normal update
+          }
         }
       }
     }
@@ -589,7 +601,7 @@ I can help you analyze the content, structure, and context of this webpage. What
               className={cn(
                 'h-8 px-3 rounded-full border text-xs tracking-wider',
                 composerTab === 'thoughts' 
-                  ? 'text-blue-500 border-blue-500' 
+                  ? 'text-yellow-300 border-yellow-300' 
                   : 'text-gray-400 border-gray-600'
               )}
             >
@@ -600,7 +612,7 @@ I can help you analyze the content, structure, and context of this webpage. What
               className={cn(
                 'h-8 px-3 rounded-full border text-xs tracking-wider',
                 composerTab === 'ai' 
-                  ? 'text-blue-500 border-blue-500' 
+                  ? 'text-yellow-300 border-yellow-300' 
                   : 'text-gray-400 border-gray-600'
               )}
             >
@@ -611,10 +623,10 @@ I can help you analyze the content, structure, and context of this webpage. What
           {/* Selection tag */}
           {hiLiteText && (
             <div className="mb-2 flex items-center gap-2 text-[11px]">
-              <span className="px-2 py-1 rounded-full border border-blue-500/60 text-blue-400 bg-blue-500/10 truncate max-w-[70%]" title={hiLiteText}>
+              <span className="px-2 py-1 rounded-full border border-yellow-400/50 text-yellow-300 bg-yellow-400/8 truncate max-w-[70%]" title={hiLiteText}>
                 Tagged: "{hiLiteText}"
               </span>
-              <button onClick={() => setHiLiteText("")} className="text-gray-400 hover:text-blue-500">
+              <button onClick={() => setHiLiteText("")} className="text-gray-400 hover:text-yellow-300">
                 Clear
               </button>
             </div>
@@ -632,7 +644,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="rounded-full border border-gray-600 bg-gray-800 focus-within:border-blue-500 flex items-center px-4 py-2">
+                  <div className="rounded-full border border-gray-600 bg-gray-800 focus-within:border-yellow-300 flex items-center px-4 py-2">
                     <Textarea
                       ref={commentRef}
                       placeholder="Add a thought about this page…"
@@ -654,7 +666,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                     <button
                       type="button"
                       title="Insert emoji"
-                      className="ml-2 h-8 w-8 rounded-full grid place-items-center text-gray-500 hover:text-blue-500"
+                      className="ml-2 h-8 w-8 rounded-full grid place-items-center text-gray-500 hover:text-yellow-300"
                       onClick={() => {
                         const ta = commentRef.current;
                         const start = (ta?.selectionStart ?? comment.length);
@@ -716,7 +728,7 @@ I can help you analyze the content, structure, and context of this webpage. What
           aria-label={expanded ? "Compact view" : "Expand to full width"}
           aria-pressed={expanded}
           onClick={() => setExpanded((v) => !v)}
-          className="group absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 z-50 h-12 w-12 rounded-full bg-gray-900 border border-gray-600 transition-colors shadow-2xl backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-blue-500 hover:border-blue-500 focus:outline-none"
+          className="group absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 z-50 h-12 w-12 rounded-full bg-gray-900 border border-gray-600 transition-colors shadow-2xl backdrop-blur-sm flex items-center justify-center text-gray-400 hover:text-yellow-300 hover:border-yellow-300 focus:outline-none"
           title={expanded ? "Compact view" : "Expand to full width"}
         >
           {expanded ? (
