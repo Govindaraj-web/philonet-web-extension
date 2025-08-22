@@ -189,18 +189,26 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
           const existingReaction = existingReactions.find(r => r.emoji === emoji);
           
           if (existingReaction) {
-            // Increment count
+            // Increment count and add current user to users array
             return {
               ...msg,
               reactions: existingReactions.map(r => 
-                r.emoji === emoji ? { ...r, count: r.count + 1 } : r
+                r.emoji === emoji ? { 
+                  ...r, 
+                  count: r.count + 1,
+                  users: [...(r.users || []), currentUser.id]
+                } : r
               )
             } as Message;
           } else {
             // Add new reaction
             return {
               ...msg,
-              reactions: [...existingReactions, { emoji, count: 1, users: ['currentUser'] }]
+              reactions: [...existingReactions, { 
+                emoji, 
+                count: 1, 
+                users: [currentUser.id] 
+              }]
             } as Message;
           }
         }
@@ -527,10 +535,34 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     return () => {}; // Return empty cleanup function when container is not available
   }, []);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when messages are loaded or new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    // Scroll to bottom when messages are first loaded or when new messages arrive
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages.length]); // Trigger on message count change
+
+  // Additional effect to scroll to bottom when conversation changes (first time loading)
+  useEffect(() => {
+    // When selectedThought changes and we have messages, scroll to bottom
+    if (messages.length > 0) {
+      // Use timeout to ensure DOM has updated
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [selectedThoughtId, messages.length]);
+
+  // Effect to scroll to bottom when messages finish loading for the first time
+  useEffect(() => {
+    // When loading finishes and we have messages, scroll to the most recent
+    if (!isLoadingMessages && messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 150); // Slightly longer delay to ensure messages are rendered
+    }
+  }, [isLoadingMessages, messages.length]);
 
   // Handle sending messages
   const handleSendMessage = () => {
@@ -649,8 +681,20 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-300 hover:text-blue-200 underline break-all"
+              className="break-all transition-all duration-200 font-medium underline underline-offset-2"
+              style={{
+                color: '#60A5FA',
+                textDecorationColor: 'rgba(96, 165, 250, 0.7)'
+              }}
               title={part}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#93C5FD';
+                e.currentTarget.style.textDecorationColor = '#93C5FD';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#60A5FA';
+                e.currentTarget.style.textDecorationColor = 'rgba(96, 165, 250, 0.7)';
+              }}
             >
               {displayText}
             </a>
@@ -684,12 +728,37 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }
   };
 
+  // Telegram-style user color generation
+  const getUserColor = (username: string): string => {
+    const colors = [
+      '#FF6B6B', // Red
+      '#4ECDC4', // Teal  
+      '#45B7D1', // Blue
+      '#96CEB4', // Green
+      '#FECA57', // Yellow
+      '#FF9FF3', // Pink
+      '#54A0FF', // Light Blue
+      '#5F27CD', // Purple
+      '#00D2D3', // Cyan
+      '#FF9F43', // Orange
+      '#10AC84', // Emerald
+      '#EE5A24', // Orange Red
+    ];
+    
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) {
+      hash = username.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    return colors[Math.abs(hash) % colors.length];
+  };
+
   return (
     <div className="flex h-full bg-philonet-background">
       {/* Left Sidebar - Thought Starters - Hidden on mobile when conversation is selected */}
       <div 
         className={cn(
-          "border-r border-philonet-border bg-philonet-background transition-all duration-300 ease-in-out",
+          "border-r border-philonet-border transition-all duration-300 ease-in-out sidebar-background",
           selectedThought ? "hidden sm:block" : "w-full",
           selectedThought && !isLeftSidebarHovered 
             ? "sm:w-[300px] md:w-[320px] sm:min-w-[300px] md:min-w-[320px] sm:max-w-[300px] md:max-w-[320px]"
@@ -700,27 +769,16 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
         onMouseEnter={() => setIsLeftSidebarHovered(true)}
         onMouseLeave={() => setIsLeftSidebarHovered(false)}
       >
-        {/* Header */}
-        <div className="p-3 sm:p-4 border-b border-philonet-border bg-philonet-background">
+        {/* Enhanced Header with Telegram-style typography */}
+        <div className="p-4 border-b border-philonet-border bg-philonet-background relative z-10">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-medium text-white flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-philonet-blue-400" />
+            <h2 className="text-xl font-semibold text-philonet-text-primary flex items-center gap-3">
+              <TrendingUp className="w-6 h-6 text-philonet-blue-500" />
               Conversations
-              {selectedThought && (
-                <span className={cn(
-                  "text-xs text-philonet-text-muted transition-opacity duration-300",
-                  isLeftSidebarHovered ? "opacity-0" : "opacity-60"
-                )}>
-                  (hover to expand)
-                </span>
-              )}
             </h2>
-            <Button className="h-8 w-8 p-0 rounded-full bg-philonet-blue-500 hover:bg-philonet-blue-600 border-0">
-              <UserPlus className="w-4 h-4 text-philonet-blue-400" />
-            </Button>
           </div>
 
-          {/* Search */}
+          {/* Enhanced Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-philonet-text-muted" />
             <input
@@ -728,7 +786,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-philonet-card border border-philonet-border rounded-lg text-white placeholder:text-philonet-text-muted focus:outline-none focus:border-philonet-blue-500"
+              className="w-full pl-10 pr-4 py-2.5 bg-philonet-card border border-philonet-border rounded-lg text-philonet-text-primary placeholder:text-philonet-text-muted focus:outline-none focus:border-philonet-blue-500 transition-colors"
             />
           </div>
         </div>
@@ -742,69 +800,89 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
               animate={{ opacity: 1, y: 0 }}
               whileHover={{ scale: 1.01, transition: { duration: 0.15 } }}
               className={cn(
-                "p-3 border-b border-philonet-border cursor-pointer transition-all duration-200 hover:bg-philonet-card",
-                selectedThought?.id === thought.id && 
-                "bg-philonet-blue-500 border-r-2 border-r-philonet-blue-500"
+                "p-3 border-b border-philonet-border cursor-pointer transition-all duration-200",
+                "hover:bg-philonet-card hover:bg-opacity-50",
+                selectedThought?.id === thought.id 
+                  ? "bg-philonet-blue-500 bg-opacity-15 border-r-4 border-r-philonet-blue-500" 
+                  : ""
               )}
               onClick={() => onThoughtSelect(thought.id)}
             >
               <div className="flex items-start gap-3">
-                {/* User Avatar */}
+                {/* Enhanced User Avatar with color coding */}
                 <div className="flex-shrink-0">
                   {thought.author?.avatar ? (
-                    <img
-                      src={thought.author.avatar}
-                      alt={thought.author.name}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
+                    <div className="relative">
+                      <img
+                        src={thought.author.avatar}
+                        alt={thought.author.name}
+                        className="w-9 h-9 rounded-full object-cover ring-2 ring-philonet-border"
+                      />
+                      {thought.isActive && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-philonet-background"></div>
+                      )}
+                    </div>
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-philonet-card flex items-center justify-center">
-                      <span className="text-sm">💭</span>
+                    <div 
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm relative"
+                      style={{ 
+                        backgroundColor: getUserColor(thought.author?.name || 'Anonymous')
+                      }}
+                    >
+                      {(thought.author?.name || 'A').charAt(0).toUpperCase()}
+                      {thought.isActive && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-philonet-background"></div>
+                      )}
                     </div>
                   )}
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  {/* Header */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-white truncate">
+                  {/* Enhanced Header with better typography */}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span 
+                      className="text-sm font-medium truncate"
+                      style={{ color: getUserColor(thought.author?.name || 'Anonymous') }}
+                    >
                       {thought.author?.name || 'Anonymous'}
                     </span>
                     <span className="text-xs text-philonet-text-muted">•</span>
                     <span className="text-xs text-philonet-text-muted">2h ago</span>
-                    <span className="text-xs text-philonet-blue-400">💭 2.14m</span>
-                    {thought.isActive && (
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse ml-auto"></div>
-                    )}
+                    <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
                   </div>
 
-                  {/* Discussion Title */}
+                  {/* Enhanced Discussion Title */}
                   <h3 className={cn(
-                    "text-sm font-medium text-white mb-2 leading-relaxed transition-all duration-300 break-words",
+                    "text-sm font-medium text-philonet-text-primary mb-2 leading-relaxed transition-all duration-300 break-words",
                     isLeftSidebarHovered ? "line-clamp-3" : "line-clamp-2"
                   )}>
                     {thought.thoughtBody || thought.title}
                   </h3>
 
-                  {/* Selected Text Preview */}
+                  {/* Refined Selected Text Preview - Telegram style */}
                   {thought.taggedContent && (
                     <div className={cn(
-                      "text-xs text-philonet-text-secondary mb-2 italic transition-all duration-300 break-words",
-                      isLeftSidebarHovered ? "line-clamp-3" : "line-clamp-1"
+                      "text-xs mb-2 transition-all duration-300 break-words leading-relaxed",
+                      "border-l-2 border-philonet-blue-500 pl-3 py-1.5 bg-philonet-background bg-opacity-40",
+                      isLeftSidebarHovered ? "line-clamp-4" : "line-clamp-2"
                     )}>
-                      "{thought.taggedContent.highlightedText}"
+                      <span className="text-philonet-text-muted opacity-60 mr-1">"</span>
+                      <span className="text-philonet-text-secondary font-normal inline">
+                        {thought.taggedContent.highlightedText}
+                      </span>
+                      <span className="text-philonet-text-muted opacity-60 ml-1">"</span>
                     </div>
                   )}
 
-                  {/* Stats */}
+                  {/* Enhanced Stats */}
                   <div className="flex items-center gap-3 text-xs text-philonet-text-muted">
                     <span className="flex items-center gap-1">
                       <TrendingUp className="w-3 h-3" />
-                      {thought.reactions?.likes || 0}
+                      <span className="font-medium">{thought.reactions?.likes || 0}</span>
                     </span>
-                    <span>{thought.messageCount} msgs</span>
-                    <span>{thought.participants} people</span>
+                    <span className="font-medium">{thought.messageCount} msgs</span>
+                    <span className="font-medium">{thought.participants} people</span>
                   </div>
                 </div>
               </div>
@@ -863,12 +941,6 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                       <span className="text-xs text-philonet-text-muted">•</span>
                       <span className="text-xs text-philonet-text-muted">2h ago</span>
                       <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
-                      {selectedThought.isActive && (
-                        <span className="px-2 py-1 bg-green-400 text-philonet-background rounded-full text-xs font-medium flex items-center gap-1">
-                          <Activity className="w-3 h-3" />
-                          Live
-                        </span>
-                      )}
                     </div>
 
                     {/* Thought Body Preview */}
@@ -897,24 +969,23 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 ml-3">
-                  <Button className="h-9 w-9 p-0 rounded-full bg-philonet-blue-500 hover:bg-philonet-blue-600 border-0 transition-all">
-                    <Activity className="w-4 h-4 text-philonet-blue-400" />
-                  </Button>
                   <Button className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-border border-0 transition-all">
                     <MoreVertical className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Compact Tagged Content Section */}
+              {/* Refined Tagged Content Section - Telegram style */}
               {selectedThought.taggedContent && (
-                <div className="mb-2 p-2 bg-philonet-blue-500 rounded-lg border border-philonet-blue-500">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Quote className="w-3 h-3 text-philonet-blue-400 flex-shrink-0" />
-                    <span className="text-xs font-medium text-philonet-blue-400">Selected Text</span>
+                <div className="mb-3 p-3 bg-philonet-card border-l-4 border-philonet-blue-500 rounded-r-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Quote className="w-3.5 h-3.5 text-philonet-blue-500 flex-shrink-0" />
+                    <span className="text-xs font-medium text-philonet-blue-500 uppercase tracking-wide">Referenced</span>
                   </div>
-                  <blockquote className="text-xs text-philonet-text leading-relaxed italic line-clamp-2 break-words overflow-hidden">
-                    "{selectedThought.taggedContent.highlightedText}"
+                  <blockquote className="text-sm text-philonet-text-secondary leading-relaxed line-clamp-2 break-words overflow-hidden">
+                    <span className="text-philonet-text-muted opacity-60">"</span>
+                    {selectedThought.taggedContent.highlightedText}
+                    <span className="text-philonet-text-muted opacity-60">"</span>
                   </blockquote>
                 </div>
               )}
@@ -923,7 +994,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
             {/* Messages Area */}
             <div 
               ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-4 philonet-scrollbar bg-philonet-background min-w-0"
+              className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-4 philonet-scrollbar min-w-0 message-background"
             >
               {isLoadingMessages ? (
                 <div className="flex items-center justify-center py-8">
@@ -966,19 +1037,24 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                         <img
                           src={message.avatar}
                           alt={message.author}
-                          className="w-8 h-8 rounded-full object-cover"
+                          className="w-8 h-8 rounded-full object-cover ring-1 ring-white/20"
                         />
                       ) : message.type === 'ai-response' ? (
-                        <div className="w-8 h-8 rounded-full bg-philonet-blue-500 flex items-center justify-center">
-                          <Bot className="w-4 h-4 text-philonet-blue-400" />
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center ring-1 ring-[#3772FF]/30" style={{ backgroundColor: '#3772FF' }}>
+                          <Bot className="w-4 h-4 text-white" />
                         </div>
                       ) : message.type === 'thought-starter' ? (
-                        <div className="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center">
-                          <Sparkles className="w-4 h-4 text-yellow-400" />
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center ring-1 ring-[#3772FF]/30" style={{ backgroundColor: '#3772FF' }}>
+                          <Sparkles className="w-4 h-4 text-white" />
                         </div>
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-philonet-card flex items-center justify-center">
-                          <UserRound className="w-4 h-4 text-philonet-text-muted" />
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium text-sm ring-1 ring-white/20"
+                          style={{ 
+                            backgroundColor: getUserColor(message.author)
+                          }}
+                        >
+                          {message.author.charAt(0).toUpperCase()}
                         </div>
                       )}
                     </div>
@@ -991,11 +1067,14 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     )}
                   >
                     {!message.isOwn && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-philonet-text-secondary break-words overflow-hidden">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span 
+                          className="text-[14px] font-semibold break-words overflow-hidden text-white"
+                          style={{ color: getUserColor(message.author) }}
+                        >
                           {message.author}
                         </span>
-                        <span className="text-xs text-philonet-text-muted">
+                        <span className="text-xs font-normal" style={{ color: '#E5E7EB' }}>
                           {formatTime(message.timestamp)}
                         </span>
                       </div>
@@ -1003,19 +1082,29 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
 
                     <div
                       className={cn(
-                        "p-3 rounded-2xl group relative min-w-0",
+                        "px-4 py-3 group relative min-w-0 transition-all duration-200",
                         message.isOwn
-                          ? "bg-philonet-blue-500 text-white rounded-br-md"
+                          ? "text-white rounded-2xl rounded-br-md ml-8 shadow-lg border border-[#3772FF]/20"
                           : message.type === 'ai-response'
-                          ? "bg-philonet-blue-500 text-white border border-philonet-blue-500 rounded-bl-md"
+                          ? "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-[#3772FF]/10"
                           : message.type === 'thought-starter'
-                          ? "bg-yellow-500 text-philonet-background border border-yellow-500 rounded-bl-md"
-                          : "bg-philonet-card text-white border border-philonet-border rounded-bl-md"
+                          ? "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-[#3772FF]/10"
+                          : "bg-[#3A3A3A] text-white rounded-2xl rounded-bl-md mr-8 shadow-lg border border-gray-600/20"
                       )}
+                      style={{
+                        backgroundColor: message.isOwn ? '#3772FF' : undefined
+                      }}
                     >
-                      <div className="text-sm leading-relaxed break-words overflow-wrap-anywhere">
+                      <div className="text-[16px] leading-[1.6] break-words overflow-wrap-anywhere font-normal">
                         {formatTextWithLinks(message.text)}
                       </div>
+                      
+                      {/* Message timestamp for own messages */}
+                      {message.isOwn && (
+                        <div className="text-xs mt-2.5 text-right" style={{ color: '#E5E7EB' }}>
+                          {formatTime(message.timestamp)}
+                        </div>
+                      )}
                       
                       {/* Philonet-themed Message Actions - Positioned at right end of message */}
                       <div className={cn(
@@ -1146,20 +1235,76 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     {/* Philonet-themed Message reactions */}
                     {message.reactions && message.reactions.length > 0 && (
                       <div className="flex gap-1 mt-2">
-                        {message.reactions.map((reaction, index) => (
-                          <button
-                            key={index}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-philonet-card border border-philonet-border rounded-full text-sm hover:bg-philonet-border transition-colors shadow-sm"
-                          >
-                            <span className="text-base">{reaction.emoji}</span>
-                            <span className="text-xs font-medium text-philonet-text-secondary">{reaction.count}</span>
-                          </button>
-                        ))}
+                        {message.reactions.map((reaction, index) => {
+                          const isUserReaction = reaction.users?.includes(currentUser.id);
+                          return (
+                            <motion.button
+                              key={index}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ 
+                                scale: 0.95,
+                                transition: { duration: 0.1 }
+                              }}
+                              onClick={() => {
+                                handleAddReaction(message.id, reaction.emoji);
+                              }}
+                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all duration-200 shadow-sm cursor-pointer group relative overflow-hidden ${
+                                isUserReaction 
+                                  ? 'bg-philonet-blue-500 border-2 border-philonet-blue-400 text-white' 
+                                  : 'bg-philonet-card border border-philonet-border hover:bg-philonet-blue-500 hover:border-philonet-blue-500'
+                              }`}
+                              title={`React with ${reaction.emoji} (${reaction.count})${isUserReaction ? ' - You reacted' : ''}`}
+                            >
+                              {/* Ripple effect on click */}
+                              <motion.div
+                                className="absolute inset-0 bg-philonet-blue-400 rounded-full opacity-0"
+                                whileTap={{
+                                  scale: [0, 1],
+                                  opacity: [0.5, 0],
+                                }}
+                                transition={{ duration: 0.3 }}
+                              />
+                              <motion.span 
+                                className={`text-base group-hover:scale-110 transition-transform duration-200 relative z-10 ${
+                                  isUserReaction ? 'drop-shadow-sm' : ''
+                                }`}
+                                whileTap={{ 
+                                  scale: [1, 1.3, 1],
+                                  rotate: [0, 15, -15, 0]
+                                }}
+                                transition={{ 
+                                  duration: 0.4,
+                                  ease: "easeInOut"
+                                }}
+                                key={`${reaction.emoji}-${reaction.count}`} // This will trigger animation when count changes
+                              >
+                                {reaction.emoji}
+                              </motion.span>
+                              <motion.span 
+                                className={`text-xs font-medium transition-colors duration-200 relative z-10 ${
+                                  isUserReaction 
+                                    ? 'text-white' 
+                                    : 'text-philonet-text-secondary group-hover:text-white'
+                                }`}
+                                whileTap={{ 
+                                  scale: [1, 1.2, 1]
+                                }}
+                                transition={{ 
+                                  duration: 0.3,
+                                  ease: "easeInOut"
+                                }}
+                                key={`count-${reaction.count}`} // This will trigger animation when count changes
+                              >
+                                {reaction.count}
+                              </motion.span>
+                            </motion.button>
+                          );
+                        })}
                       </div>
                     )}
 
                     {message.isOwn && (
-                      <div className="flex items-center justify-end gap-2 text-xs text-philonet-text-muted">
+                      <div className="flex items-center justify-end gap-2 text-xs" style={{ color: '#E5E7EB' }}>
                         <span>{formatTime(message.timestamp)}</span>
                         {getStatusIcon(message.status)}
                       </div>
@@ -1172,11 +1317,11 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                         <img
                           src={currentUser.avatar}
                           alt={currentUser.name}
-                          className="w-8 h-8 rounded-full object-cover"
+                          className="w-8 h-8 rounded-full object-cover ring-1 ring-white/20"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-philonet-card flex items-center justify-center">
-                          <UserRound className="w-4 h-4 text-philonet-text-muted" />
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center ring-1 ring-white/20" style={{ backgroundColor: '#3772FF' }}>
+                          <UserRound className="w-4 h-4 text-white" />
                         </div>
                       )}
                     </div>
@@ -1386,6 +1531,51 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
 
       {/* Custom Scrollbar Styles */}
       <style>{`
+        /* Minimal sidebar pattern */
+        .sidebar-background {
+          background-color: var(--philonet-background);
+          background-image: 
+            repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 25px,
+              rgba(255, 255, 255, 0.008) 25px,
+              rgba(255, 255, 255, 0.008) 26px
+            );
+        }
+        
+        /* WhatsApp/Telegram-style patterned background */
+        .message-background {
+          background-color: #0D1117;
+          background-image: 
+            /* Main geometric pattern */
+            repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 10px,
+              rgba(255, 255, 255, 0.02) 10px,
+              rgba(255, 255, 255, 0.02) 11px
+            ),
+            repeating-linear-gradient(
+              -45deg,
+              transparent,
+              transparent 10px,
+              rgba(255, 255, 255, 0.015) 10px,
+              rgba(255, 255, 255, 0.015) 11px
+            ),
+            /* Diamond pattern overlay */
+            repeating-conic-gradient(
+              from 45deg at 50% 50%,
+              transparent 0deg,
+              rgba(55, 114, 255, 0.008) 90deg,
+              transparent 180deg,
+              rgba(55, 114, 255, 0.008) 270deg,
+              transparent 360deg
+            );
+          background-size: 30px 30px, 30px 30px, 60px 60px;
+          background-position: 0 0, 0 0, 15px 15px;
+        }
+        
         .philonet-scrollbar::-webkit-scrollbar {
           width: 6px;
         }
@@ -1453,6 +1643,79 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
           opacity: 0;
           visibility: hidden;
           transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+
+        /* Modern high-contrast dark theme bubble effects */
+        .group {
+          transition: all 0.2s ease;
+        }
+
+        .group:hover {
+          transform: translateY(-1px);
+        }
+
+        /* Enhanced shadows for the new color scheme */
+        .group div[style*="#3772FF"] {
+          box-shadow: 0 4px 12px rgba(55, 114, 255, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .group div[style*="#3772FF"]:hover {
+          box-shadow: 0 6px 16px rgba(55, 114, 255, 0.25), 0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        .group div[class*="bg-[#3A3A3A]"] {
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(255, 255, 255, 0.05);
+        }
+
+        .group div[class*="bg-[#3A3A3A]"]:hover {
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(255, 255, 255, 0.08);
+        }
+
+        /* Subtle inner glow for better definition */
+        .group div[class*="rounded-2xl"] {
+          position: relative;
+        }
+
+        .group div[class*="rounded-2xl"]:before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(135deg, rgba(255,255,255,0.05), transparent, rgba(255,255,255,0.01));
+          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          mask-composite: xor;
+          pointer-events: none;
+        }
+
+        /* High-contrast link styling */
+        .group a {
+          color: #60A5FA !important;
+          transition: all 0.2s ease;
+          border-radius: 4px;
+          padding: 1px 4px;
+          text-decoration-color: rgba(96, 165, 250, 0.6);
+        }
+
+        .group a:hover {
+          color: #93C5FD !important;
+          background: rgba(96, 165, 250, 0.15);
+          text-decoration-color: #93C5FD;
+        }
+
+        /* Enhanced message text contrast */
+        .group div[class*="bg-[#3A3A3A]"] {
+          color: #FFFFFF;
+        }
+
+        .group div[style*="#3772FF"] {
+          color: #FFFFFF;
+        }
+
+        /* Better text readability */
+        .group div[class*="text-[16px]"] {
+          font-weight: 400;
+          letter-spacing: 0.01em;
         }
       `}</style>
     </div>

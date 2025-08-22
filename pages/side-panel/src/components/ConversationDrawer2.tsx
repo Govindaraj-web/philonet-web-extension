@@ -315,48 +315,49 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           className="fixed inset-0 z-50 flex items-start justify-center pt-4"
           style={{ pointerEvents: 'none' }}
         >
-          {/* Backdrop */}
+          {/* Enhanced Backdrop with Telegram-style simplicity */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0"
+            className="absolute inset-0 bg-philonet-black bg-opacity-60"
             style={{ 
-              backgroundColor: 'rgba(0, 0, 0, 1)', // Fully opaque black
+              backdropFilter: 'blur(4px)',
               pointerEvents: 'auto' 
             }}
             onClick={onClose}
           />
 
-          {/* Drawer */}
+          {/* Enhanced Drawer with Telegram-inspired clean design */}
           <motion.div
             ref={drawerRef}
             initial={{ 
               opacity: 0,
-              scale: 0.95
+              scale: 0.96,
+              y: 8
             }}
             animate={{ 
               opacity: 1,
               scale: 1,
+              y: 0,
               height: isMinimized ? '60px' : 'calc(100vh - 2rem)'
             }}
             exit={{ 
               opacity: 0,
-              scale: 0.95
+              scale: 0.96,
+              y: 8
             }}
             transition={{
               type: "spring",
               damping: 25,
               stiffness: 200,
-              opacity: { duration: 0.2 },
-              scale: { duration: 0.2 }
+              duration: 0.3
             }}
-            className={`relative border-2 shadow-2xl flex flex-col overflow-hidden ${
-              isMobile ? 'rounded-2xl mx-2' : 'rounded-xl'
+            className={`relative flex flex-col overflow-hidden bg-philonet-background border border-philonet-border ${
+              isMobile ? 'rounded-xl mx-2' : 'rounded-lg'
             }`}
             style={{ 
-              backgroundColor: '#0b0b0b', // philonet-card color
-              borderColor: '#262626', // philonet-border color
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
               width: `${drawerWidth}px`,
               height: isMinimized ? '60px' : 'calc(100vh - 2rem)',
               maxHeight: 'calc(100vh - 2rem)',
@@ -364,139 +365,108 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               pointerEvents: 'auto'
             }}
           >
-            {/* Header */}
-            <div 
-              className="flex items-center justify-between p-3 border-b-2"
-              style={{ 
-                backgroundColor: '#0b0b0b', // philonet-card color 
-                borderColor: '#262626' // philonet-border color
-              }}
-            >
+            {/* Header - Telegram-inspired clean design */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-philonet-border bg-philonet-background">
               <div className="flex items-center gap-3">
-                <span className="text-xl">💭</span>
-                <h2 className="text-lg font-semibold text-philonet-text">
-                  Conversations
-                </h2>
-                {article && (
-                  <span className="text-sm text-philonet-text-secondary truncate max-w-[200px]">
-                    • {article.title}
-                  </span>
-                )}
+                {/* Clean icon without glow effects - Telegram style */}
+                <MessageSquare className="w-5 h-5 text-philonet-blue-500" />
+                
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-medium text-philonet-text-primary">
+                    Conversations
+                  </h2>
+                  {article && (
+                    <>
+                      <span className="text-sm text-philonet-text-muted">on</span>
+                      {/* Clean article thumbnail - Telegram style */}
+                      <div className="w-5 h-5 rounded overflow-hidden bg-philonet-border flex-shrink-0">
+                        {article.url ? (
+                          <img
+                            src={`https://www.google.com/s2/favicons?domain=${new URL(article.url).hostname}&sz=64`}
+                            alt="Site favicon"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              if (target.src.includes('google.com')) {
+                                target.src = `https://favicon.yandex.net/favicon/${new URL(article.url).hostname}`;
+                              } else {
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }
+                            }}
+                          />
+                        ) : null}
+                        {/* Simple fallback - no gradients */}
+                        <div className="w-full h-full bg-philonet-border flex items-center justify-center hidden">
+                          <span className="text-xs text-philonet-text-muted">📄</span>
+                        </div>
+                      </div>
+                      
+                      <span className="text-sm text-philonet-text-secondary truncate max-w-[160px]">
+                        {article.title}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
               
-              <div className="flex items-center gap-2">
+              {/* Clean control buttons - Telegram style */}
+              <div className="flex items-center">
                 <button
                   onClick={() => setIsMinimized(!isMinimized)}
-                  className="p-2 hover:bg-philonet-border rounded-lg transition-colors"
+                  className="p-2 hover:bg-philonet-border rounded-md transition-colors duration-150"
                   title={isMinimized ? "Maximize" : "Minimize"}
                 >
                   {isMinimized ? (
-                    <Maximize2 className="w-4 h-4 text-philonet-text-secondary" />
+                    <Maximize2 className="w-4 h-4 text-philonet-text-muted" />
                   ) : (
-                    <Minus className="w-4 h-4 text-philonet-text-secondary" />
+                    <Minus className="w-4 h-4 text-philonet-text-muted" />
                   )}
                 </button>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-philonet-border rounded-lg transition-colors"
+                  className="p-2 hover:bg-philonet-border rounded-md transition-colors duration-150 ml-1"
                   title="Close"
                 >
-                  <X className="w-4 h-4 text-philonet-text-secondary" />
+                  <X className="w-4 h-4 text-philonet-text-muted" />
                 </button>
               </div>
             </div>
 
-            {/* Content */}
+            {/* Content Area with Telegram-inspired clean styling */}
             {!isMinimized && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex-1 overflow-hidden h-full"
+                transition={{ duration: 0.2 }}
+                className="flex-1 overflow-hidden h-full bg-philonet-background"
               >
                 {isLoadingThoughts ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
-                    <span className="ml-3 text-gray-400">Loading conversations...</span>
+                  <div className="flex items-center justify-center py-16">
+                    <div className="flex flex-col items-center space-y-3">
+                      {/* Clean loading spinner - Telegram style */}
+                      <div className="w-8 h-8 border-2 border-philonet-border border-t-philonet-blue-500 rounded-full animate-spin"></div>
+                      <span className="text-philonet-text-secondary text-sm">Loading conversations...</span>
+                    </div>
                   </div>
                 ) : thoughtsError ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-red-400 text-center">
-                      <p>{thoughtsError}</p>
+                  <div className="flex items-center justify-center py-16">
+                    <div className="text-center max-w-xs">
+                      <div className="w-12 h-12 bg-red-500 bg-opacity-15 rounded-lg flex items-center justify-center mx-auto mb-3">
+                        <X className="w-6 h-6 text-red-400" />
+                      </div>
+                      <p className="text-red-400 mb-4 text-sm leading-relaxed">{thoughtsError}</p>
                       <button 
                         onClick={() => fetchThoughtRoomData(getArticleId())}
-                        className="mt-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white text-sm"
+                        className="px-4 py-2 bg-philonet-blue-500 hover:bg-philonet-blue-600 rounded-md text-philonet-text-primary text-sm font-medium transition-colors duration-150"
                       >
-                        Retry
+                        Try Again
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full flex flex-col">
-                    {/* Main loading progress section */}
-                    <div className="p-3 border-b border-gray-600 bg-gray-900 text-sm">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          {thoughtStarters.length > 0 ? (
-                            <span className="text-green-400">✅ {thoughtStarters.length} discussions loaded</span>
-                          ) : (
-                            <span className="text-gray-400">📋 No discussions found</span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {Object.keys(conversationDetails).length > 0 && (
-                            <span>{Object.keys(conversationDetails).length} conversations loaded</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Debug section for conversation state */}
-                    {(Object.keys(loadingConversations).some(key => loadingConversations[key]) || 
-                      Object.keys(conversationDetails).length > 0 || 
-                      Object.keys(conversationErrors).length > 0) && (
-                      <div className="p-4 border-b border-gray-600 bg-gray-800 text-sm">
-                        {Object.entries(loadingConversations).filter(([_, isLoading]) => isLoading).map(([thoughtId]) => (
-                          <div key={thoughtId} className="text-blue-400">🔄 Loading conversation for thought {thoughtId}...</div>
-                        ))}
-                        {Object.entries(conversationErrors).map(([thoughtId, error]) => (
-                          <div key={thoughtId} className="text-red-400">❌ {error} (thought {thoughtId})</div>
-                        ))}
-                        {Object.entries(conversationDetails).map(([thoughtId, details]) => (
-                          <div key={thoughtId} className="text-green-400">
-                            ✅ Loaded {details.messages?.length || 0} messages for thought {thoughtId}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Debug test button */}
-                    {thoughtStarters.length > 0 && (
-                      <div className="p-2 border-b border-gray-600 bg-gray-700 text-xs flex gap-2">
-                        <button
-                          onClick={() => {
-                            const firstThought = thoughtStarters[0];
-                            if (firstThought) {
-                              console.log('🧪 Testing conversation fetch for first thought:', firstThought);
-                              fetchConversationThread(firstThought.id, parseInt(firstThought.id, 10));
-                            }
-                          }}
-                          className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white text-xs"
-                        >
-                          🧪 Test Sub-Comments API
-                        </button>
-                        <button
-                          onClick={() => {
-                            console.log('🔄 Refreshing discussions...');
-                            const articleId = getArticleId();
-                            fetchThoughtRoomData(articleId);
-                          }}
-                          className="px-2 py-1 bg-green-600 hover:bg-green-500 rounded text-white text-xs"
-                        >
-                          🔄 Refresh Discussions
-                        </button>
-                      </div>
-                    )}
+                  <div className="h-full flex flex-col bg-philonet-background">
                     
                     <ConversationRoom
                       thoughtStarters={thoughtStarters.length > 0 ? thoughtStarters : []}
