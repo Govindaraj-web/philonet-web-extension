@@ -45,10 +45,10 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
         <button
           onClick={() => onTabChange("thoughts")}
           className={cn(
-            'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base',
+            'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base font-semibold transition-all duration-200',
             composerTab === 'thoughts' 
-              ? 'text-philonet-blue-500 border-philonet-blue-500' 
-              : 'text-philonet-text-muted border-philonet-border-light'
+              ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
+              : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
           )}
         >
           <MessageCircle className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
@@ -57,10 +57,10 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
         <button
           onClick={() => onTabChange("ai")}
           className={cn(
-            'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base',
+            'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base font-semibold transition-all duration-200',
             composerTab === 'ai' 
-              ? 'text-philonet-blue-500 border-philonet-blue-500' 
-              : 'text-philonet-text-muted border-philonet-border-light'
+              ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
+              : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
           )}
         >
           <Bot className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />

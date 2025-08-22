@@ -3218,7 +3218,7 @@ ${article.description}
                 <div className="space-y-3">
                   {shouldShowPdfUpload() ? (
                     <>
-                      <h1 className="text-xl font-semibold text-white">
+                      <h1 className="text-xl font-semibold text-amber-300">
                         Local PDF Detected
                       </h1>
                       <p className="text-philonet-text-secondary">
@@ -3227,7 +3227,7 @@ ${article.description}
                     </>
                   ) : (
                     <>
-                      <h1 className="text-xl font-semibold text-white">
+                      <h1 className="text-xl font-semibold text-blue-300">
                         No article found for this page?
                       </h1>
                       <p className="text-philonet-text-secondary">
@@ -3505,7 +3505,7 @@ ${article.description}
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 border-2 border-philonet-blue-400/30 border-t-philonet-blue-400 rounded-full animate-spin"></div>
-                      <h2 className="text-xl font-semibold text-white">Generating Content</h2>
+                      <h2 className="text-xl font-semibold text-philonet-blue-300">Generating Content</h2>
                     </div>
                   </div>
 
@@ -4035,7 +4035,7 @@ ${article.description}
                   transition={{ delay: 0.1 }}
                   className="flex items-center justify-between mb-6"
                 >
-                  <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                  <h2 className="text-xl font-semibold text-emerald-300 flex items-center gap-2">
                     <Settings className="h-5 w-5 text-philonet-blue-400" />
                     Settings
                   </h2>
@@ -4133,7 +4133,7 @@ ${article.description}
 
                   {/* Status Information */}
                   <div className="pt-4 border-t border-philonet-border/50">
-                    <h3 className="text-philonet-text font-medium mb-3">Detection Methods</h3>
+                    <h3 className="text-philonet-blue-300 font-medium mb-3">Detection Methods</h3>
                     <div className="space-y-3 text-sm">
                       <div className="flex items-start gap-3 p-3 bg-philonet-background/50 rounded-lg">
                         <div className="w-2 h-2 bg-philonet-blue-400 rounded-full mt-2 flex-shrink-0"></div>
@@ -4323,7 +4323,7 @@ ${article.description}
             <div className="bg-philonet-card border border-philonet-border rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold text-white">Page Data</h2>
+                  <h2 className="text-xl font-bold text-cyan-300">Page Data</h2>
                   {lastFetchedTime && (
                     <div className="flex items-center gap-2 px-2 py-1 bg-philonet-blue-600/20 border border-philonet-blue-500/50 rounded-md">
                       <span className="text-xs text-philonet-blue-400 font-medium">
@@ -4424,7 +4424,7 @@ ${article.description}
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
                   <FileText className="h-6 w-6 text-philonet-blue-400" />
-                  <h2 className="text-xl font-bold text-white">Article Content</h2>
+                  <h2 className="text-xl font-bold text-purple-300">Article Content</h2>
                   <div className="flex items-center gap-2 px-2 py-1 bg-green-600/20 border border-green-500/50 rounded-md">
                     <span className="text-xs text-green-400 font-medium">
                       Found in {article.room_name}
@@ -4442,7 +4442,7 @@ ${article.description}
               <div className="space-y-6">
                 {/* Article Header */}
                 <div className="pb-4 border-b border-philonet-border/50">
-                  <h1 className="text-2xl font-bold text-white mb-3">
+                  <h1 className="text-2xl font-bold text-indigo-300 mb-3">
                     {article.title}
                   </h1>
                   <div className="flex flex-wrap gap-4 text-sm text-philonet-text-secondary">

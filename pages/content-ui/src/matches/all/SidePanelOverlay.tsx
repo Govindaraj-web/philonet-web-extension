@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageCircle,
-  Cloud,
 } from "lucide-react";
 import MarkdownIt from "markdown-it";
 
@@ -510,12 +509,12 @@ I can help you analyze the content, structure, and context of this webpage. What
 
             {/* Content sections */}
             <section className="px-5 pb-6 mt-6 space-y-8">
-              <div className="prose prose-invert max-w-[80ch] prose-hr:hidden prose-headings:font-light prose-headings:tracking-wide prose-p:font-light prose-p:tracking-tight prose-p:text-gray-300 prose-strong:text-white prose-a:text-gray-400 hover:prose-a:text-blue-500 prose-li:marker:text-gray-600 prose-blockquote:border-l-gray-600 prose-table:rounded-lg prose-table:overflow-hidden prose-table:border prose-table:border-gray-600 prose-th:bg-gray-800 prose-td:bg-gray-900">
+              <div className="prose prose-invert max-w-[80ch] prose-hr:hidden prose-headings:font-light prose-headings:tracking-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-yellow-400 prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-tight prose-p:text-gray-300 prose-strong:text-white prose-a:text-gray-400 hover:prose-a:text-blue-500 prose-li:marker:text-gray-600 prose-blockquote:border-l-gray-600 prose-table:rounded-lg prose-table:overflow-hidden prose-table:border prose-table:border-gray-600 prose-th:bg-gray-800 prose-td:bg-gray-900">
                 
                 {/* Introduction */}
                 {sections.introduction && (
                   <div>
-                    <h3 className="text-xl font-light tracking-wide text-gray-300">Page Overview</h3>
+                    <h3 className="text-xl font-light tracking-wide text-blue-300">Page Overview</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.introduction)} />
                   </div>
                 )}
@@ -523,7 +522,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                 {/* Details */}
                 {sections.details && (
                   <div className="mt-8">
-                    <h3 className="text-xl font-light tracking-wide text-gray-300">Content Sample</h3>
+                    <h3 className="text-xl font-light tracking-wide text-blue-300">Content Sample</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.details)} />
                   </div>
                 )}
@@ -531,7 +530,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                 {/* Conclusion */}
                 {sections.conclusion && (
                   <div className="mt-8">
-                    <h3 className="text-xl font-light tracking-wide text-gray-300">Philonet Analysis</h3>
+                    <h3 className="text-xl font-light tracking-wide text-blue-300">Philonet Analysis</h3>
                     <div className="mt-3" dangerouslySetInnerHTML={renderHighlighted(sections.conclusion)} />
                   </div>
                 )}
@@ -594,7 +593,7 @@ I can help you analyze the content, structure, and context of this webpage. What
                   : 'text-gray-400 border-gray-600'
               )}
             >
-              <Cloud className="inline h-3.5 w-3.5 mr-2" /> Thoughts
+              <MessageCircle className="inline h-3.5 w-3.5 mr-2" /> Thoughts
             </button>
             <button
               onClick={() => setComposerTab("ai")}

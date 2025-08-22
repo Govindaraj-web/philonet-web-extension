@@ -282,6 +282,40 @@ export class ThoughtRoomsAPI {
     }
   }
 
+  // New method: Fetch only the comments listing (non-blocking)
+  async fetchCommentsListingOnly(params: FetchCommentsParams): Promise<CommentsResponse> {
+    console.log('📋 Fetching comments listing only (non-blocking)');
+    return this.fetchComments(params);
+  }
+
+  // New method: Fetch messages for a specific conversation (separate call)
+  async fetchConversationMessages(articleId: number, parentCommentId: number, limit: number = 10) {
+    try {
+      console.log('💬 Fetching messages for conversation:', parentCommentId);
+      
+      const subCommentsResponse = await this.fetchSubComments({
+        parentCommentId,
+        articleId,
+        limit
+      });
+
+      const messages = subCommentsResponse.comments.map(subComment => 
+        this.transformSubCommentToMessage(subComment)
+      );
+
+      console.log('✅ Fetched', messages.length, 'messages for conversation');
+      
+      return {
+        messages,
+        hasMore: messages.length >= limit,
+        parentCommentId
+      };
+    } catch (error) {
+      console.error('❌ Error fetching conversation messages:', error);
+      throw error;
+    }
+  }
+
   // Transform API sub-comment to conversation message format
   transformSubCommentToMessage(subComment: SubComment) {
     return {
@@ -361,9 +395,18 @@ export class ThoughtRoomsAPI {
   }
 }
 
-// Export a convenience function for external use
+// Export convenience functions for external use
 export const fetchConversationForComment = async (articleId: number, parentCommentId: number, limit: number = 10) => {
   return thoughtRoomsAPI.fetchConversationThread(articleId, parentCommentId, limit);
+};
+
+// New: Export non-blocking API functions
+export const fetchCommentsListingOnly = async (params: FetchCommentsParams) => {
+  return thoughtRoomsAPI.fetchCommentsListingOnly(params);
+};
+
+export const fetchConversationMessages = async (articleId: number, parentCommentId: number, limit: number = 10) => {
+  return thoughtRoomsAPI.fetchConversationMessages(articleId, parentCommentId, limit);
 };
 
 export const thoughtRoomsAPI = new ThoughtRoomsAPI();
