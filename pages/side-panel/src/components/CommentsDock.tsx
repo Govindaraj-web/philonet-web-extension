@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from "framer-motion";
-import { UserRound, Tag, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { UserRound, Tag, ChevronLeft, ChevronRight, ChevronDown, Reply } from 'lucide-react';
 import { LoaderRing } from './ui';
 import { Comment } from '../types';
 
@@ -14,6 +14,7 @@ interface CommentsDockProps {
   onMinimize: () => void;
   onExpand: () => void;
   onNavigateToText?: (text: string) => void;
+  onReplyToThought?: (thoughtId: number) => void;
 }
 
 const CommentsDock: React.FC<CommentsDockProps> = ({
@@ -25,7 +26,8 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
   onNavigate,
   onMinimize,
   onExpand,
-  onNavigateToText
+  onNavigateToText,
+  onReplyToThought
 }) => {
   if (!isOpen) return null;
 
@@ -218,6 +220,69 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
               </div>
             </div>
           )}
+
+          {/* Reply section */}
+          <div className="mt-3 pt-2 border-t border-philonet-border/60">
+            <div className="flex items-center justify-between">
+              {/* Reply button */}
+              <button
+                onClick={() => onReplyToThought && onReplyToThought(currentComment?.id)}
+                className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-philonet-text-muted hover:text-philonet-blue-400 hover:bg-philonet-blue-500/5 rounded-lg transition-colors border border-transparent hover:border-philonet-blue-500/20"
+                title="Reply to this thought"
+              >
+                <Reply className="h-3.5 w-3.5" />
+                <span>Reply</span>
+              </button>
+              
+              {/* Reply count */}
+              {currentComment?.replies && currentComment.replies.length > 0 && (
+                <span className="text-[11px] text-philonet-text-subtle">
+                  {currentComment.replies.length} {currentComment.replies.length === 1 ? 'reply' : 'replies'}
+                </span>
+              )}
+            </div>
+
+            {/* Show replies if they exist */}
+            {currentComment?.replies && currentComment.replies.length > 0 && (
+              <div className="mt-2 space-y-2 max-h-32 overflow-y-auto">
+                {currentComment.replies.slice(0, 2).map((reply) => (
+                  <div key={reply.id} className="pl-3 border-l-2 border-philonet-border/30">
+                    <div className="flex items-start gap-2">
+                      <div className="h-5 w-5 rounded-full border border-philonet-border-light bg-philonet-card grid place-items-center overflow-hidden flex-shrink-0">
+                        {reply.profilePic ? (
+                          <img 
+                            src={reply.profilePic} 
+                            alt={reply.author}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <UserRound className="h-3 w-3 text-philonet-text-muted" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-philonet-text-secondary truncate">
+                            {reply.author}
+                          </span>
+                          <span className="text-[10px] text-philonet-text-subtle">
+                            {reply.ts}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-philonet-text-secondary mt-1">
+                          {reply.text}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {currentComment.replies.length > 2 && (
+                  <div className="text-[10px] text-philonet-blue-400 cursor-pointer hover:text-philonet-blue-500 pl-3">
+                    +{currentComment.replies.length - 2} more replies
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Navigation controls */}
           <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2">

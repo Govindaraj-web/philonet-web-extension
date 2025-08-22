@@ -92,7 +92,7 @@ const manifest = {
     scopes: ['openid', 'email', 'profile']
   },
   content_security_policy: {
-    extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' data: https: http:; media-src 'self' data: blob:; connect-src 'self' https: http:;"
+    extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' data: https: http:; media-src 'self' data: blob:; connect-src 'self' https: http: ws: wss:;"
   },
 } satisfies ManifestType;
 

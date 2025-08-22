@@ -3,7 +3,98 @@ import { Comment, AIAnswer, HistoryItem, SidePanelState, HighlightsResponse } fr
 import { storeSmartHighlight, fetchHighlightsByArticleId } from '../services/gptSummary';
 import { formatTimeAgo } from '../utils';
 
-const INITIAL_COMMENTS: Comment[] = [];
+const INITIAL_COMMENTS: Comment[] = [
+  {
+    id: 1,
+    author: "Alex Chen",
+    text: "This is a fantastic breakdown of the concepts! The way you explained the technical implementation makes it much easier to understand. I've been struggling with this exact problem for weeks.",
+    ts: "2 hours ago",
+    tag: { text: "implementation details" },
+    profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=b6e3f4",
+    likeCount: 24,
+    isLiked: false,
+    replyCount: 8,
+    replies: [
+      {
+        id: 11,
+        author: "Jamie Kim",
+        text: "I agree! This helped me solve a similar issue.",
+        ts: "1 hour ago",
+        profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jamie&backgroundColor=c0aede",
+        likeCount: 3,
+        isLiked: false,
+        replyCount: 0
+      },
+      {
+        id: 12,
+        author: "You",
+        text: "Thanks for the feedback! I'm glad it was helpful.",
+        ts: "30 minutes ago",
+        likeCount: 1,
+        isLiked: false,
+        replyCount: 0
+      }
+    ]
+  },
+  {
+    id: 2,
+    author: "Sarah Thompson",
+    text: "Great insights! I particularly appreciate the practical examples you provided. Could you share more about the edge cases you mentioned?",
+    ts: "5 hours ago",
+    tag: { text: "practical examples" },
+    profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah&backgroundColor=ffd93d",
+    likeCount: 12,
+    isLiked: true,
+    replyCount: 3,
+    replies: [
+      {
+        id: 21,
+        author: "Mike Rodriguez",
+        text: "I'd love to hear about those edge cases too!",
+        ts: "4 hours ago",
+        profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Mike&backgroundColor=6bcf7f",
+        likeCount: 2,
+        isLiked: false,
+        replyCount: 0
+      }
+    ]
+  },
+  {
+    id: 3,
+    author: "Mike Rodriguez",
+    text: "Quick question about the performance implications mentioned here. Have you run any benchmarks?",
+    ts: "1 day ago",
+    tag: { text: "performance implications" },
+    profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Mike&backgroundColor=6bcf7f",
+    likeCount: 6,
+    isLiked: false,
+    replyCount: 1,
+    replies: []
+  },
+  {
+    id: 4,
+    author: "Emma Wilson",
+    text: "This article is exactly what I needed for my current project! The step-by-step approach is perfect. Thank you for sharing this detailed explanation.",
+    ts: "3 days ago",
+    tag: { text: "step-by-step approach" },
+    profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Emma&backgroundColor=ff6b6b",
+    likeCount: 18,
+    isLiked: false,
+    replyCount: 5,
+    replies: []
+  },
+  {
+    id: 5,
+    author: "David Park",
+    text: "Interesting perspective on this topic. I've been following this field for years and this adds a fresh angle.",
+    ts: "1 week ago",
+    profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=David&backgroundColor=74c0fc",
+    likeCount: 9,
+    isLiked: false,
+    replyCount: 2,
+    replies: []
+  }
+];
 
 const INITIAL_HISTORY: HistoryItem[] = [
   { id: 1, title: "Philonet Interface Overview", url: "https://example.com/philonet-interface-overview", timestamp: new Date() },

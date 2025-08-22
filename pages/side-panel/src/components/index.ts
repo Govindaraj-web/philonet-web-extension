@@ -14,6 +14,12 @@ export { default as AuthModal } from './AuthModal';
 export { default as AuthExample } from './AuthExample';
 export { default as AuthScreen } from './AuthScreen';
 export { default as AuthenticatedSidePanel } from './AuthenticatedSidePanel';
+export { default as ConversationRoom } from './ConversationRoom';
+export { default as ConversationMode } from './ConversationMode';
+export { default as SidePanelWithConversation } from './SidePanelWithConversation';
+export { default as ConversationRoomDemo } from './ConversationRoomDemo';
+export { default as ConversationDrawer2 } from './ConversationDrawer2';
+export { default as ThoughtRoomsIntegration2 } from './ThoughtRoomsIntegration2';
 
 // Re-export UI components
 export { Button, Textarea, ScrollArea, LoaderRing } from './ui';

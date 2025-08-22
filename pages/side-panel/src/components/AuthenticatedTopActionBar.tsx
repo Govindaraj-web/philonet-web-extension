@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
-import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings } from 'lucide-react';
+import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings, Reply, MessageSquare } from 'lucide-react';
 import { Button } from './ui';
 import HistoryMenu from './HistoryMenu';
 import { HistoryItem } from '../types';
@@ -18,6 +18,8 @@ interface AuthenticatedTopActionBarProps {
   onSummary?: () => void;
   onViewPageData?: () => void;
   onToggleSettings?: () => void;
+  onReplyToThoughtDoc?: () => void;
+  onToggleThoughtRooms?: () => void;
   useContentScript?: boolean;
   isExtracting?: boolean;
 }
@@ -34,6 +36,8 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   onSummary,
   onViewPageData,
   onToggleSettings,
+  onReplyToThoughtDoc,
+  onToggleThoughtRooms,
   useContentScript = false,
   isExtracting = false
 }) => {
@@ -130,7 +134,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
       <div className="flex-1 flex items-center justify-center gap-2">
         {useContentScript && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-green-400 hidden lg:inline">Content Script Active</span>
+            <span className="text-xs text-green-400 hidden lg:inline"></span>
           </div>
         )}      </div>
       
@@ -138,6 +142,10 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
       <div className="flex items-center gap-2 flex-shrink-0">
         {/* Desktop buttons */}
         <div className="hidden md:flex items-center gap-2">
+          <Button className="h-9 px-4 text-sm" onClick={onToggleThoughtRooms}>
+            <MessageSquare className="h-4 w-4" />
+            <span className="ml-2">Thought Rooms</span>
+          </Button>
           <Button className="h-9 px-4 text-sm" onClick={onSummary}>
             <FileText className="h-4 w-4" />
             <span className="ml-2">G. summary</span>
@@ -179,6 +187,17 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                       <Eye className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
                       <span className="text-sm text-philonet-text-primary group-hover:text-white">
                         View Page Data
+                      </span>
+                    </button>
+
+                    {/* Reply to Thought Doc button */}
+                    <button
+                      onClick={onReplyToThoughtDoc}
+                      className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                    >
+                      <Reply className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                      <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                        Reply to Thought Doc
                       </span>
                     </button>
 
@@ -236,6 +255,17 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                     <Eye className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
                     <span className="text-sm text-philonet-text-primary group-hover:text-white">
                       View Page Data
+                    </span>
+                  </button>
+
+                  {/* Reply to Thought Doc button - Mobile */}
+                  <button
+                    onClick={onReplyToThoughtDoc}
+                    className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                  >
+                    <Reply className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                    <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                      Reply to Thought Doc
                     </span>
                   </button>
 

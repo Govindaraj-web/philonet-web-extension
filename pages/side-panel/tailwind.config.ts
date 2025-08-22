@@ -10,6 +10,7 @@ export default withUI({
       colors: {
         philonet: {
           'black': '#000000',
+          'background': '#0a0a0a',
           'panel': '#0a0a0a',
           'card': '#0b0b0b',
           'border': '#262626',
@@ -20,10 +21,19 @@ export default withUI({
             'tertiary': 'rgba(255, 255, 255, 0.85)',
             'muted': '#a3a3a3',
             'subtle': '#737373',
+            'accent': 'rgba(96, 165, 250, 0.5)',
+            'accent-dim': 'rgba(59, 130, 246, 0.4)',
           },
           'blue': {
-            '400': 'rgb(96 165 250 / 0.9)',
-            '500': '#3b82f6',
+            '400': 'rgba(96, 165, 250, 0.6)',
+            '500': 'rgba(59, 130, 246, 0.7)',
+            '600': 'rgba(37, 99, 235, 0.8)',
+            '700': 'rgba(29, 78, 216, 0.9)',
+          },
+          'accent': {
+            'subtle': 'rgba(96, 165, 250, 0.4)',
+            'muted': 'rgba(59, 130, 246, 0.5)',
+            'dim': 'rgba(37, 99, 235, 0.3)',
           }
         }
       },

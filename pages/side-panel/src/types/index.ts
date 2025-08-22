@@ -6,6 +6,39 @@ export interface Comment {
   ts: string;
   tag?: { text: string } | null;
   profilePic?: string;
+  replies?: Comment[];
+  parentId?: number;
+  likeCount?: number;
+  isLiked?: boolean;
+  replyCount?: number;
+}
+
+export interface ConversationMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  message: string;
+  timestamp: Date;
+  type: 'text' | 'image' | 'file';
+  isRead: boolean;
+  reactions?: {
+    emoji: string;
+    count: number;
+    users: string[];
+  }[];
+}
+
+export interface ActiveConversation {
+  id: string;
+  title: string;
+  topComment: Comment;
+  participantCount: number;
+  lastMessage?: ConversationMessage;
+  unreadCount: number;
+  isActive: boolean;
+  createdAt: Date;
+  lastActivity: Date;
 }
 
 export interface AIAnswer {

@@ -12,6 +12,7 @@ import {
   ComposerFooter,
   CommentsDock
 } from './components';
+import ThoughtRoomsIntegration from './components/ThoughtRoomsIntegration2';
 import { PdfUploadModal } from './components/PdfUploadModal';
 
 import {
@@ -218,6 +219,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [generatedCategories, setGeneratedCategories] = useState<Array<string | [string, number]>>([]);
   const [generatedTitle, setGeneratedTitle] = useState<string>('');
   const [showStreamingProgress, setShowStreamingProgress] = useState(false);
+  
+  // Thought Rooms drawer state
+  const [showThoughtRooms, setShowThoughtRooms] = useState(false);
   
   // Persistent state for parallel operations to prevent data loss during page switches
   const [streamingCompleted, setStreamingCompleted] = useState(false);
@@ -1850,6 +1854,48 @@ ${article.description}
     setShowPageData(false);
   };
 
+  // Handle reply to thought doc
+  const handleReplyToThoughtDoc = () => {
+    // Open the thoughts composer and set it to focus mode
+    updateState({ 
+      composerTab: 'thoughts',
+      comment: '' 
+    });
+    
+    // Focus the comment input after a brief delay
+    setTimeout(() => {
+      if (commentRef.current) {
+        commentRef.current.focus();
+        commentRef.current.placeholder = 'Reply to thought document...';
+      }
+    }, 100);
+    
+    console.log('Reply to Thought Doc initiated');
+  };
+
+  // Handle reply to specific thought
+  const handleReplyToThought = (thoughtId: number) => {
+    // Find the thought being replied to
+    const thought = state.comments.find(c => c.id === thoughtId);
+    if (thought) {
+      // Open the thoughts composer with reply context
+      updateState({ 
+        composerTab: 'thoughts',
+        comment: `@${thought.author} ` 
+      });
+      
+      // Focus the comment input
+      setTimeout(() => {
+        if (commentRef.current) {
+          commentRef.current.focus();
+          commentRef.current.setSelectionRange(commentRef.current.value.length, commentRef.current.value.length);
+        }
+      }, 100);
+      
+      console.log(`Replying to thought ${thoughtId} by ${thought.author}`);
+    }
+  };
+
   // Auto-refresh modal when pageData changes (if modal is open)
   useEffect(() => {
     if (showPageData && pageData) {
@@ -1895,6 +1941,10 @@ ${article.description}
 
   const toggleSettings = () => {
     setShowSettings(!showSettings);
+  };
+
+  const toggleThoughtRooms = () => {
+    setShowThoughtRooms(!showThoughtRooms);
   };
 
   // Handlers
@@ -3118,6 +3168,8 @@ ${article.description}
             onSave={() => console.log('Save clicked')}
             onViewPageData={handleViewPageData}
             onToggleSettings={toggleSettings}
+            onReplyToThoughtDoc={handleReplyToThoughtDoc}
+            onToggleThoughtRooms={toggleThoughtRooms}
             useContentScript={settings.useContentScript}
             isExtracting={isExtractingPageData}
           />
@@ -3846,6 +3898,7 @@ ${article.description}
                 onMinimize={() => updateState({ dockMinimized: true })}
                 onExpand={() => updateState({ dockMinimized: false })}
                 onNavigateToText={handleNavigateToText}
+                onReplyToThought={handleReplyToThought}
               />
             </div>
           )}
@@ -3919,6 +3972,42 @@ ${article.description}
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* 🎯 Thought Rooms Integration */}
+          <ThoughtRoomsIntegration
+            isOpen={showThoughtRooms}
+            onClose={() => setShowThoughtRooms(false)}
+            article={article ? {
+              title: article.title,
+              content: article.description || article.summary,
+              url: article.url
+            } : {
+              title: pageData?.title || document.title || "Current Page",
+              content: pageData?.visibleText || "",
+              url: currentUrl
+            }}
+            taggedContent={state.hiLiteText ? {
+              sourceText: pageData?.visibleText || article?.description || "",
+              sourceUrl: currentUrl,
+              highlightedText: state.hiLiteText
+            } : undefined}
+            user={user}
+            currentArticleId={state.currentArticleId} // Pass the article ID from storage
+            onSendMessage={(message, thoughtId) => {
+              console.log('💬 Conversation message:', message, 'for thought:', thoughtId);
+              // You can integrate this with your existing comment system
+              // submitComment(message);
+            }}
+            onAskAI={(question, thoughtId) => {
+              console.log('🤖 AI question:', question, 'for thought:', thoughtId);
+              // You can integrate this with your existing AI system
+              // askAi(question);
+            }}
+            onThoughtSelect={(thoughtId) => {
+              console.log('🎯 Thought selected:', thoughtId);
+              // You can integrate this with your existing highlight system
+            }}
+          />
         </motion.aside>
 
         {/* Settings Modal */}

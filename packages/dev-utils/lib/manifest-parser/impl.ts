@@ -18,8 +18,9 @@ const convertToFirefoxCompatibleManifest = (manifest: ManifestType) => {
       browser_style: false,
     };
   }
+  // Preserve the original CSP configuration for Firefox compatibility
   manifestCopy.content_security_policy = {
-    extension_pages: "script-src 'self'; object-src 'self'",
+    extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' data: https: http:; media-src 'self' data: blob:; connect-src 'self' https: http: ws: wss:;"
   };
   manifestCopy.permissions = (manifestCopy.permissions as string[]).filter(value => value !== 'sidePanel');
 
