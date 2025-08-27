@@ -50,14 +50,42 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
               }}
             />
             
-            {/* Room name badge overlay */}
+            {/* Premium room name badge overlay with enhanced design */}
             {joinedRoomName && (
               <div className="absolute top-4 left-4 z-10">
-                <div className="flex items-center gap-2 px-4 py-2 bg-philonet-blue-500/90 backdrop-blur-md border border-philonet-blue-400/30 rounded-full shadow-lg">
-                  <div className="h-2 w-2 bg-philonet-blue-200 rounded-full animate-pulse"></div>
-                  <span className="text-white text-sm font-medium truncate max-w-[200px]">
-                    {joinedRoomName}
-                  </span>
+                <div className="group relative">
+                  {/* Main badge container with premium styling */}
+                  <div className="flex items-center gap-3 px-5 py-3 
+                                bg-gradient-to-r from-philonet-blue-600/95 via-philonet-blue-500/90 to-philonet-blue-600/95 
+                                backdrop-blur-xl border border-philonet-blue-400/40 
+                                rounded-2xl shadow-2xl hover:shadow-philonet-blue-500/25 
+                                transition-all duration-500 hover:scale-[1.02] hover:-translate-y-0.5
+                                before:absolute before:inset-0 before:rounded-2xl 
+                                before:bg-gradient-to-r before:from-white/10 before:via-transparent before:to-white/5 
+                                before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300">
+                    
+                    {/* Sophisticated room icon with micro-animations */}
+                    <div className="relative">
+                      <div className="w-3 h-3 bg-gradient-to-br from-philonet-blue-200 to-white 
+                                    rounded-full shadow-sm animate-pulse">
+                        <div className="absolute inset-0 rounded-full bg-white/30 
+                                      animate-ping group-hover:animate-none"></div>
+                      </div>
+                    </div>
+                    
+                    {/* Premium typography for room name */}
+                    <span className="text-white text-sm font-semibold tracking-wide 
+                                   truncate max-w-[180px] 
+                                   drop-shadow-sm group-hover:drop-shadow-md 
+                                   transition-all duration-300">
+                      {joinedRoomName}
+                    </span>
+                  </div>
+                  
+                  {/* Subtle glow effect */}
+                  <div className="absolute inset-0 rounded-2xl bg-philonet-blue-500/20 
+                                blur-md -z-10 opacity-0 group-hover:opacity-100 
+                                transition-opacity duration-500"></div>
                 </div>
               </div>
             )}
@@ -73,14 +101,44 @@ const MetaHeader: React.FC<MetaHeaderProps> = ({
       {/* Premium title section with perfect Medium-style typography */}
       {meta.title && (
         <div className="mb-12 md:mb-16">
-          {/* Room name badge when no image */}
+          {/* Premium room name badge for no-image layout */}
           {!meta.image && joinedRoomName && (
-            <div className="flex justify-start mb-6">
-              <div className="flex items-center gap-2 px-4 py-2 bg-philonet-blue-500/90 backdrop-blur-md border border-philonet-blue-400/30 rounded-full shadow-lg">
-                <div className="h-2 w-2 bg-philonet-blue-200 rounded-full animate-pulse"></div>
-                <span className="text-white text-sm font-medium truncate max-w-[250px]">
-                  {joinedRoomName}
-                </span>
+            <div className="flex justify-start mb-8">
+              <div className="group relative">
+                {/* Enhanced badge design matching the overlay version */}
+                <div className="flex items-center gap-3 px-6 py-4 
+                              bg-gradient-to-r from-philonet-blue-600/95 via-philonet-blue-500/90 to-philonet-blue-600/95 
+                              backdrop-blur-xl border border-philonet-blue-400/40 
+                              rounded-2xl shadow-2xl hover:shadow-philonet-blue-500/25 
+                              transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1
+                              before:absolute before:inset-0 before:rounded-2xl 
+                              before:bg-gradient-to-r before:from-white/10 before:via-transparent before:to-white/5 
+                              before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300">
+                  
+                  {/* Premium room icon with enhanced animations */}
+                  <div className="relative">
+                    <FolderOpen className="w-4 h-4 text-philonet-blue-200 
+                                        drop-shadow-sm group-hover:drop-shadow-md 
+                                        transition-all duration-300 group-hover:scale-110" />
+                    <div className="absolute -inset-2 rounded-full bg-white/10 
+                                  opacity-0 group-hover:opacity-100 
+                                  animate-ping group-hover:animate-none 
+                                  transition-opacity duration-300"></div>
+                  </div>
+                  
+                  {/* Enhanced typography with better spacing */}
+                  <span className="text-white text-base font-semibold tracking-wide 
+                                 truncate max-w-[220px] 
+                                 drop-shadow-sm group-hover:drop-shadow-md 
+                                 transition-all duration-300">
+                    {joinedRoomName}
+                  </span>
+                </div>
+                
+                {/* Premium glow effect */}
+                <div className="absolute inset-0 rounded-2xl bg-philonet-blue-500/20 
+                              blur-xl -z-10 opacity-0 group-hover:opacity-100 
+                              transition-opacity duration-500 scale-110"></div>
               </div>
             </div>
           )}

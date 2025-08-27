@@ -279,6 +279,10 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                     thoughtStarters={[]} // Will use default generated ones
                     selectedThoughtId={selectedThoughtId}
                     currentUser={user || { id: 'user1', name: 'You' }}
+                    // Add API context props for AI assistant
+                    articleId={article?.id ? parseInt(article.id, 10) : undefined}
+                    parentCommentId={selectedThoughtId ? parseInt(selectedThoughtId, 10) : undefined}
+                    articleContent={article?.content || article?.description || ''}
                     onThoughtSelect={handleThoughtSelect}
                     onSendMessage={handleSendMessage}
                     onAskAI={handleAskAI}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Minus, Maximize2, MessageSquare } from 'lucide-react';
+import { X, MessageSquare } from 'lucide-react';
 import ConversationRoom from './ConversationRoom';
 import { thoughtRoomsAPI, addComment } from '../services/thoughtRoomsApi';
 import { philonetAuthStorage } from '../storage/auth-storage';
@@ -40,7 +40,6 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   onThoughtSelect,
   currentArticleId
 }) => {
-  const [isMinimized, setIsMinimized] = useState(false);
   const [sidePanelWidth, setSidePanelWidth] = useState(400);
   const [drawerWidth, setDrawerWidth] = useState(480);
   const [isMobile, setIsMobile] = useState(false);
@@ -88,7 +87,10 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         limit: 10
       });
       
-      console.log('✅ Successfully fetched comments:', response);
+      console.log('✅ Successfully fetched comments:', {
+        count: response.comments?.length || 0,
+        hasComments: !!response.comments
+      });
       
       // Get current user ID for ownership detection
       const currentUserId = await getCurrentUserId();
@@ -98,12 +100,16 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         thoughtRoomsAPI.transformCommentToThoughtStarter(comment, currentUserId || undefined)
       );
       
-      console.log('🔄 Transformed thoughts:', transformedThoughts);
+      console.log('🔄 Transformed thoughts:', {
+        count: transformedThoughts.length,
+        firstThoughtId: transformedThoughts[0]?.id,
+        hasTransformed: transformedThoughts.length > 0
+      });
       setThoughtStarters(transformedThoughts);
       
       // Log the structure of the first thought starter for debugging
       if (transformedThoughts.length > 0) {
-        console.log('📋 First thought starter structure:', transformedThoughts[0]);
+        console.log('📋 First thought starter structure - id:', transformedThoughts[0].id, 'title:', transformedThoughts[0].title?.substring(0, 50) + '...');
         console.log('🆔 First thought starter ID:', transformedThoughts[0].id, 'type:', typeof transformedThoughts[0].id);
       }
       
@@ -172,20 +178,134 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         currentUserId || undefined
       );
       
-      console.log('✅ Successfully fetched conversation thread:', conversationData);
+      console.log('✅ Successfully fetched conversation thread:', {
+        messagesCount: conversationData.messages?.length || 0,
+        hasMore: conversationData.hasMore,
+        parentCommentId: conversationData.parentCommentId
+      });
+      
+      // First, validate and transform messages to ensure they have the correct structure
+      const validatedMessages = conversationData.messages.map((message: any, index: number) => {
+        // Check if this is a raw API object that hasn't been transformed
+        if (message.message_id || message.user_name || message.created_at) {
+          console.warn('⚠️ Found untransformed API message object, transforming:', {
+            message_id: message.message_id,
+            user_name: message.user_name,
+            content: message.content?.substring(0, 50) + '...'
+          });
+          
+          // Transform raw API object to expected message format
+          return {
+            id: message.message_id?.toString() || message.id?.toString() || `msg-${index}`,
+            text: message.content || message.text || '',
+            author: message.user_name || message.author || 'Unknown User',
+            timestamp: message.created_at || message.timestamp || new Date().toISOString(),
+            isOwn: false, // We'll set this correctly later if we have user info
+            type: message.title ? 'ai-response' as const : 'text' as const,
+            avatar: message.user_picture || message.avatar || undefined,
+            isRead: true,
+            status: 'read' as const,
+            reactions: [],
+            replyToMessageId: message.reply_message_id?.toString() || message.replyToMessageId,
+            replyToContent: message.reply_message || message.replyToContent,
+            replyToAuthor: message.reply_author || message.replyToAuthor,
+            quote: message.quote,
+            title: message.title || undefined
+          };
+        }
+        
+        // Message is already in the correct format, return as-is
+        return message;
+      });
+
+      // Filter out potentially auto-generated AI responses that follow normal messages too closely
+      const filteredMessages = validatedMessages.filter((message: any, index: number) => {
+        // If this is an AI message, check if it was created immediately after a normal message
+        if (message.author === 'AI Assistant' || message.type === 'ai-response') {
+          const messageTime = new Date(message.timestamp).getTime();
+          
+          // Look for recent normal messages from users (not AI) within the last 2 minutes
+          const recentNormalMessages = validatedMessages.filter((prevMsg: any, prevIndex: number) => 
+            prevIndex < index && // Previous message
+            prevMsg.author !== 'AI Assistant' && 
+            prevMsg.type !== 'ai-response' &&
+            new Date(prevMsg.timestamp).getTime() > messageTime - 120000 // Within 2 minutes (increased from 30 seconds)
+          );
+          
+          // Also check for AI responses that were created too quickly after ANY user message
+          const hasVeryRecentUserActivity = validatedMessages.some((prevMsg: any, prevIndex: number) => 
+            prevIndex < index && // Previous message
+            prevMsg.author !== 'AI Assistant' && 
+            prevMsg.type !== 'ai-response' &&
+            new Date(prevMsg.timestamp).getTime() > messageTime - 10000 // Within 10 seconds
+          );
+          
+          if (recentNormalMessages.length > 0 || hasVeryRecentUserActivity) {
+            console.warn('🚫 Filtering out potentially auto-generated AI response:', {
+              aiMessageId: message.id,
+              aiText: message.text?.substring(0, 50) + '...',
+              aiTimestamp: message.timestamp,
+              hasVeryRecentUserActivity,
+              recentNormalMessages: recentNormalMessages.map((m: any) => ({
+                id: m.id,
+                author: m.author,
+                text: m.text?.substring(0, 30) + '...',
+                timestamp: m.timestamp
+              }))
+            });
+            return false; // Filter out this AI message
+          }
+        }
+        return true; // Keep all other messages
+      });
+      
+      console.log('📝 Filtered messages:', {
+        original: conversationData.messages.length,
+        filtered: filteredMessages.length,
+        removed: conversationData.messages.length - filteredMessages.length
+      });
+      
+      // Final validation to ensure all messages have the required fields
+      const finalValidatedMessages = filteredMessages.map((message: any, index: number) => {
+        if (!message.id || !message.text || !message.author || !message.timestamp) {
+          console.error('❌ Invalid message structure detected:', {
+            index,
+            id: message.id,
+            text: message.text,
+            author: message.author,
+            timestamp: message.timestamp,
+            fullMessage: message
+          });
+          
+          // Return a safe fallback message
+          return {
+            id: message.id || `fallback-${index}`,
+            text: message.text || message.content || 'Message content unavailable',
+            author: message.author || message.user_name || 'Unknown User',
+            timestamp: message.timestamp || message.created_at || new Date().toISOString(),
+            isOwn: false,
+            type: 'text' as const,
+            avatar: message.avatar || message.user_picture,
+            isRead: true,
+            status: 'read' as const,
+            reactions: []
+          };
+        }
+        return message;
+      });
       
       // Store conversation details for this specific thought
       setConversationDetails(prev => ({
         ...prev,
         [thoughtId]: {
           parentCommentId,
-          messages: conversationData.messages,
+          messages: finalValidatedMessages, // Use fully validated messages
           hasMore: conversationData.hasMore,
           loadedAt: new Date().toISOString()
         }
       }));
       
-      console.log('📊 Updated conversation details for thought:', thoughtId, 'with', conversationData.messages.length, 'messages');
+      console.log('📊 Updated conversation details for thought:', thoughtId, 'with', finalValidatedMessages.length, 'messages');
     } catch (error) {
       console.error('❌ Error fetching conversation thread:', error);
       
@@ -229,14 +349,14 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   };
 
   // Handle sending a new message/comment
-  const handleSendMessage = async (message: string, thoughtId?: string) => {
+  const handleSendMessage = async (message: string, thoughtId?: string, replyToMessageId?: string) => {
     if (!message.trim()) {
       console.warn('⚠️ Cannot send empty message');
       return;
     }
 
     const articleId = getArticleId();
-    console.log('💬 Sending message:', message, 'to thought:', thoughtId, 'article:', articleId);
+    console.log('💬 Sending normal message (not AI):', message, 'to thought:', thoughtId, 'article:', articleId);
 
     setSendingMessage(true);
     setSendingError(null);
@@ -250,27 +370,40 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         articleId,
         content: message,
         ...(parentCommentId && { parentCommentId }),
+        ...(replyToMessageId && { replyMessageId: replyToMessageId }), // Keep as string, don't parse as int
         // Add tagged content as quote if available
         ...(taggedContent?.highlightedText && { quote: taggedContent.highlightedText })
+        // Note: Server may auto-generate AI responses, but client-side filtering will handle this
       };
 
-      console.log('📤 Sending comment with params:', addCommentParams);
+      console.log('📤 Sending comment with params (normal message):', addCommentParams);
 
       const response = await addComment(addCommentParams);
-      console.log('✅ Comment sent successfully:', response);
+      console.log('✅ Comment sent successfully (normal message):', {
+        success: !!response,
+        commentId: (response as any)?.comment_id || (response as any)?.id || 'unknown'
+      });
 
       // Call the original onSendMessage callback for any additional handling
       onSendMessage(message, thoughtId);
 
-      // Refresh the conversation thread to show the new message
-      if (isReply && parentCommentId) {
-        console.log('🔄 Refreshing conversation thread after new message');
-        await fetchConversationThread(thoughtId, parentCommentId);
-      } else {
-        // If it's a new top-level comment, refresh the entire thought starters list
-        console.log('🔄 Refreshing thought starters after new comment');
-        await fetchThoughtRoomData(articleId);
-      }
+      // Delay the refresh to avoid conflicts with optimistic updates in ConversationRoom
+      console.log('⏳ Delaying conversation refresh to avoid conflicts with optimistic updates...');
+      setTimeout(async () => {
+        try {
+          // Refresh the conversation thread to show the new message
+          if (isReply && parentCommentId) {
+            console.log('🔄 Refreshing conversation thread after normal message (delayed)');
+            await fetchConversationThread(thoughtId, parentCommentId);
+          } else {
+            // If it's a new top-level comment, refresh the entire thought starters list
+            console.log('🔄 Refreshing thought starters after normal comment (delayed)');
+            await fetchThoughtRoomData(articleId);
+          }
+        } catch (refreshError) {
+          console.error('❌ Error during delayed refresh:', refreshError);
+        }
+      }, 2000); // 2 second delay to allow optimistic updates to complete
 
     } catch (error) {
       console.error('❌ Failed to send message:', error);
@@ -290,6 +423,23 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  // Handle AI questions - separate from normal messages
+  const handleAskAI = async (question: string, thoughtId?: string) => {
+    if (!question.trim()) {
+      console.warn('⚠️ Cannot send empty AI question');
+      return;
+    }
+
+    const articleId = getArticleId();
+    console.log('🤖 Asking AI question:', question, 'to thought:', thoughtId, 'article:', articleId);
+
+    // Call the original onAskAI callback - this should trigger the AI logic in ConversationRoom
+    onAskAI(question, thoughtId);
+
+    // Note: No immediate refresh needed here as ConversationRoom handles AI responses
+    // and will call the parent onSendMessage handler when appropriate
   };
 
   // Track the last fetched article ID to detect changes
@@ -467,8 +617,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
             animate={{ 
               opacity: 1,
               scale: 1,
-              y: 0,
-              height: isMinimized ? '60px' : 'calc(100vh - 2rem)'
+              y: 0
             }}
             exit={{ 
               opacity: 0,
@@ -481,26 +630,26 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               stiffness: 200,
               duration: 0.3
             }}
-            className={`relative flex flex-col overflow-hidden bg-philonet-background border border-philonet-border ${
+            className={`relative flex flex-col bg-philonet-background border border-philonet-border ${
               isMobile ? 'rounded-xl mx-2' : 'rounded-lg'
-            }`}
+            } overflow-hidden`}
             style={{ 
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
               width: `${drawerWidth}px`,
-              height: isMinimized ? '60px' : 'calc(100vh - 2rem)',
+              height: 'calc(100vh - 2rem)',
               maxHeight: 'calc(100vh - 2rem)',
-              minHeight: isMinimized ? '60px' : '400px',
+              minHeight: '400px',
               pointerEvents: 'auto'
             }}
           >
             {/* Header - Telegram-inspired clean design */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-philonet-border bg-philonet-background">
+            <div className={`flex items-center justify-between px-4 py-3 bg-philonet-background transition-all duration-200 border-b border-philonet-border`}>
               <div className="flex items-center gap-3">
                 {/* Clean icon without glow effects - Telegram style */}
                 <MessageSquare className="w-5 h-5 text-philonet-blue-500" />
                 
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-medium text-philonet-text-primary">
+                  <h2 className={`text-base font-medium text-philonet-text-primary transition-opacity duration-200`}>
                     Conversations
                   </h2>
                   {article && (
@@ -541,19 +690,8 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               {/* Clean control buttons - Telegram style */}
               <div className="flex items-center">
                 <button
-                  onClick={() => setIsMinimized(!isMinimized)}
-                  className="p-2 hover:bg-philonet-border rounded-md transition-colors duration-150"
-                  title={isMinimized ? "Maximize" : "Minimize"}
-                >
-                  {isMinimized ? (
-                    <Maximize2 className="w-4 h-4 text-philonet-text-muted" />
-                  ) : (
-                    <Minus className="w-4 h-4 text-philonet-text-muted" />
-                  )}
-                </button>
-                <button
                   onClick={onClose}
-                  className="p-2 hover:bg-philonet-border rounded-md transition-colors duration-150 ml-1"
+                  className="p-2 hover:bg-philonet-border rounded-md transition-colors duration-150"
                   title="Close"
                 >
                   <X className="w-4 h-4 text-philonet-text-muted" />
@@ -562,13 +700,18 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
             </div>
 
             {/* Content Area with Telegram-inspired clean styling */}
-            {!isMinimized && (
+            <AnimatePresence mode="wait">
               <motion.div
+                key="content"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex-1 overflow-hidden h-full bg-philonet-background"
+                transition={{ 
+                  duration: 0.2,
+                  ease: "easeInOut"
+                }}
+                className="flex-1 overflow-hidden bg-philonet-background"
+                style={{ minHeight: 0 }}
               >
                 {isLoadingThoughts ? (
                   <div className="flex items-center justify-center py-16">
@@ -635,16 +778,135 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                     )}
                     
                     <ConversationRoom
-                      thoughtStarters={thoughtStarters}
+                      thoughtStarters={
+                        // Validate thoughtStarters to prevent React error #31
+                        thoughtStarters.map((thought, index) => {
+                          // Check if this is a raw API object that hasn't been transformed
+                          if (thought.message_id || thought.user_name || thought.created_at) {
+                            console.warn('⚠️ Found untransformed thought starter API object, transforming:', {
+                              message_id: thought.message_id,
+                              user_name: thought.user_name,
+                              content: thought.content?.substring(0, 50) + '...'
+                            });
+                            
+                            // Transform raw API object to expected thought starter format
+                            return {
+                              id: thought.message_id?.toString() || thought.comment_id?.toString() || thought.id || `thought-${index}`,
+                              title: thought.content || thought.title || 'Untitled Thought',
+                              description: thought.content || thought.description || '',
+                              category: 'general',
+                              tags: [],
+                              lastActivity: thought.created_at || thought.lastActivity || new Date().toISOString(),
+                              messageCount: 0,
+                              participants: 1,
+                              isActive: false,
+                              isPinned: false,
+                              hasUnread: false,
+                              unreadCount: 0,
+                              thumbnail: thought.user_picture,
+                              thoughtBody: thought.content || '',
+                              author: {
+                                id: thought.user_id?.toString() || 'unknown',
+                                name: thought.user_name || 'Anonymous',
+                                avatar: thought.user_picture,
+                                role: 'user'
+                              },
+                              reactions: {
+                                likes: 0,
+                                hearts: 0,
+                                stars: 0,
+                                thumbsUp: 0
+                              },
+                              participantsList: [],
+                              readStatus: {
+                                totalParticipants: 1,
+                                readBy: 0,
+                                unreadBy: 1
+                              },
+                              taggedContent: thought.quote ? {
+                                sourceText: thought.quote,
+                                sourceUrl: '',
+                                highlightedText: thought.quote
+                              } : undefined
+                            };
+                          }
+                          
+                          // Ensure reactions object is properly structured
+                          if (thought.reactions && typeof thought.reactions === 'object') {
+                            // Check if reactions contains raw API data
+                            if (thought.reactions.message_id || thought.reactions.user_name) {
+                              console.warn('⚠️ Found raw API data in thought.reactions, fixing:', thought.reactions);
+                              thought.reactions = {
+                                likes: 0,
+                                hearts: 0,
+                                stars: 0,
+                                thumbsUp: 0
+                              };
+                            }
+                          }
+                          
+                          // Thought is already in the correct format, return as-is
+                          return thought;
+                        }).filter(Boolean) // Remove any null/undefined entries
+                      }
                       selectedThoughtId={selectedThoughtId || (thoughtStarters.length > 0 ? thoughtStarters[0]?.id : "1")}
                       currentUser={user}
                       messages={
-                        // Pass conversation messages for the selected thought
-                        selectedThoughtId 
-                          ? conversationDetails[selectedThoughtId]?.messages || []
-                          : thoughtStarters.length > 0 
-                          ? conversationDetails[thoughtStarters[0]?.id]?.messages || []
-                          : []
+                        // Pass conversation messages for the selected thought with final validation
+                        (() => {
+                          const currentThoughtId = selectedThoughtId || (thoughtStarters.length > 0 ? thoughtStarters[0]?.id : null);
+                          const rawMessages = currentThoughtId 
+                            ? conversationDetails[currentThoughtId]?.messages || []
+                            : [];
+                          
+                          // Final validation to prevent React error #31
+                          return rawMessages.map((msg: any, index: number) => {
+                            // Check if this is still a raw API object that somehow wasn't transformed
+                            if (!msg || typeof msg !== 'object') {
+                              console.error('❌ Invalid message type detected:', typeof msg, msg);
+                              return {
+                                id: `error-${index}`,
+                                text: 'Message unavailable',
+                                author: 'System',
+                                timestamp: new Date().toISOString(),
+                                isOwn: false,
+                                type: 'text' as const,
+                                isRead: true,
+                                status: 'read' as const,
+                                reactions: []
+                              };
+                            }
+                            
+                            // Ensure all required fields exist
+                            const validatedMsg = {
+                              id: msg.id || msg.message_id?.toString() || `msg-${index}`,
+                              text: msg.text || msg.content || '',
+                              author: msg.author || msg.user_name || 'Unknown User',
+                              timestamp: msg.timestamp || msg.created_at || new Date().toISOString(),
+                              isOwn: Boolean(msg.isOwn),
+                              type: msg.type || (msg.title ? 'ai-response' as const : 'text' as const),
+                              avatar: msg.avatar || msg.user_picture,
+                              isRead: Boolean(msg.isRead !== false), // Default to true
+                              status: msg.status || 'read' as const,
+                              reactions: Array.isArray(msg.reactions) ? msg.reactions : [],
+                              replyToMessageId: msg.replyToMessageId || msg.reply_message_id?.toString(),
+                              replyToContent: msg.replyToContent || msg.reply_message,
+                              replyToAuthor: msg.replyToAuthor || msg.reply_author,
+                              quote: msg.quote,
+                              title: msg.title
+                            };
+                            
+                            // Double-check that we have valid strings for required fields
+                            if (!validatedMsg.id || !validatedMsg.author || !validatedMsg.timestamp) {
+                              console.error('❌ Message missing required fields after validation:', validatedMsg);
+                              validatedMsg.id = validatedMsg.id || `fallback-${index}`;
+                              validatedMsg.author = validatedMsg.author || 'Unknown User';
+                              validatedMsg.timestamp = validatedMsg.timestamp || new Date().toISOString();
+                            }
+                            
+                            return validatedMsg;
+                          }).filter(Boolean); // Remove any null/undefined entries
+                        })()
                       }
                       isLoadingMessages={
                         // Show loading if sub-comments are being loaded for the current thought
@@ -662,8 +924,15 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                           ? conversationErrors[thoughtStarters[0]?.id] || null
                           : null
                       }
-                      onSendMessage={(message: string, thoughtId: string) => handleSendMessage(message, thoughtId)}
-                      onAskAI={(question: string, thoughtId: string) => onAskAI(question, thoughtId)}
+                      // Add API context props for AI assistant
+                      articleId={getArticleId()}
+                      parentCommentId={(() => {
+                        const currentThoughtId = selectedThoughtId || (thoughtStarters.length > 0 ? thoughtStarters[0]?.id : undefined);
+                        return currentThoughtId ? parseInt(currentThoughtId, 10) : undefined;
+                      })()}
+                      articleContent={article?.content || ''}
+                      onSendMessage={(message: string, thoughtId: string, replyToMessageId?: string) => handleSendMessage(message, thoughtId, replyToMessageId)}
+                      onAskAI={(question: string, thoughtId: string) => handleAskAI(question, thoughtId)}
                       onThoughtSelect={(thoughtId: string) => {
                         console.log('🎯 Thought selected:', thoughtId);
                         console.log('📋 Available thought starters:', thoughtStarters);
@@ -701,7 +970,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                   </div>
                 )}
               </motion.div>
-            )}
+            </AnimatePresence>
           </motion.div>
         </motion.div>
       )}

@@ -158,8 +158,40 @@ interface AddCommentResponse {
   room_id: number;
 }
 
+interface ReactToCommentParams {
+  target_type: 'comment';
+  target_id: number;
+  reaction_type: string;
+}
+
+interface ReactToCommentResponse {
+  success: boolean;
+  message?: string;
+  reaction_count?: number;
+  user_reacted?: boolean;
+}
+
+interface AIQueryParams {
+  text: string;
+  fast?: boolean;
+}
+
+interface AIQueryResponse {
+  summary: string;
+  summarymini: string;
+}
+
+const getApiUrl = (endpoint: string) => `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1${endpoint}`;
+
+const API_ENDPOINTS = {
+  COMMENTS_NEW: '/room/commentsnew',
+  SUBCOMMENTS_NEW: '/room/subcommentsnew',
+  ADD_COMMENT_NEW: '/room/addcommentnew',
+  REACT: '/room/react',
+  AI_QUERY: '/users/answerprogemininew'
+};
+
 export class ThoughtRoomsAPI {
-  private baseUrl = 'http://localhost:3000/v1';
 
   async fetchComments(params: FetchCommentsParams): Promise<CommentsResponse> {
     const { articleId, limit = 10, cursor } = params;
@@ -180,7 +212,7 @@ export class ThoughtRoomsAPI {
     };
 
     try {
-      const response = await fetch(`${this.baseUrl}/room/commentsnew`, {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.COMMENTS_NEW), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -225,7 +257,7 @@ export class ThoughtRoomsAPI {
     };
 
     try {
-      const response = await fetch(`${this.baseUrl}/room/subcommentsnew`, {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.SUBCOMMENTS_NEW), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -277,7 +309,7 @@ export class ThoughtRoomsAPI {
     if (emotion) requestBody.emotion = emotion;
 
     try {
-      const response = await fetch(`${this.baseUrl}/room/addcommentnew`, {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.ADD_COMMENT_NEW), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -299,6 +331,102 @@ export class ThoughtRoomsAPI {
       return data;
     } catch (error) {
       console.error('❌ Add comment API request failed:', error);
+      throw error;
+    }
+  }
+
+  async reactToComment(params: ReactToCommentParams): Promise<ReactToCommentResponse> {
+    const { target_type, target_id, reaction_type } = params;
+    
+    // Get authorization token from storage
+    const token = await philonetAuthStorage.getToken();
+    if (!token) {
+      console.error('🚫 No authorization token found in storage');
+      throw new Error('No authorization token found. Please log in.');
+    }
+    
+    console.log('👍 Reacting to comment:', target_id, 'with reaction:', reaction_type);
+    
+    const requestBody = {
+      target_type,
+      target_id,
+      reaction_type
+    };
+
+    try {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.REACT), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - token may be expired');
+          throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+        }
+        throw new Error(`React to comment API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data: ReactToCommentResponse = await response.json();
+      console.log('✅ Reaction toggled successfully for comment:', target_id);
+      return data;
+    } catch (error) {
+      console.error('❌ React to comment API request failed:', error);
+      throw error;
+    }
+  }
+
+  async queryAI(params: AIQueryParams): Promise<AIQueryResponse> {
+    const { text, fast = true } = params;
+    
+    // Get authorization token from storage
+    const token = await philonetAuthStorage.getToken();
+    if (!token) {
+      console.error('🚫 No authorization token found in storage');
+      throw new Error('No authorization token found. Please log in.');
+    }
+    
+    console.log('🤖 Querying AI with text prompt (length:', text.length, 'chars)');
+    
+    const requestBody = {
+      text,
+      fast
+    };
+
+    try {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.AI_QUERY), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - token may be expired');
+          throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+        }
+        throw new Error(`AI query API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data: AIQueryResponse = await response.json();
+      
+      // Validate the response has the expected structure
+      if (!data.summary || typeof data.summary !== 'string') {
+        console.error('❌ Invalid AI response structure:', data);
+        throw new Error('Invalid response format from AI service');
+      }
+      
+      console.log('✅ AI query completed successfully, summary length:', data.summary.length);
+      return data;
+    } catch (error) {
+      console.error('❌ AI query API request failed:', error);
       throw error;
     }
   }
@@ -365,7 +493,7 @@ export class ThoughtRoomsAPI {
 
       // Transform sub-comments to message format with current user detection
       const messages = subCommentsResponse.comments.map(subComment => 
-        this.transformSubCommentToMessage(subComment, currentUserId)
+        this.transformSubCommentToMessage(subComment, currentUserId, subCommentsResponse.comments)
       );
 
       console.log('✅ Fetched conversation thread with', messages.length, 'messages');
@@ -399,7 +527,7 @@ export class ThoughtRoomsAPI {
       });
 
       const messages = subCommentsResponse.comments.map(subComment => 
-        this.transformSubCommentToMessage(subComment, currentUserId)
+        this.transformSubCommentToMessage(subComment, currentUserId, subCommentsResponse.comments)
       );
 
       console.log('✅ Fetched', messages.length, 'messages for conversation');
@@ -416,14 +544,57 @@ export class ThoughtRoomsAPI {
   }
 
   // Transform API sub-comment to conversation message format
-  transformSubCommentToMessage(subComment: SubComment, currentUserId?: string) {
-    return {
+  transformSubCommentToMessage(subComment: SubComment, currentUserId?: string, allComments?: SubComment[]) {
+    // Log when we receive reply information
+    if (subComment.reply_message_id || subComment.reply_message) {
+      console.log('🔗 Found message with reply data:', {
+        comment_id: subComment.comment_id,
+        reply_message_id: subComment.reply_message_id,
+        reply_message: subComment.reply_message,
+        content: subComment.content.substring(0, 50) + '...'
+      });
+    }
+
+    // Try to find the referenced message content if we have the ID but not the content
+    let replyToContent = subComment.reply_message;
+    let replyToAuthor = 'Referenced User';
+    
+    if (subComment.reply_message_id && !subComment.reply_message && allComments) {
+      const referencedComment = allComments.find(c => c.comment_id.toString() === subComment.reply_message_id?.toString());
+      if (referencedComment) {
+        replyToContent = referencedComment.content.substring(0, 100) + (referencedComment.content.length > 100 ? '...' : '');
+        replyToAuthor = referencedComment.user_name;
+        console.log('🔍 Found referenced message content:', {
+          referencedId: subComment.reply_message_id,
+          content: replyToContent,
+          author: replyToAuthor
+        });
+      }
+    }
+
+    // Check if this is an AI assistant response (has a title)
+    const isAIResponse = !!(subComment.title && subComment.title.trim());
+    
+    // Log AI response detection
+    if (isAIResponse) {
+      console.log('🤖 Detected AI assistant response:', {
+        comment_id: subComment.comment_id,
+        title: subComment.title,
+        content_preview: subComment.content.substring(0, 50) + '...'
+      });
+    }
+    
+    // For AI responses, keep title separate and don't embed it in content
+    // The UI will handle displaying the title separately
+    const messageText = subComment.content;
+
+    const transformedMessage = {
       id: subComment.comment_id.toString(),
-      text: subComment.content,
-      author: subComment.user_name, // ConversationRoom expects string, not object
+      text: messageText,
+      author: isAIResponse ? 'AI Assistant' : subComment.user_name, // Use "AI Assistant" for messages with titles
       timestamp: subComment.created_at,
       isOwn: currentUserId ? subComment.user_id === currentUserId : false, // Detect if message is from current user
-      type: 'text' as const, // Add type property that ConversationRoom expects
+      type: isAIResponse ? 'ai-response' as const : 'text' as const, // Set type based on whether it has a title
       avatar: subComment.user_picture,
       isRead: true,
       status: 'read' as const,
@@ -433,11 +604,30 @@ export class ThoughtRoomsAPI {
         users: [] // We don't have user list data
       })) || [],
       replyTo: subComment.parent_comment_id ? subComment.parent_user_name : undefined,
+      // Add reply information from the API response (keep as strings)
+      replyToMessageId: subComment.reply_message_id?.toString(),
+      replyToContent: replyToContent || (subComment.reply_message_id ? 'Referenced message' : undefined),
+      replyToAuthor: subComment.reply_message_id ? replyToAuthor : undefined,
       quote: subComment.quote || undefined,
       edited: subComment.edited,
       userReacted: subComment.user_reacted,
-      reactionType: subComment.reaction_type
+      reactionType: subComment.reaction_type,
+      // Store the original title for reference
+      title: isAIResponse ? subComment.title : undefined
     };
+
+    // Log the final transformed message if it has reply data
+    if (transformedMessage.replyToMessageId) {
+      console.log('🔗 Transformed message with reply data:', {
+        id: transformedMessage.id,
+        replyToMessageId: transformedMessage.replyToMessageId,
+        replyToContent: transformedMessage.replyToContent,
+        replyToAuthor: transformedMessage.replyToAuthor,
+        hasReplyData: !!(transformedMessage.replyToMessageId || transformedMessage.replyToContent)
+      });
+    }
+
+    return transformedMessage;
   }
 
   private getEmojiForReactionType(reactionType: string): string {
@@ -513,7 +703,17 @@ export const addComment = async (params: AddCommentParams) => {
   return thoughtRoomsAPI.addComment(params);
 };
 
+// Export react to comment function
+export const reactToComment = async (params: ReactToCommentParams) => {
+  return thoughtRoomsAPI.reactToComment(params);
+};
+
+// Export AI query function
+export const queryAI = async (params: AIQueryParams) => {
+  return thoughtRoomsAPI.queryAI(params);
+};
+
 export const thoughtRoomsAPI = new ThoughtRoomsAPI();
 
 // Export types for external use
-export type { AddCommentParams, AddCommentResponse };
+export type { AddCommentParams, AddCommentResponse, ReactToCommentParams, ReactToCommentResponse, AIQueryParams, AIQueryResponse };

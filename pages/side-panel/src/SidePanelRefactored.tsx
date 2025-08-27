@@ -14,6 +14,7 @@ import {
 } from './components';
 import ThoughtRoomsIntegration from './components/ThoughtRoomsIntegration2';
 import { PdfUploadModal } from './components/PdfUploadModal';
+import ShareModal from './components/ShareModal';
 
 import {
   useSpeech,
@@ -181,6 +182,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // PDF upload modal state
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false);
   const [pdfUploadFileName, setPdfUploadFileName] = useState<string>('');
+
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Enhanced PDF upload state for drag & drop
   const [isDragging, setIsDragging] = useState(false);
@@ -3193,7 +3197,7 @@ ${article.description}
             onToggleHistoryMenu={toggleHistoryMenu}
             onHistoryItemClick={openHistoryItem}
             onSummary={() => console.log('Generate summary clicked')}
-            onShare={() => console.log('Share clicked')}
+            onShare={() => setShowShareModal(true)}
             onSave={() => console.log('Save clicked')}
             onViewPageData={handleViewPageData}
             onToggleSettings={toggleSettings}
@@ -4464,8 +4468,30 @@ ${article.description}
                 <div className="flex items-center gap-3">
                   <FileText className="h-6 w-6 text-philonet-blue-400" />
                   <h2 className="text-xl font-bold text-white">Article Content</h2>
-                  <div className="flex items-center gap-2 px-2 py-1 bg-green-600/20 border border-green-500/50 rounded-md">
-                    <span className="text-xs text-green-400 font-medium">
+                  <div className="flex items-center gap-3 px-4 py-2.5 
+                                 bg-gradient-to-r from-green-600/95 via-green-500/90 to-green-600/95 
+                                 backdrop-blur-xl border border-green-500/50 
+                                 rounded-xl shadow-lg hover:shadow-green-500/25 
+                                 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5
+                                 group relative overflow-hidden">
+                    
+                    {/* Premium background overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-transparent to-white/5 
+                                  opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                    
+                    {/* Enhanced status indicator */}
+                    <div className="relative">
+                      <div className="w-2.5 h-2.5 bg-gradient-to-br from-green-200 to-white 
+                                    rounded-full shadow-sm animate-pulse">
+                        <div className="absolute inset-0 rounded-full bg-white/30 
+                                      animate-ping group-hover:animate-none"></div>
+                      </div>
+                    </div>
+                    
+                    {/* Premium typography */}
+                    <span className="text-green-100 text-sm font-semibold tracking-wide 
+                                   drop-shadow-sm group-hover:drop-shadow-md 
+                                   transition-all duration-300 relative z-10">
                       Found in {article.room_name}
                     </span>
                   </div>
@@ -4484,10 +4510,41 @@ ${article.description}
                   <h1 className="text-2xl font-bold text-white mb-3">
                     {article.title}
                   </h1>
-                  <div className="flex flex-wrap gap-4 text-sm text-philonet-text-secondary">
-                    <span><strong>Created:</strong> {formatTimeAgo(new Date(article.created_at))}</span>
-                    <span><strong>Room:</strong> {article.room_name}</span>
-                    <span><strong>Article ID:</strong> {article.article_id}</span>
+                  <div className="flex flex-wrap gap-6 text-sm text-philonet-text-secondary">
+                    <span className="flex items-center gap-2">
+                      <strong>Created:</strong> 
+                      <span className="text-philonet-text-primary">{formatTimeAgo(new Date(article.created_at))}</span>
+                    </span>
+                    
+                    <div className="flex items-center gap-2">
+                      <strong>Room:</strong>
+                      <div className="flex items-center gap-2 px-3 py-1.5 
+                                     bg-gradient-to-r from-philonet-blue-600/20 via-philonet-blue-500/15 to-philonet-blue-600/20 
+                                     backdrop-blur-sm border border-philonet-blue-400/30 
+                                     rounded-lg shadow-sm hover:shadow-philonet-blue-500/20 
+                                     transition-all duration-300 hover:scale-[1.02]
+                                     group relative overflow-hidden">
+                        
+                        {/* Subtle background overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-white/5 via-transparent to-white/3 
+                                      opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                        
+                        {/* Mini room indicator */}
+                        <div className="w-1.5 h-1.5 bg-philonet-blue-400 rounded-full animate-pulse relative z-10"></div>
+                        
+                        {/* Room name with enhanced typography */}
+                        <span className="text-philonet-blue-200 font-medium tracking-wide 
+                                       drop-shadow-sm group-hover:drop-shadow-md 
+                                       transition-all duration-300 relative z-10">
+                          {article.room_name}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <span className="flex items-center gap-2">
+                      <strong>Article ID:</strong> 
+                      <span className="text-philonet-text-primary font-mono">{article.article_id}</span>
+                    </span>
                   </div>
                 </div>
 
@@ -4618,6 +4675,23 @@ ${article.description}
           onClose={closePdfUploadModal}
           onUploadSuccess={handlePdfUploadSuccess}
           fileName={pdfUploadFileName}
+        />
+
+        {/* Share Modal */}
+        <ShareModal
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          shareUrl={currentUrl || window.location.href}
+          articleTitle={article?.title || pageData?.title || document.title || "Current Page"}
+          articleDescription={article?.description || article?.summary || pageData?.metaDescription || ""}
+          onShareToRoom={(roomId) => {
+            console.log('🏠 Sharing to room:', roomId);
+            // TODO: Implement room sharing API call
+          }}
+          onShareToFriend={(friendId) => {
+            console.log('👤 Sharing to friend:', friendId);
+            // TODO: Implement friend sharing API call
+          }}
         />
       </div>
     );

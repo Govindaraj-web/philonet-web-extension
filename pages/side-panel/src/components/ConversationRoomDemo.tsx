@@ -26,6 +26,7 @@ const ConversationRoomDemo: React.FC = () => {
     title: 'The Future of Renewable Energy',
     summary: 'An in-depth analysis of renewable energy trends and their impact on global economics.',
     description: 'This comprehensive article explores the rapid advancement of renewable energy technologies...',
+    content: 'Renewable energy has become a cornerstone of modern sustainability efforts. Solar panels, wind turbines, and hydroelectric systems are revolutionizing how we generate power. The economic implications are profound, with green energy creating millions of jobs worldwide while reducing dependency on fossil fuels. Climate change mitigation through renewable adoption could prevent catastrophic environmental damage.',
     categories: ['Environment', 'Technology'],
     tags: ['renewable', 'energy', 'climate', 'technology'],
     thumbnail_url: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=300&h=200&fit=crop'
@@ -38,7 +39,23 @@ const ConversationRoomDemo: React.FC = () => {
 
   const handleAskAI = (question: string, thoughtId: string) => {
     console.log('Demo: AI question asked', { question, thoughtId });
-    // In a real implementation, this would send the question to your AI service
+    
+    // Create the formatted prompt as it would be sent to the API
+    const promptText = `Question: ${question}
+
+Article Context: ${demoArticle.content}
+
+Please provide a detailed analysis and answer to the question based on the article context provided above.`;
+    
+    console.log('📝 This would normally call the AI API with:', {
+      text: promptText,
+      fast: true
+    });
+    
+    // Simulate successful AI response
+    setTimeout(() => {
+      console.log('✅ AI response would be added to conversation automatically');
+    }, 1000);
   };
 
   const handleGenerateContent = () => {
@@ -127,6 +144,7 @@ const ConversationRoomDemo: React.FC = () => {
             <ConversationRoom
               selectedThoughtId={selectedThoughtId}
               currentUser={demoUser}
+              articleContent={demoArticle.content}
               onThoughtSelect={setSelectedThoughtId}
               onSendMessage={handleSendMessage}
               onAskAI={handleAskAI}

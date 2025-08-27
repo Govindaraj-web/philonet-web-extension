@@ -39,11 +39,11 @@ const addSelectionHighlight = (selection: Selection) => {
   const span = document.createElement('span');
   span.className = 'philonet-text-highlight';
   span.style.cssText = `
-    background: linear-gradient(120deg, rgba(34, 197, 94, 0.3) 0%, rgba(16, 185, 129, 0.3) 100%);
+    background: linear-gradient(120deg, rgba(203, 163, 57, 0.3) 0%, rgba(203, 163, 57, 0.4) 100%);
     border-radius: 4px;
     padding: 2px 4px;
     margin: -2px -4px;
-    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.5);
+    box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.5);
     animation: philonet-highlight-pulse 0.8s ease-out;
     transition: all 0.3s ease;
     color: #ffffff !important;
@@ -56,24 +56,24 @@ const addSelectionHighlight = (selection: Selection) => {
     style.textContent = `
       @keyframes philonet-highlight-pulse {
         0% { 
-          background: rgba(34, 197, 94, 0.5);
-          box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4);
+          background: rgba(203, 163, 57, 0.5);
+          box-shadow: 0 0 0 3px rgba(203, 163, 57, 0.4);
           color: #ffffff !important;
         }
         50% { 
-          background: rgba(34, 197, 94, 0.4);
-          box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.3);
+          background: rgba(203, 163, 57, 0.4);
+          box-shadow: 0 0 0 6px rgba(203, 163, 57, 0.3);
           color: #ffffff !important;
         }
         100% { 
-          background: linear-gradient(120deg, rgba(34, 197, 94, 0.3) 0%, rgba(16, 185, 129, 0.3) 100%);
-          box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.5);
+          background: linear-gradient(120deg, rgba(203, 163, 57, 0.3) 0%, rgba(203, 163, 57, 0.4) 100%);
+          box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.5);
           color: #ffffff !important;
         }
       }
       .philonet-text-highlight:hover {
-        background: linear-gradient(120deg, rgba(34, 197, 94, 0.4) 0%, rgba(16, 185, 129, 0.4) 100%);
-        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.6);
+        background: linear-gradient(120deg, rgba(203, 163, 57, 0.4) 0%, rgba(203, 163, 57, 0.5) 100%);
+        box-shadow: 0 0 0 2px rgba(203, 163, 57, 0.6);
         color: #ffffff !important;
       }
       .philonet-text-highlight * {

@@ -32,10 +32,15 @@ import {
   TrendingUp,
   ArrowLeft,
   CornerUpLeft,
-  X
+  X,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { cn } from '@extension/ui';
 import { Button, Textarea } from './ui';
+import { reactToComment, queryAI, addComment } from '../services/thoughtRoomsApi';
 
 interface ThoughtStarter {
   id: string;
@@ -98,10 +103,18 @@ interface Message {
   isOwn: boolean;
   type: 'text' | 'ai-response' | 'system' | 'thought-starter';
   replyTo?: string;
+  replyToMessageId?: string; // Add this for referencing specific message IDs
+  replyToContent?: string; // Add this to show preview of replied message
+  replyToAuthor?: string; // Add this to show who was replied to
   reactions?: { emoji: string; count: number; users: string[] }[];
   avatar?: string;
   isRead?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
+  title?: string; // Add title field for AI assistant responses
+  // API integration fields
+  comment_id?: number; // The actual comment ID from the API
+  articleId?: number; // The article ID for API calls
+  parentCommentId?: number; // The parent comment ID for API calls
 }
 
 interface ConversationRoomProps {
@@ -115,10 +128,127 @@ interface ConversationRoomProps {
   messages?: Message[]; // Add external messages prop
   isLoadingMessages?: boolean; // Add loading state for messages
   messagesError?: string | null; // Add error state for messages
+  // API context for reactions
+  articleId?: number; // Article ID for API calls
+  parentCommentId?: number; // Parent comment ID for API calls
+  articleContent?: string; // Article content for AI queries
   onThoughtSelect: (thoughtId: string) => void;
-  onSendMessage: (message: string, thoughtId: string) => void;
+  onSendMessage: (message: string, thoughtId: string, replyToMessageId?: string) => void;
   onAskAI: (question: string, thoughtId: string) => void;
 }
+
+/* 
+ * REACT ERROR #31 PREVENTION SYSTEM
+ * 
+ * This system prevents "React Error #31: Objects are not valid as a React child" by:
+ * 1. validateAndTransformMessage() - Transforms raw API objects to proper Message format
+ * 2. validateThoughtStarter() - Validates and cleans thought starter objects  
+ * 3. Comprehensive filtering in JSX render with type guards
+ * 4. Detailed logging for debugging raw API object detection
+ * 
+ * The error occurs when raw API objects with keys like 'message_id', 'user_name', 
+ * 'created_at', 'original_content' get passed directly to React components.
+ * This system catches and transforms these objects before they reach JSX.
+ */
+
+// Validation and transformation function to prevent React error #31
+const validateAndTransformMessage = (message: any): Message | null => {
+  if (!message || typeof message !== 'object') {
+    console.error('🚫 validateAndTransformMessage: Invalid message object:', message);
+    return null;
+  }
+
+  // Check if this is a raw API object that needs transformation
+  if (message.message_id || message.user_name || message.created_at || message.original_content) {
+    console.log('🔄 validateAndTransformMessage: Transforming raw API object to Message format:', {
+      message_id: message.message_id,
+      user_name: message.user_name,
+      created_at: message.created_at,
+      hasOriginalContent: !!message.original_content
+    });
+    
+    // Transform raw API object to Message format
+    try {
+      const transformedMessage: Message = {
+        id: String(message.message_id || message.comment_id || message.id || `temp-${Date.now()}`),
+        text: message.content || message.original_content || message.text || 'No content',
+        author: message.user_name || message.author || 'Unknown',
+        timestamp: message.created_at || message.timestamp || new Date().toISOString(),
+        isOwn: false, // Default to not own for external messages
+        type: message.type || 'text',
+        // Preserve any additional fields with proper validation
+        replyToMessageId: message.replyToMessageId,
+        replyToContent: typeof message.replyToContent === 'object' && message.replyToContent 
+          ? ((message.replyToContent as any).content || (message.replyToContent as any).text || JSON.stringify(message.replyToContent))
+          : (message.replyToContent || undefined),
+        replyToAuthor: typeof message.replyToAuthor === 'object' && message.replyToAuthor
+          ? ((message.replyToAuthor as any).name || (message.replyToAuthor as any).user_name || 'Someone')
+          : (message.replyToAuthor || undefined),
+        reactions: message.reactions,
+        avatar: message.user_picture || message.avatar,
+        comment_id: message.message_id || message.comment_id,
+        articleId: message.articleId,
+        parentCommentId: message.parentCommentId
+      };
+      
+      console.log('✅ validateAndTransformMessage: Successfully transformed API object to Message:', {
+        id: transformedMessage.id,
+        author: transformedMessage.author,
+        textPreview: transformedMessage.text?.substring(0, 50) + '...'
+      });
+      
+      return transformedMessage;
+    } catch (error) {
+      console.error('❌ validateAndTransformMessage: Failed to transform API object:', error, message);
+      return null;
+    }
+  }
+
+  // Check if it's already a valid Message object
+  if (message.id && message.text && message.author && message.timestamp) {
+    // This is already a properly formatted Message, but validate nested objects
+    console.log('✅ validateAndTransformMessage: Message already properly formatted:', {
+      id: message.id,
+      author: message.author,
+      textPreview: message.text?.substring(0, 50) + '...'
+    });
+    
+    // Fix any object values in reply fields that should be strings
+    const cleanedMessage: Message = {
+      ...message,
+      replyToContent: typeof message.replyToContent === 'object' && message.replyToContent 
+        ? ((message.replyToContent as any).content || (message.replyToContent as any).text || JSON.stringify(message.replyToContent))
+        : message.replyToContent,
+      replyToAuthor: typeof message.replyToAuthor === 'object' && message.replyToAuthor
+        ? ((message.replyToAuthor as any).name || (message.replyToAuthor as any).user_name || 'Someone')
+        : message.replyToAuthor,
+    };
+    
+    if (cleanedMessage.replyToContent !== message.replyToContent || cleanedMessage.replyToAuthor !== message.replyToAuthor) {
+      console.log('🔧 validateAndTransformMessage: Fixed object values in reply fields:', {
+        originalReplyToContent: typeof message.replyToContent,
+        cleanedReplyToContent: typeof cleanedMessage.replyToContent,
+        originalReplyToAuthor: typeof message.replyToAuthor,
+        cleanedReplyToAuthor: typeof cleanedMessage.replyToAuthor
+      });
+    }
+    
+    return cleanedMessage as Message;
+  }
+
+  console.error('🚫 validateAndTransformMessage: Message missing required fields:', {
+    id: message.id,
+    text: message.text,
+    author: message.author,
+    timestamp: message.timestamp,
+    hasMessageId: !!message.message_id,
+    hasUserName: !!message.user_name,
+    hasCreatedAt: !!message.created_at,
+    messageKeys: Object.keys(message)
+  });
+  
+  return null;
+};
 
 const ConversationRoom: React.FC<ConversationRoomProps> = ({
   thoughtStarters = [],
@@ -127,6 +257,9 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   messages: externalMessages = [], // Add external messages prop
   isLoadingMessages = false, // Add loading state prop
   messagesError = null, // Add error state prop
+  articleId, // Add API context props
+  parentCommentId, // Add API context props
+  articleContent = '', // Add article content for AI queries
   onThoughtSelect,
   onSendMessage,
   onAskAI
@@ -138,8 +271,11 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   const [inputMode, setInputMode] = useState<'message' | 'ai'>('message');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isHeaderShrunk, setIsHeaderShrunk] = useState(false);
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -160,6 +296,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   const [isLeftSidebarHovered, setIsLeftSidebarHovered] = useState(false);
   const [showSendEffect, setShowSendEffect] = useState(false);
   const [particles, setParticles] = useState<Array<{id: number, x: number, y: number, emoji: string}>>([]);
+  const [reactionError, setReactionError] = useState<string | null>(null);
   const [successPulse, setSuccessPulse] = useState<string | null>(null);
 
   // Close reaction picker when clicking outside
@@ -306,47 +443,224 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }, 1000);
   };
 
-  const handleAddReaction = (messageId: string, emoji: string) => {
+  // Map emoji to API reaction type
+  const getReactionTypeFromEmoji = (emoji: string): string => {
+    const emojiToReactionMap: { [key: string]: string } = {
+      '❤️': 'love',
+      '💙': 'heart',
+      '👍': 'celebrate',
+      '😂': 'laugh',
+      '😮': 'surprised',
+      '😢': 'sad',
+      '😡': 'angry',
+      '⭐': 'star',
+      '🔥': 'like'
+    };
+    return emojiToReactionMap[emoji] || 'like'; // Default to 'like' if emoji not found
+  };
+
+  const handleAddReaction = async (messageId: string, emoji: string) => {
     // Add to recent emojis
     setRecentEmojis(prev => {
       const filtered = prev.filter(e => e !== emoji);
       return [emoji, ...filtered].slice(0, 8); // Keep only 8 recent emojis
     });
 
+    // Find the message to get the comment_id - look in current messages state
+    const message = messages.find(msg => msg.id === messageId);
+    if (!message) {
+      console.error('❌ Message not found:', {
+        messageId,
+        availableMessages: messages.map(m => ({ id: m.id, comment_id: m.comment_id }))
+      });
+      return;
+    }
+
+    // Try to get comment_id, fallback to parsing the message id if it's numeric
+    let commentId = message.comment_id;
+    if (!commentId) {
+      // Try to parse message id as number (in case the API returns comment_id as string id)
+      const parsedId = parseInt(message.id);
+      if (!isNaN(parsedId)) {
+        commentId = parsedId;
+        console.log('🔄 Using parsed message ID as comment_id:', commentId);
+      }
+    }
+
+    if (!commentId) {
+      console.error('❌ No comment_id available for message:', {
+        messageId,
+        message: {
+          id: message.id,
+          comment_id: message.comment_id,
+          author: message.author,
+          text: message.text.substring(0, 50) + '...'
+        }
+      });
+      // Still allow local UI update for better UX
+      updateReactionLocally(messageId, emoji, true);
+      return;
+    }
+
+    // Optimistic update - update UI immediately
+    const existingReaction = message.reactions?.find(r => r.emoji === emoji);
+    const isCurrentlyReacted = existingReaction?.users?.includes(currentUser.id) ?? false;
+    updateReactionLocally(messageId, emoji, !isCurrentlyReacted);
+
+    try {
+      // Call the API to toggle reaction
+      const reactionType = getReactionTypeFromEmoji(emoji);
+      console.log('🔄 Toggling reaction:', {
+        messageId,
+        comment_id: commentId,
+        emoji,
+        reactionType
+      });
+
+      const result = await reactToComment({
+        target_type: 'comment',
+        target_id: commentId,
+        reaction_type: reactionType
+      });
+
+      console.log('✅ Reaction API response:', result);
+
+      // Update state with API response (this will override the optimistic update)
+      updateReactionFromAPI(messageId, emoji, result);
+
+    } catch (error) {
+      console.error('❌ Failed to toggle reaction:', error);
+      // Revert optimistic update on error
+      updateReactionLocally(messageId, emoji, isCurrentlyReacted);
+      setReactionError('Failed to update reaction. Please try again.');
+      // Clear error after 3 seconds
+      setTimeout(() => setReactionError(null), 3000);
+    }
+
+    setShowReactionPicker(null);
+  };
+
+  // Helper function for optimistic local updates
+  const updateReactionLocally = (messageId: string, emoji: string, shouldAddReaction: boolean) => {
     setMessages(prevMessages => 
       prevMessages.map(msg => {
         if (msg.id === messageId) {
           const existingReactions = msg.reactions || [];
           const existingReaction = existingReactions.find(r => r.emoji === emoji);
           
-          if (existingReaction) {
-            // Increment count and add current user to users array
-            return {
-              ...msg,
-              reactions: existingReactions.map(r => 
-                r.emoji === emoji ? { 
-                  ...r, 
-                  count: r.count + 1,
-                  users: [...(r.users || []), currentUser.id]
-                } : r
-              )
-            } as Message;
+          if (shouldAddReaction) {
+            if (existingReaction) {
+              // Increment count and add user
+              return {
+                ...msg,
+                reactions: existingReactions.map(r => 
+                  r.emoji === emoji ? { 
+                    ...r, 
+                    count: r.count + 1,
+                    users: r.users?.includes(currentUser.id) ? r.users : [...(r.users || []), currentUser.id]
+                  } : r
+                )
+              } as Message;
+            } else {
+              // Add new reaction
+              return {
+                ...msg,
+                reactions: [...existingReactions, { 
+                  emoji, 
+                  count: 1, 
+                  users: [currentUser.id] 
+                }]
+              } as Message;
+            }
           } else {
-            // Add new reaction
-            return {
-              ...msg,
-              reactions: [...existingReactions, { 
-                emoji, 
-                count: 1, 
-                users: [currentUser.id] 
-              }]
-            } as Message;
+            // Remove reaction
+            if (existingReaction) {
+              const newCount = Math.max(0, existingReaction.count - 1);
+              if (newCount === 0) {
+                return {
+                  ...msg,
+                  reactions: existingReactions.filter(r => r.emoji !== emoji)
+                } as Message;
+              } else {
+                return {
+                  ...msg,
+                  reactions: existingReactions.map(r => 
+                    r.emoji === emoji ? { 
+                      ...r, 
+                      count: newCount,
+                      users: (r.users || []).filter(userId => userId !== currentUser.id)
+                    } : r
+                  )
+                } as Message;
+              }
+            }
           }
         }
         return msg;
       })
     );
-    setShowReactionPicker(null);
+  };
+
+  // Helper function to update from API response
+  const updateReactionFromAPI = (messageId: string, emoji: string, apiResult: any) => {
+    setMessages(prevMessages => 
+      prevMessages.map(msg => {
+        if (msg.id === messageId) {
+          const existingReactions = msg.reactions || [];
+          const existingReaction = existingReactions.find(r => r.emoji === emoji);
+          
+          if (apiResult.user_reacted) {
+            // User added reaction
+            if (existingReaction) {
+              // Update existing reaction
+              return {
+                ...msg,
+                reactions: existingReactions.map(r => 
+                  r.emoji === emoji ? { 
+                    ...r, 
+                    count: apiResult.reaction_count || r.count,
+                    users: r.users?.includes(currentUser.id) ? r.users : [...(r.users || []), currentUser.id]
+                  } : r
+                )
+              } as Message;
+            } else {
+              // Add new reaction
+              return {
+                ...msg,
+                reactions: [...existingReactions, { 
+                  emoji, 
+                  count: apiResult.reaction_count || 1, 
+                  users: [currentUser.id] 
+                }]
+              } as Message;
+            }
+          } else {
+            // User removed reaction
+            if (existingReaction) {
+              const newCount = apiResult.reaction_count !== undefined ? apiResult.reaction_count : Math.max(0, existingReaction.count - 1);
+              if (newCount === 0) {
+                return {
+                  ...msg,
+                  reactions: existingReactions.filter(r => r.emoji !== emoji)
+                } as Message;
+              } else {
+                return {
+                  ...msg,
+                  reactions: existingReactions.map(r => 
+                    r.emoji === emoji ? { 
+                      ...r, 
+                      count: newCount,
+                      users: (r.users || []).filter(userId => userId !== currentUser.id)
+                    } : r
+                  )
+                } as Message;
+              }
+            }
+          }
+        }
+        return msg;
+      })
+    );
   };
 
   // Insert emoji at cursor position
@@ -393,6 +707,60 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     if (externalMessages && externalMessages.length > 0) {
       console.log('📨 ConversationRoom: External messages updated, merging with local messages:', externalMessages.length);
       
+      // Log messages to check for comment_id field
+      const messagesWithCommentId = externalMessages.filter(msg => msg.comment_id);
+      const messagesWithoutCommentId = externalMessages.filter(msg => !msg.comment_id);
+      
+      console.log('✅ Messages with comment_id:', messagesWithCommentId.length);
+      console.log('❌ Messages without comment_id:', messagesWithoutCommentId.length);
+      
+      if (messagesWithoutCommentId.length > 0) {
+        console.warn('⚠️ Some messages missing comment_id:', messagesWithoutCommentId.map(m => ({
+          id: m.id,
+          author: m.author,
+          text: m.text.substring(0, 30) + '...'
+        })));
+      }
+      
+      // Log any messages that have reply data
+      const messagesWithReplies = externalMessages.filter(msg => msg.replyToMessageId || msg.replyToContent);
+      if (messagesWithReplies.length > 0) {
+        console.log('🔗 Found messages with reply data:', messagesWithReplies.map(msg => ({
+          id: msg.id,
+          replyToMessageId: msg.replyToMessageId,
+          replyToContent: msg.replyToContent,
+          author: msg.author,
+          text: msg.text.substring(0, 50) + '...'
+        })));
+      }
+      
+      // Log AI assistant messages to detect unwanted auto-generation
+      const aiMessages = externalMessages.filter(msg => msg.author === 'AI Assistant' || msg.type === 'ai-response');
+      if (aiMessages.length > 0) {
+        console.log('🤖 AI messages detected in external messages:', aiMessages.map(msg => ({
+          id: msg.id,
+          author: msg.author,
+          type: msg.type,
+          text: msg.text.substring(0, 50) + '...',
+          timestamp: msg.timestamp
+        })));
+      }
+      
+      // Log each message to see what fields are available
+      externalMessages.forEach(msg => {
+        if (msg.replyToMessageId) {
+          console.log('🔗 Message with replyToMessageId found:', {
+            messageId: msg.id,
+            author: msg.author,
+            text: msg.text.substring(0, 30) + '...',
+            replyToMessageId: msg.replyToMessageId,
+            replyToContent: msg.replyToContent,
+            replyToAuthor: msg.replyToAuthor,
+            comment_id: msg.comment_id
+          });
+        }
+      });
+      
       // Merge external messages with any local pending messages
       setMessages(prevMessages => {
         const pendingMessages = prevMessages.filter(msg => 
@@ -400,8 +768,66 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
           (msg.isOwn && !externalMessages.some(extMsg => extMsg.id === msg.id))
         );
         
-        // Combine external messages with pending local messages
-        const mergedMessages = [...externalMessages, ...pendingMessages];
+        // Filter out any unwanted AI messages that might have been auto-generated
+        const filteredExternalMessages = externalMessages.filter(msg => {
+          // If this is an AI message, check if we recently sent a normal message that might have triggered it
+          if (msg.author === 'AI Assistant' || msg.type === 'ai-response') {
+            const messageTime = new Date(msg.timestamp).getTime();
+            
+            // Check for recent normal messages in local state (within 2 minutes)
+            const recentNormalMessages = prevMessages.filter(prevMsg => 
+              prevMsg.isOwn && 
+              prevMsg.type !== 'ai-response' && 
+              new Date(prevMsg.timestamp).getTime() > messageTime - 120000 // Increased to 2 minutes
+            );
+            
+            // Also check for recent normal messages in the external messages themselves
+            const recentExternalNormalMessages = externalMessages.filter(extMsg => 
+              extMsg.author !== 'AI Assistant' && 
+              extMsg.type !== 'ai-response' &&
+              new Date(extMsg.timestamp).getTime() > messageTime - 120000 // Within 2 minutes
+            );
+            
+            // Check for very recent user activity (within 10 seconds) that might trigger auto-AI
+            const hasVeryRecentUserActivity = [
+              ...prevMessages.filter(prevMsg => 
+                prevMsg.isOwn && 
+                prevMsg.type !== 'ai-response' &&
+                new Date(prevMsg.timestamp).getTime() > messageTime - 10000 // Within 10 seconds
+              ),
+              ...externalMessages.filter(extMsg => 
+                extMsg.author !== 'AI Assistant' && 
+                extMsg.type !== 'ai-response' &&
+                new Date(extMsg.timestamp).getTime() > messageTime - 10000 // Within 10 seconds
+              )
+            ].length > 0;
+            
+            if (recentNormalMessages.length > 0 || recentExternalNormalMessages.length > 0 || hasVeryRecentUserActivity) {
+              console.warn('🚫 ConversationRoom: Filtering out potentially auto-generated AI message:', {
+                aiMessageId: msg.id,
+                aiText: msg.text?.substring(0, 50) + '...',
+                aiTimestamp: msg.timestamp,
+                hasVeryRecentUserActivity,
+                recentNormalMessages: recentNormalMessages.map(m => ({
+                  id: m.id,
+                  text: m.text?.substring(0, 30) + '...',
+                  timestamp: m.timestamp
+                })),
+                recentExternalNormalMessages: recentExternalNormalMessages.map(m => ({
+                  id: m.id,
+                  author: m.author,
+                  text: m.text?.substring(0, 30) + '...',
+                  timestamp: m.timestamp
+                }))
+              });
+              return false; // Filter out this AI message
+            }
+          }
+          return true; // Keep all other messages
+        });
+        
+        // Combine filtered external messages with pending local messages
+        const mergedMessages = [...filteredExternalMessages, ...pendingMessages];
         
         // Sort by timestamp to maintain chronological order
         return mergedMessages.sort((a, b) => 
@@ -422,14 +848,70 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   }, [externalMessages]);
 
   // Remove fallback to mock data - show empty state instead
-  const displayThoughtStarters = thoughtStarters.length > 0 ? thoughtStarters : [];
+  // Add defensive validation to prevent React error #31
+  const validateThoughtStarter = (thought: any, index: number) => {
+    // Check if this is a raw API object
+    if (!thought || typeof thought !== 'object') {
+      console.error('❌ validateThoughtStarter: Invalid thought starter type:', typeof thought);
+      return null;
+    }
+    
+    if (thought.message_id || thought.user_name || thought.created_at || thought.original_content) {
+      console.warn('⚠️ validateThoughtStarter: Raw API object detected, filtering out:', {
+        message_id: thought.message_id,
+        user_name: thought.user_name,
+        created_at: thought.created_at,
+        hasOriginalContent: !!thought.original_content,
+        allKeys: Object.keys(thought)
+      });
+      return null;
+    }
+    
+    // Ensure required fields exist and are valid
+    try {
+      const validatedThought = {
+        ...thought,
+        id: thought.id || `fallback-thought-${index}`,
+        title: thought.title || 'Untitled Thought',
+        description: thought.description || '',
+        category: thought.category || 'general',
+        tags: Array.isArray(thought.tags) ? thought.tags : [],
+        lastActivity: thought.lastActivity || new Date().toISOString(),
+        messageCount: typeof thought.messageCount === 'number' ? thought.messageCount : 0,
+        participants: typeof thought.participants === 'number' ? thought.participants : 1,
+        reactions: (thought.reactions && typeof thought.reactions === 'object' && !thought.reactions.message_id) 
+          ? thought.reactions 
+          : { likes: 0, hearts: 0, stars: 0, thumbsUp: 0 },
+        author: (thought.author && typeof thought.author === 'object') 
+          ? thought.author 
+          : { id: 'unknown', name: 'Anonymous' }
+      };
+      
+      console.log('✅ validateThoughtStarter: Validated thought starter:', {
+        id: validatedThought.id,
+        title: validatedThought.title,
+        messageCount: validatedThought.messageCount
+      });
+      
+      return validatedThought;
+    } catch (error) {
+      console.error('❌ validateThoughtStarter: Failed to validate thought starter:', error, thought);
+      return null;
+    }
+  };
+
+  const displayThoughtStarters = thoughtStarters.length > 0 
+    ? thoughtStarters.map(validateThoughtStarter).filter(Boolean)
+    : [];
   const selectedThought = displayThoughtStarters.find(t => t.id === selectedThoughtId) || displayThoughtStarters[0];
 
   // Filter thought starters based on search
   const filteredThoughts = displayThoughtStarters.filter(thought =>
     thought.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     thought.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    thought.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+    (thought.tags && Array.isArray(thought.tags) && 
+     thought.tags.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
   );
 
   // Handle header shrinking on scroll
@@ -512,6 +994,18 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     return () => clearInterval(cleanupInterval);
   }, []);
 
+  // Auto-collapse expanded header after inactivity
+  useEffect(() => {
+    if (isHeaderExpanded) {
+      const timer = setTimeout(() => {
+        setIsHeaderExpanded(false);
+      }, 10000); // Auto-collapse after 10 seconds
+
+      return () => clearTimeout(timer);
+    }
+    return undefined; // Return undefined when header is not expanded
+  }, [isHeaderExpanded]);
+
   // Handle sending messages
   const handleSendMessage = async (event?: React.MouseEvent | React.KeyboardEvent | React.FormEvent) => {
     if (!messageText.trim() || !selectedThought) return;
@@ -540,6 +1034,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }
 
     const messageTextToSend = messageText; // Store the message text before clearing
+    const replyingToMessage = replyingTo ? messages.find(m => m.id === replyingTo) : null;
     const tempId = `temp-${Date.now()}`;
     const newMessage: Message = {
       id: tempId,
@@ -548,14 +1043,20 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
       timestamp: new Date().toISOString(),
       isOwn: true,
       type: 'text',
-      status: 'sending'
+      status: 'sending',
+      ...(replyingToMessage && {
+        replyToMessageId: replyingToMessage.id,
+        replyToContent: replyingToMessage.text,
+        replyToAuthor: replyingToMessage.author
+      })
     };
 
     // Add message to UI immediately for seamless experience
     setMessages(prev => [...prev, newMessage]);
     
-    // Clear input immediately
+    // Clear input and reply state immediately
     setMessageText('');
+    setReplyingTo(null);
 
     // Reset send effect
     setTimeout(() => {
@@ -563,6 +1064,32 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }, 600);
 
     try {
+      // Add the message as a comment using the existing API (like AI messages do)
+      if (articleId && parentCommentId) {
+        console.log('📤 Adding message as comment via API:', {
+          articleId,
+          parentCommentId,
+          contentLength: messageTextToSend.length,
+          replyToMessageId: replyingToMessage?.id
+        });
+        await addComment({
+          articleId,
+          parentCommentId,
+          content: messageTextToSend,
+          title: `Message from ${currentUser.name}`,
+          minimessage: messageTextToSend.length > 50 ? messageTextToSend.substring(0, 47) + '...' : messageTextToSend,
+          ...(replyingToMessage && {
+            replyMessageId: parseInt(replyingToMessage.id, 10)
+          })
+        });
+        console.log('✅ Message added to conversation successfully via API');
+      } else {
+        console.warn('⚠️ Skipping API call for message - missing context:', {
+          articleId,
+          parentCommentId
+        });
+      }
+
       // Update status to sent immediately for better UX (optimistic update)
       setTimeout(() => {
         setMessages(prev => prev.map(msg => 
@@ -573,18 +1100,15 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
         setTimeout(() => setSuccessPulse(null), 800);
       }, 300);
 
-      // Call the parent handler in a non-blocking way
-      const sendPromise = new Promise<void>((resolve, reject) => {
-        setTimeout(() => {
-          try {
-            onSendMessage(messageTextToSend, selectedThought.id);
-            resolve();
-          } catch (error) {
-            console.error('Error in parent onSendMessage:', error);
-            reject(error);
-          }
-        }, 0);
-      });
+      // Call the parent handler to refresh messages (significantly delayed to avoid duplicate messages)
+      setTimeout(() => {
+        try {
+          console.log('🔄 Calling parent onSendMessage for normal message refresh (final delayed call)');
+          onSendMessage(messageTextToSend, selectedThought.id, replyingToMessage?.id);
+        } catch (error) {
+          console.error('Error in parent onSendMessage:', error);
+        }
+      }, 3000); // Increased to 3 seconds to ensure no conflicts with server processing
 
       // Mark as delivered after a reasonable delay (simulating real send)
       setTimeout(() => {
@@ -605,9 +1129,6 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
           }, 100);
         }
       }, 600);
-
-      // Wait for send completion in background
-      await sendPromise;
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -632,7 +1153,15 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
       window.event.stopPropagation?.();
     }
 
-    console.log('🤖 Asking AI (seamless mode):', aiQuestion);
+    console.log('🤖 Asking AI:', aiQuestion);
+    console.log('📄 Available context:', {
+      articleId,
+      parentCommentId,
+      articleContentLength: articleContent?.length || 0,
+      selectedThoughtId: selectedThought?.id
+    });
+    setIsGeneratingAI(true);
+    setAiError(null);
 
     // Trigger special effects for AI questions
     setShowSendEffect(true);
@@ -646,20 +1175,23 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }
 
     const questionToSend = aiQuestion; // Store before clearing
-    const userMessage: Message = {
-      id: Date.now().toString(),
+    
+    // Add the user's question to UI immediately for better UX
+    const questionMessageId = `question-${Date.now()}`;
+    const questionMessage: Message = {
+      id: questionMessageId,
       text: `🤖 ${questionToSend}`,
       author: currentUser.name,
       timestamp: new Date().toISOString(),
       isOwn: true,
       type: 'text',
-      status: 'sent'
+      status: 'sending'
     };
 
-    // Add message to UI immediately
-    setMessages(prev => [...prev, userMessage]);
+    // Add question to UI immediately
+    setMessages(prev => [...prev, questionMessage]);
     
-    // Clear input and reset mode immediately
+    // Clear input and reset mode immediately for better UX
     setAiQuestion('');
     setInputMode('message');
 
@@ -669,40 +1201,90 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }, 600);
 
     try {
-      // Call the parent handler in a non-blocking way
-      setTimeout(() => {
-        try {
-          onAskAI(questionToSend, selectedThought.id);
-        } catch (error) {
-          console.error('Error in parent onAskAI:', error);
-        }
-      }, 0);
+      // Create a comprehensive prompt that includes the question and article context
+      const promptText = `Question: ${questionToSend}
 
-      // Play success sound for AI question
-      setTimeout(() => {
-        playSound('success');
-        setSuccessPulse(userMessage.id);
-        setTimeout(() => setSuccessPulse(null), 800);
-      }, 300);
+Article Context: ${articleContent || 'No article content available'}
 
-      // Simulate AI response with special sound (keep this for demo purposes)
-      setTimeout(() => {
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          text: 'Let me analyze that question based on the article content...',
+Please provide a detailed analysis and answer to the question based on the article context provided above.`;
+
+      // Query AI with the formatted prompt
+      const aiResponse = await queryAI({
+        text: promptText,
+        fast: true
+      });
+
+      if (aiResponse.summary && articleId && parentCommentId) {
+        // Update question message status to sent
+        setMessages(prev => prev.map(msg => 
+          msg.id === questionMessageId ? { ...msg, status: 'sent' } : msg
+        ));
+
+        // Add the AI response to local UI immediately for better UX
+        const aiMessageId = `ai-${Date.now()}`;
+        const aiMessage: Message = {
+          id: aiMessageId,
+          text: aiResponse.summary,
           author: 'AI Assistant',
           timestamp: new Date().toISOString(),
           isOwn: false,
           type: 'ai-response',
           status: 'delivered'
         };
-        setMessages(prev => [...prev, aiResponse]);
-        // Play a different sound for AI response
-        playSound('celebration');
-      }, 1500);
+
+        // Add AI message to UI immediately
+        setMessages(prev => [...prev, aiMessage]);
+
+        // Add the AI response as a comment using the existing API
+        await addComment({
+          articleId,
+          parentCommentId,
+          content: aiResponse.summary,
+          title: questionToSend,
+          minimessage: aiResponse.summarymini || `AI generated response (${aiResponse.summary.split(' ').length} words)`
+        });
+
+        console.log('✅ AI response added to conversation successfully');
+        playSound('success');
+        
+        // Call the parent handler to refresh messages
+        setTimeout(() => {
+          try {
+            onAskAI(questionToSend, selectedThought.id);
+          } catch (error) {
+            console.error('Error in parent onAskAI:', error);
+          }
+        }, 0);
+      } else {
+        const missingContext = [];
+        if (!aiResponse.summary) missingContext.push('AI response summary');
+        if (!articleId) missingContext.push('article ID');
+        if (!parentCommentId) missingContext.push('parent comment ID');
+        
+        throw new Error(`Missing required context: ${missingContext.join(', ')}`);
+      }
 
     } catch (error) {
-      console.error('Error sending AI question:', error);
+      console.error('❌ Error generating AI response:', error);
+      
+      // Update question message to show error
+      setMessages(prev => prev.map(msg => 
+        msg.id === questionMessageId ? { 
+          ...msg, 
+          status: 'sent', 
+          text: `${msg.text} ❌ AI request failed` 
+        } : msg
+      ));
+      
+      setAiError(error instanceof Error ? error.message : 'Failed to generate AI response');
+      playSound('send'); // Use 'send' instead of 'error' as it's not in the valid types
+      
+      // Show error to user for a few seconds
+      setTimeout(() => {
+        setAiError(null);
+      }, 5000);
+    } finally {
+      setIsGeneratingAI(false);
     }
   };
 
@@ -786,6 +1368,502 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
         </span>
       );
     });
+  };
+
+  // Enhanced markdown formatter specifically for AI assistant responses
+  const formatAIMarkdown = (text: string) => {
+    const lines = text.split('\n');
+    const result: React.ReactElement[] = [];
+    let inCodeBlock = false;
+    let currentCodeBlock: string[] = [];
+    let codeLanguage = '';
+    let inTable = false;
+    let tableHeaders: string[] = [];
+    let tableRows: string[][] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Handle code blocks
+      if (line.startsWith('```')) {
+        if (inCodeBlock) {
+          // End code block
+          result.push(
+            <div key={`code-${i}`} className="my-4 rounded-xl overflow-hidden border border-blue-500/20 relative group bg-gradient-to-br from-gray-900/80 to-gray-950/90 shadow-xl">
+              <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 px-4 py-3 text-xs font-mono text-blue-300 border-b border-blue-500/20 flex items-center justify-between backdrop-blur-sm">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 rounded-full bg-red-400/70"></div>
+                    <div className="w-2 h-2 rounded-full bg-yellow-400/70"></div>
+                    <div className="w-2 h-2 rounded-full bg-green-400/70"></div>
+                  </div>
+                  <span className="text-blue-200 font-medium">{getLanguageLabel(codeLanguage)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(currentCodeBlock.join('\n'));
+                    // Show copy feedback
+                    const btn = document.activeElement as HTMLButtonElement;
+                    if (btn) {
+                      const originalText = btn.textContent;
+                      btn.textContent = 'Copied!';
+                      btn.className = btn.className.replace('text-blue-200', 'text-green-300');
+                      setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.className = btn.className.replace('text-green-300', 'text-blue-200');
+                      }, 1500);
+                    }
+                  }}
+                  className="opacity-70 hover:opacity-100 transition-all duration-200 px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 rounded-lg text-xs text-blue-200 hover:text-white font-medium border border-blue-500/30 hover:border-blue-400/50 hover:scale-105"
+                  title="Copy code to clipboard"
+                >
+                  Copy
+                </button>
+              </div>
+              <pre className="bg-gradient-to-br from-gray-900/90 to-gray-950/95 p-4 overflow-x-auto relative">
+                <code className={`text-sm font-mono leading-relaxed ${getLanguageClass(codeLanguage)}`}>
+                  {highlightCode(currentCodeBlock.join('\n'), codeLanguage)}
+                </code>
+              </pre>
+            </div>
+          );
+          currentCodeBlock = [];
+          inCodeBlock = false;
+          codeLanguage = '';
+        } else {
+          // Start code block
+          inCodeBlock = true;
+          codeLanguage = line.substring(3).trim();
+        }
+        continue;
+      }
+
+      if (inCodeBlock) {
+        currentCodeBlock.push(line);
+        continue;
+      }
+
+      // Handle tables
+      if (line.includes('|') && !inTable) {
+        // Start of table
+        const headers = line.split('|').map(h => h.trim()).filter(h => h);
+        if (headers.length > 1) {
+          tableHeaders = headers;
+          inTable = true;
+          continue;
+        }
+      }
+
+      if (inTable) {
+        if (line.includes('|')) {
+          if (line.includes('---') || line.includes(':-:') || line.includes(':--')) {
+            // Table separator line, skip
+            continue;
+          }
+          const cells = line.split('|').map(c => c.trim()).filter(c => c);
+          if (cells.length > 0) {
+            tableRows.push(cells);
+            continue;
+          }
+        } else {
+          // End of table
+          result.push(
+            <div key={`table-${i}`} className="my-4 overflow-hidden rounded-xl border border-blue-500/20 shadow-lg">
+              <table className="w-full bg-gradient-to-br from-blue-950/20 to-indigo-950/20">
+                <thead className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-b border-blue-500/20">
+                  <tr>
+                    {tableHeaders.map((header, idx) => (
+                      <th key={idx} className="px-4 py-3 text-left text-sm font-semibold text-blue-200 border-r border-blue-500/20 last:border-r-0">
+                        {formatInlineMarkdown(header)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((row, rowIdx) => (
+                    <tr key={rowIdx} className="hover:bg-blue-500/5 transition-colors border-b border-blue-500/10 last:border-b-0">
+                      {row.map((cell, cellIdx) => (
+                        <td key={cellIdx} className="px-4 py-3 text-sm text-gray-200 border-r border-blue-500/10 last:border-r-0">
+                          {formatInlineMarkdown(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+          inTable = false;
+          tableHeaders = [];
+          tableRows = [];
+          // Continue processing current line
+        }
+      }
+
+      // Handle different markdown elements
+      if (line.trim() === '') {
+        result.push(<div key={`space-${i}`} className="h-3" />);
+        continue;
+      }
+
+      // Headers with enhanced styling
+      if (line.startsWith('# ')) {
+        result.push(
+          <div key={`h1-wrapper-${i}`} className="my-6">
+            <h1 className="text-2xl font-bold text-transparent bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text mb-4 pb-3 border-b-2 border-gradient-to-r from-blue-500/50 to-transparent relative">
+              {line.substring(2)}
+              <div className="absolute bottom-0 left-0 w-1/3 h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"></div>
+            </h1>
+          </div>
+        );
+        continue;
+      }
+
+      if (line.startsWith('## ')) {
+        result.push(
+          <h2 key={`h2-${i}`} className="text-xl font-semibold text-transparent bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text mb-3 mt-6 relative pl-4">
+            <div className="absolute left-0 top-1 w-1 h-6 bg-gradient-to-b from-blue-500 to-indigo-500 rounded-full"></div>
+            {line.substring(3)}
+          </h2>
+        );
+        continue;
+      }
+
+      if (line.startsWith('### ')) {
+        result.push(
+          <h3 key={`h3-${i}`} className="text-lg font-medium text-blue-200 mb-2 mt-4 flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+            {line.substring(4)}
+          </h3>
+        );
+        continue;
+      }
+
+      // Enhanced lists with better styling
+      if (line.match(/^[\s]*[-*+]\s/)) {
+        const listItem = line.replace(/^[\s]*[-*+]\s/, '');
+        const isTaskList = listItem.startsWith('[ ]') || listItem.startsWith('[x]');
+        const isCompleted = listItem.startsWith('[x]');
+        
+        if (isTaskList) {
+          const taskText = listItem.substring(3).trim();
+          result.push(
+            <div key={`task-${i}`} className="flex items-start gap-3 mb-2 group">
+              <div className={`mt-1.5 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                isCompleted 
+                  ? 'bg-green-500/20 border-green-400 text-green-300' 
+                  : 'border-blue-400/50 hover:border-blue-400'
+              }`}>
+                {isCompleted && <span className="text-xs">✓</span>}
+              </div>
+              <span className={`text-gray-200 ${isCompleted ? 'line-through opacity-70' : ''}`}>
+                {formatInlineMarkdown(taskText)}
+              </span>
+            </div>
+          );
+        } else {
+          result.push(
+            <div key={`list-${i}`} className="flex items-start gap-3 mb-2">
+              <div className="mt-2 w-1.5 h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-indigo-400 flex-shrink-0"></div>
+              <span className="text-gray-200">{formatInlineMarkdown(listItem)}</span>
+            </div>
+          );
+        }
+        continue;
+      }
+
+      if (line.match(/^[\s]*\d+\.\s/)) {
+        const number = line.match(/^[\s]*(\d+)\./)?.[1] || '1';
+        const listItem = line.replace(/^[\s]*\d+\.\s/, '');
+        result.push(
+          <div key={`numlist-${i}`} className="flex items-start gap-3 mb-2">
+            <div className="flex items-center justify-center min-w-[24px] h-6 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 rounded-full border border-blue-400/30">
+              <span className="text-xs font-bold text-blue-300">{number}</span>
+            </div>
+            <span className="text-gray-200">{formatInlineMarkdown(listItem)}</span>
+          </div>
+        );
+        continue;
+      }
+
+      // Enhanced blockquotes with different types
+      if (line.startsWith('> ')) {
+        const content = line.substring(2);
+        const isWarning = content.toLowerCase().includes('warning') || content.toLowerCase().includes('caution');
+        const isInfo = content.toLowerCase().includes('note') || content.toLowerCase().includes('info');
+        const isTip = content.toLowerCase().includes('tip') || content.toLowerCase().includes('hint');
+        
+        let borderColor = 'border-blue-500/50';
+        let bgColor = 'bg-blue-500/5';
+        let iconColor = 'text-blue-400';
+        let icon = '💭';
+        
+        if (isWarning) {
+          borderColor = 'border-yellow-500/50';
+          bgColor = 'bg-yellow-500/5';
+          iconColor = 'text-yellow-400';
+          icon = '⚠️';
+        } else if (isInfo) {
+          borderColor = 'border-cyan-500/50';
+          bgColor = 'bg-cyan-500/5';
+          iconColor = 'text-cyan-400';
+          icon = 'ℹ️';
+        } else if (isTip) {
+          borderColor = 'border-green-500/50';
+          bgColor = 'bg-green-500/5';
+          iconColor = 'text-green-400';
+          icon = '💡';
+        }
+        
+        result.push(
+          <div key={`quote-${i}`} className={`border-l-4 ${borderColor} pl-4 pr-4 py-3 my-3 ${bgColor} rounded-r-lg backdrop-blur-sm relative overflow-hidden`}>
+            <div className="flex items-start gap-3">
+              <span className={`text-lg ${iconColor} flex-shrink-0 mt-0.5`}>{icon}</span>
+              <div className="italic text-gray-300 leading-relaxed">
+                {formatInlineMarkdown(content)}
+              </div>
+            </div>
+          </div>
+        );
+        continue;
+      }
+
+      // Enhanced horizontal rules
+      if (line.trim() === '---' || line.trim() === '***') {
+        result.push(
+          <div key={`hr-${i}`} className="my-6 flex items-center">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent"></div>
+            <div className="w-2 h-2 bg-blue-400 rounded-full mx-4"></div>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent"></div>
+          </div>
+        );
+        continue;
+      }
+
+      // Regular paragraphs with enhanced spacing
+      result.push(
+        <p key={`p-${i}`} className="text-gray-200 mb-3 leading-relaxed text-base">
+          {formatInlineMarkdown(line)}
+        </p>
+      );
+    }
+
+    return <div className="space-y-1 animate-fadeIn">{result}</div>;
+  };
+
+  // Helper functions for enhanced code highlighting
+  const getLanguageLabel = (lang: string): string => {
+    const labels: { [key: string]: string } = {
+      'js': 'JavaScript',
+      'javascript': 'JavaScript',
+      'ts': 'TypeScript',
+      'typescript': 'TypeScript',
+      'py': 'Python',
+      'python': 'Python',
+      'java': 'Java',
+      'cpp': 'C++',
+      'c': 'C',
+      'html': 'HTML',
+      'css': 'CSS',
+      'json': 'JSON',
+      'xml': 'XML',
+      'sql': 'SQL',
+      'bash': 'Bash',
+      'shell': 'Shell',
+      'php': 'PHP',
+      'ruby': 'Ruby',
+      'go': 'Go',
+      'rust': 'Rust',
+      'swift': 'Swift',
+      'kotlin': 'Kotlin',
+      'dart': 'Dart',
+      'yaml': 'YAML',
+      'yml': 'YAML'
+    };
+    return labels[lang.toLowerCase()] || (lang || 'Code');
+  };
+
+  const getLanguageClass = (lang: string): string => {
+    const classes: { [key: string]: string } = {
+      'javascript': 'text-yellow-200',
+      'typescript': 'text-blue-200',
+      'python': 'text-green-200',
+      'java': 'text-orange-200',
+      'html': 'text-red-200',
+      'css': 'text-purple-200',
+      'json': 'text-indigo-200'
+    };
+    return classes[lang.toLowerCase()] || 'text-gray-200';
+  };
+
+  const highlightCode = (code: string, language: string): React.ReactNode => {
+    // Basic syntax highlighting for common languages
+    if (!language) return code;
+    
+    // For now, return the code as-is but with proper formatting
+    // In a real implementation, you might use a library like Prism.js or highlight.js
+    return (
+      <span className="block whitespace-pre-wrap">{code}</span>
+    );
+  };
+
+  // Helper function to format inline markdown (bold, italic, code, links) with enhanced features
+  const formatInlineMarkdown = (text: string) => {
+    const parts: (string | React.ReactElement)[] = [];
+    let remaining = text;
+    let keyCounter = 0;
+
+    // Handle inline code first (highest priority)
+    remaining = remaining.replace(/`([^`]+)`/g, (match, code) => {
+      const key = `CODE_${keyCounter++}`;
+      parts.push(
+        <code key={key} className="bg-gradient-to-r from-gray-800/90 to-gray-700/90 text-blue-300 px-2 py-1 rounded-md text-sm font-mono border border-blue-500/20 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-gradient-to-r hover:from-gray-700/90 hover:to-gray-600/90">
+          {code}
+        </code>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle strikethrough
+    remaining = remaining.replace(/~~([^~]+)~~/g, (match, strike) => {
+      const key = `STRIKE_${keyCounter++}`;
+      parts.push(<span key={key} className="line-through text-gray-400">{strike}</span>);
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle bold text with enhanced styling
+    remaining = remaining.replace(/\*\*([^*]+)\*\*/g, (match, bold) => {
+      const key = `BOLD_${keyCounter++}`;
+      parts.push(
+        <strong key={key} className="font-bold text-transparent bg-gradient-to-r from-blue-100 to-indigo-100 bg-clip-text drop-shadow-sm">
+          {bold}
+        </strong>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle italic text with enhanced styling
+    remaining = remaining.replace(/\*([^*]+)\*/g, (match, italic) => {
+      const key = `ITALIC_${keyCounter++}`;
+      parts.push(<em key={key} className="italic text-blue-100 font-medium">{italic}</em>);
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle highlighted text (using ==text==)
+    remaining = remaining.replace(/==([^=]+)==/g, (match, highlight) => {
+      const key = `HIGHLIGHT_${keyCounter++}`;
+      parts.push(
+        <mark key={key} className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-100 px-1 py-0.5 rounded border border-yellow-500/30">
+          {highlight}
+        </mark>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle markdown links with enhanced styling
+    remaining = remaining.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+      const key = `LINK_${keyCounter++}`;
+      const isExternal = url.startsWith('http') || url.startsWith('www');
+      parts.push(
+        <a 
+          key={key} 
+          href={url} 
+          target={isExternal ? "_blank" : "_self"}
+          rel={isExternal ? "noopener noreferrer" : undefined}
+          className="text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-all duration-200 hover:bg-blue-500/10 px-1 py-0.5 rounded group relative"
+          title={url}
+        >
+          <span className="relative z-10">{linkText}</span>
+          {isExternal && (
+            <span className="inline-block ml-1 opacity-70 group-hover:opacity-100 transition-opacity">
+              <svg className="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </span>
+          )}
+        </a>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle auto-detected URLs with enhanced styling
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
+    remaining = remaining.replace(urlRegex, (match) => {
+      const key = `URL_${keyCounter++}`;
+      let href = match;
+      if (!match.startsWith('http')) {
+        href = match.startsWith('www.') ? `https://${match}` : `https://${match}`;
+      }
+      const displayText = match.length > 50 ? `${match.substring(0, 47)}...` : match;
+      
+      parts.push(
+        <a 
+          key={key} 
+          href={href} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-all duration-200 hover:bg-blue-500/10 px-1 py-0.5 rounded break-all group relative"
+          title={match}
+        >
+          <span className="relative z-10">{displayText}</span>
+          <span className="inline-block ml-1 opacity-70 group-hover:opacity-100 transition-opacity">
+            <svg className="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </span>
+        </a>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle email addresses
+    remaining = remaining.replace(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/g, (match, email) => {
+      const key = `EMAIL_${keyCounter++}`;
+      parts.push(
+        <a 
+          key={key} 
+          href={`mailto:${email}`}
+          className="text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors"
+        >
+          {email}
+        </a>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle math expressions (basic LaTeX-style)
+    remaining = remaining.replace(/\$\$([^$]+)\$\$/g, (match, math) => {
+      const key = `MATH_${keyCounter++}`;
+      parts.push(
+        <span key={key} className="inline-block bg-gray-800/70 text-purple-300 px-2 py-1 rounded font-mono text-sm border border-purple-500/20">
+          {math}
+        </span>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Handle inline math
+    remaining = remaining.replace(/\$([^$]+)\$/g, (match, math) => {
+      const key = `IMATH_${keyCounter++}`;
+      parts.push(
+        <span key={key} className="bg-gray-800/50 text-purple-300 px-1 py-0.5 rounded font-mono text-sm">
+          {math}
+        </span>
+      );
+      return `__PLACEHOLDER_${key}__`;
+    });
+
+    // Split the remaining text and replace placeholders
+    const segments = remaining.split(/(__PLACEHOLDER_[^_]+__)/);
+    
+    return segments.map((segment, index) => {
+      if (segment.startsWith('__PLACEHOLDER_')) {
+        const key = segment.replace(/__PLACEHOLDER_([^_]+)__/, '$1');
+        const foundPart = parts.find(part => React.isValidElement(part) && part.key === key);
+        return foundPart || segment;
+      }
+      return segment === '' ? null : segment;
+    }).filter(Boolean);
   };
 
   // Message status icon
@@ -987,6 +2065,16 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     isLeftSidebarHovered ? "line-clamp-3" : "line-clamp-2"
                   )}>
                     {thought.thoughtBody || thought.title}
+                    {/* Show expandable indicator if content is long */}
+                    {((thought.thoughtBody && thought.thoughtBody.length > 150) || 
+                      (thought.taggedContent && thought.taggedContent.highlightedText.length > 100)) && (
+                      <span 
+                        className="ml-1 text-philonet-blue-400 opacity-60"
+                        title="Click to expand and view full content"
+                      >
+                        <Maximize2 className="w-3 h-3 inline" />
+                      </span>
+                    )}
                   </h3>
 
                   {/* Refined Selected Text Preview - Telegram style */}
@@ -1044,7 +2132,53 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
               </div>
               
               <div className="flex items-start justify-between mb-3">
-                <div className="flex items-start gap-3 flex-1">
+                <div 
+                  className={cn(
+                    "flex items-start gap-3 flex-1 transition-colors duration-200",
+                    // Make clickable if there's expandable content
+                    ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                     (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100))
+                      ? "cursor-pointer hover:bg-philonet-card hover:bg-opacity-30 rounded-lg p-2 -m-2 focus:outline-none focus:ring-2 focus:ring-philonet-blue-500 focus:ring-opacity-50"
+                      : ""
+                  )}
+                  onClick={() => {
+                    // Only expand if there's content worth expanding
+                    if ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                        (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100)) {
+                      setIsHeaderExpanded(!isHeaderExpanded);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && 
+                        ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                         (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100))) {
+                      e.preventDefault();
+                      setIsHeaderExpanded(!isHeaderExpanded);
+                    }
+                  }}
+                  tabIndex={
+                    ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                     (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100))
+                      ? 0 : -1
+                  }
+                  role={
+                    ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                     (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100))
+                      ? "button" : undefined
+                  }
+                  aria-label={
+                    ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                     (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100))
+                      ? (isHeaderExpanded ? "Collapse conversation details" : "Expand conversation details")
+                      : undefined
+                  }
+                  title={
+                    ((selectedThought.thoughtBody && selectedThought.thoughtBody.length > 150) || 
+                     (selectedThought.taggedContent && selectedThought.taggedContent.highlightedText.length > 100))
+                      ? (isHeaderExpanded ? "Click to collapse" : "Click to expand full content")
+                      : undefined
+                  }
+                >
                   {selectedThought.author?.avatar ? (
                     <div className="relative">
                       <img
@@ -1072,19 +2206,17 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                       <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
                     </div>
 
-                    {/* Thought Body Preview */}
+                    {/* Compact Thought Body Preview */}
                     {selectedThought.thoughtBody && (
-                      <p className="text-sm text-philonet-text-secondary line-clamp-2 mb-2 leading-relaxed break-words overflow-hidden">
+                      <p className={`text-sm text-philonet-text-secondary mb-2 leading-relaxed break-words overflow-hidden transition-all duration-300 ${
+                        isHeaderExpanded ? 'line-clamp-none' : 'line-clamp-2'
+                      }`}>
                         {selectedThought.thoughtBody}
                       </p>
                     )}
 
-                    {/* Simplified Stats - Focus on Upvotes */}
+                    {/* Simplified Stats */}
                     <div className="flex items-center gap-4 text-sm text-philonet-text-muted mb-2">
-                      <span className="flex items-center gap-1.5 font-medium text-green-400">
-                        <ThumbsUp className="w-4 h-4" />
-                        {selectedThought.reactions?.likes || 256}
-                      </span>
                       <span className="flex items-center gap-1.5 font-medium">
                         <MessageSquare className="w-4 h-4 text-philonet-blue-400" />
                         {selectedThought.messageCount}
@@ -1098,26 +2230,76 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 ml-3">
+                  {/* Expand/Collapse Header Button */}
+                  <Button 
+                    onClick={() => setIsHeaderExpanded(!isHeaderExpanded)}
+                    className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-border border-0 transition-all"
+                    title={isHeaderExpanded ? "Collapse details" : "Expand details"}
+                  >
+                    {isHeaderExpanded ? (
+                      <Minimize2 className="w-4 h-4" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4" />
+                    )}
+                  </Button>
                   <Button className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-border border-0 transition-all">
                     <MoreVertical className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Refined Tagged Content Section - Telegram style */}
-              {selectedThought.taggedContent && (
-                <div className="mb-3 p-3 bg-philonet-card border-l-4 border-philonet-blue-500 rounded-r-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Quote className="w-3.5 h-3.5 text-philonet-blue-500 flex-shrink-0" />
-                    <span className="text-xs font-medium text-philonet-blue-500 uppercase tracking-wide">Referenced</span>
-                  </div>
-                  <blockquote className="text-sm text-philonet-text-secondary leading-relaxed line-clamp-2 break-words overflow-hidden">
-                    <span className="text-philonet-text-muted opacity-60">"</span>
-                    {selectedThought.taggedContent.highlightedText}
-                    <span className="text-philonet-text-muted opacity-60">"</span>
-                  </blockquote>
-                </div>
-              )}
+              {/* Expandable Tagged Content Section with smooth animation */}
+              <AnimatePresence>
+                {selectedThought.taggedContent && (
+                  <motion.div 
+                    initial={false}
+                    animate={{ 
+                      height: isHeaderExpanded ? "auto" : "auto",
+                      opacity: 1 
+                    }}
+                    className="mb-3 overflow-hidden"
+                  >
+                    <div className="p-3 bg-philonet-card border-l-4 border-philonet-blue-500 rounded-r-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Quote className="w-3.5 h-3.5 text-philonet-blue-500 flex-shrink-0" />
+                        <span className="text-xs font-medium text-philonet-blue-500 uppercase tracking-wide">Referenced</span>
+                      </div>
+                      <blockquote className={`text-sm text-philonet-text-secondary leading-relaxed break-words overflow-hidden transition-all duration-300 ${
+                        isHeaderExpanded ? 'line-clamp-none' : 'line-clamp-2'
+                      }`}>
+                        <span className="text-philonet-text-muted opacity-60">"</span>
+                        {selectedThought.taggedContent.highlightedText}
+                        <span className="text-philonet-text-muted opacity-60">"</span>
+                      </blockquote>
+                      
+                      {/* Show additional details when expanded */}
+                      <AnimatePresence>
+                        {isHeaderExpanded && selectedThought.taggedContent.sourceUrl && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-3 pt-3 border-t border-philonet-border"
+                          >
+                            <div className="flex items-center gap-2 text-xs text-philonet-text-muted">
+                              <ExternalLink className="w-3 h-3" />
+                              <a 
+                                href={selectedThought.taggedContent.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-philonet-blue-400 transition-colors truncate"
+                              >
+                                View source
+                              </a>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Messages Area */}
@@ -1157,7 +2339,29 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                   </div>
                 </div>
               ) : (
-                messages.map((message) => (
+                messages
+                  .map(validateAndTransformMessage) // Transform raw API objects first
+                  .filter((message): message is Message => { // Type guard to ensure non-null Message
+                    // Filter out null values from transformation failures
+                    if (!message) {
+                      return false;
+                    }
+                    
+                    // All transformed messages should have these fields by now
+                    if (!message.id || !message.text || !message.author || !message.timestamp) {
+                      console.error('❌ Transformed message still missing required fields:', {
+                        id: message.id,
+                        text: message.text,
+                        author: message.author,
+                        timestamp: message.timestamp,
+                        message
+                      });
+                      return false;
+                    }
+                    
+                    return true;
+                  })
+                  .map((message) => (
                 <motion.div
                   key={message.id}
                   initial={{ 
@@ -1257,9 +2461,248 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                         } : {})
                       }}
                     >
-                      <div className="text-[16px] leading-[1.6] break-words overflow-wrap-anywhere font-normal">
-                        {formatTextWithLinks(message.text)}
-                      </div>
+                      {/* WhatsApp-style Reply indicator inside message - shows when message is replying to another */}
+                      {(message.replyToMessageId || message.replyToContent) && (() => {
+                        // Log when reply indicator is being rendered
+                        console.log('🔗 Rendering reply indicator for message:', {
+                          messageId: message.id,
+                          replyToMessageId: message.replyToMessageId,
+                          replyToContent: typeof message.replyToContent === 'object' ? '[OBJECT]' : message.replyToContent,
+                          replyToAuthor: typeof message.replyToAuthor === 'object' ? '[OBJECT]' : message.replyToAuthor,
+                          replyToContentType: typeof message.replyToContent,
+                          replyToAuthorType: typeof message.replyToAuthor
+                        });
+                        
+                        // Ensure replyToContent is a string, not an object
+                        const safeReplyToContent = typeof message.replyToContent === 'object' && message.replyToContent
+                          ? ((message.replyToContent as any).content || (message.replyToContent as any).text || 'Referenced content')
+                          : (typeof message.replyToContent === 'string' ? message.replyToContent : undefined);
+                        
+                        // Ensure replyToAuthor is a string, not an object  
+                        const safeReplyToAuthor = typeof message.replyToAuthor === 'object' && message.replyToAuthor
+                          ? ((message.replyToAuthor as any).name || (message.replyToAuthor as any).user_name || 'Someone')
+                          : (typeof message.replyToAuthor === 'string' ? message.replyToAuthor : undefined);
+                        
+                        // Log if we had to fix any object values
+                        if (typeof message.replyToContent === 'object' || typeof message.replyToAuthor === 'object') {
+                          console.log('🔧 Fixed object values in reply fields before rendering:', {
+                            messageId: message.id,
+                            originalContentType: typeof message.replyToContent,
+                            originalAuthorType: typeof message.replyToAuthor,
+                            safeContent: safeReplyToContent?.substring(0, 50) + '...',
+                            safeAuthor: safeReplyToAuthor
+                          });
+                        }
+                        
+                        // Try to find the referenced message in the current messages array
+                        const referencedMessage = message.replyToMessageId 
+                          ? messages.find(m => m.id === message.replyToMessageId)
+                          : undefined;
+                        
+                        const displayContent = safeReplyToContent 
+                          || (referencedMessage?.text ? 
+                              referencedMessage.text.substring(0, 80) + (referencedMessage.text.length > 80 ? '...' : '') :
+                              'Referenced message')
+                          || 'Referenced message';
+                          
+                        // Final safety check - ensure displayContent is always a string
+                        const safeDisplayContent = typeof displayContent === 'string' 
+                          ? displayContent 
+                          : JSON.stringify(displayContent);
+                        
+                        const displayAuthor = safeReplyToAuthor 
+                          || referencedMessage?.author 
+                          || 'someone';
+                        
+                        // Final safety check - ensure displayAuthor is always a string  
+                        const safeDisplayAuthor = typeof displayAuthor === 'string' 
+                          ? displayAuthor 
+                          : JSON.stringify(displayAuthor);
+                        
+                        // Get user color for the referenced author
+                        const referencedAuthorColor = referencedMessage ? getUserColor(referencedMessage.author) : getUserColor(safeDisplayAuthor);
+                        
+                        return (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, height: "auto", scale: 1 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className={cn(
+                              "relative px-3 py-2.5 mb-3 rounded-xl cursor-pointer whatsapp-text transition-all duration-200 border-l-4 shadow-sm",
+                              "hover:shadow-md hover:-translate-y-0.5",
+                              message.isOwn 
+                                ? "bg-gradient-to-r from-black/10 via-black/15 to-black/10 backdrop-blur-sm border-l-white/70 hover:border-l-white/90" 
+                                : "bg-gradient-to-r from-white/5 via-white/10 to-white/5 backdrop-blur-sm hover:bg-white/15"
+                            )}
+                            style={{
+                              borderLeftColor: message.isOwn ? 'rgba(255, 255, 255, 0.7)' : referencedAuthorColor,
+                              boxShadow: message.isOwn 
+                                ? '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)' 
+                                : `0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 ${referencedAuthorColor}20`
+                            }}
+                            onClick={() => {
+                              // Scroll to the referenced message
+                              if (message.replyToMessageId) {
+                                const referencedElement = document.querySelector(`[data-message-id="${message.replyToMessageId}"]`);
+                                if (referencedElement) {
+                                  referencedElement.scrollIntoView({ 
+                                    behavior: 'smooth', 
+                                    block: 'center' 
+                                  });
+                                  // Add a brief highlight effect
+                                  referencedElement.classList.add('flash-highlight');
+                                  setTimeout(() => {
+                                    referencedElement.classList.remove('flash-highlight');
+                                  }, 2000);
+                                } else {
+                                  console.log('❌ Could not find referenced message element:', message.replyToMessageId);
+                                }
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                if (message.replyToMessageId) {
+                                  const referencedElement = document.querySelector(`[data-message-id="${message.replyToMessageId}"]`);
+                                  if (referencedElement) {
+                                    referencedElement.scrollIntoView({ 
+                                      behavior: 'smooth', 
+                                      block: 'center' 
+                                    });
+                                    referencedElement.classList.add('flash-highlight');
+                                    setTimeout(() => {
+                                      referencedElement.classList.remove('flash-highlight');
+                                    }, 2000);
+                                  }
+                                }
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-label="Navigate to referenced message"
+                            title="Click to view referenced message"
+                          >
+                            {/* Enhanced WhatsApp-style author name with user color */}
+                            <div className="flex items-center justify-between mb-2">
+                              <span 
+                                className="text-sm font-semibold truncate tracking-tight"
+                                style={{ 
+                                  color: message.isOwn ? 'rgba(255, 255, 255, 0.95)' : referencedAuthorColor,
+                                  textShadow: message.isOwn ? '0 1px 2px rgba(0, 0, 0, 0.3)' : 'none'
+                                }}
+                              >
+                                {safeDisplayAuthor}
+                              </span>
+                              <div className={cn(
+                                "w-1 h-1 rounded-full flex-shrink-0 ml-2",
+                                message.isOwn ? "bg-white/40" : "bg-current opacity-40"
+                              )} 
+                              style={{ backgroundColor: message.isOwn ? 'rgba(255, 255, 255, 0.4)' : referencedAuthorColor + '66' }} />
+                            </div>
+                            
+                            {/* Enhanced WhatsApp-style message content preview */}
+                            <p className={cn(
+                              "text-sm leading-relaxed line-clamp-2 break-words font-light tracking-wide",
+                              message.isOwn 
+                                ? "text-white/85" 
+                                : "text-white/90"
+                            )}
+                            style={{
+                              textShadow: message.isOwn ? '0 1px 2px rgba(0, 0, 0, 0.2)' : 'none'
+                            }}>
+                              "{safeDisplayContent}"
+                            </p>
+                            
+                            {/* Subtle scroll indicator */}
+                            <div className="whatsapp-scroll-indicator">
+                              <div className={cn(
+                                "w-1.5 h-1.5 rounded-full",
+                                message.isOwn ? "bg-white/30" : "bg-current opacity-30"
+                              )} 
+                              style={{ backgroundColor: message.isOwn ? 'rgba(255, 255, 255, 0.3)' : referencedAuthorColor + '4D' }} />
+                            </div>
+                          </motion.div>
+                        );
+                      })()}
+                      
+                      {/* Enhanced message content with proper markdown rendering for AI responses */}
+                      {message.type === 'ai-response' ? (
+                        <motion.div 
+                          className="ai-response-wrapper mt-2"
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.5, ease: "easeOut" }}
+                        >
+                          {/* AI Response Header with enhanced animation */}
+                          <motion.div 
+                            className="flex items-center gap-2 mb-3 text-blue-300"
+                            initial={{ x: -20, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            transition={{ delay: 0.2, duration: 0.4 }}
+                          >
+                            <motion.div
+                              animate={{ 
+                                rotate: [0, 360],
+                                scale: [1, 1.1, 1]
+                              }}
+                              transition={{ 
+                                rotate: { duration: 2, repeat: Infinity, ease: "linear" },
+                                scale: { duration: 1, repeat: Infinity, ease: "easeInOut" }
+                              }}
+                            >
+                              <Bot className="w-4 h-4" />
+                            </motion.div>
+                            <span className="text-sm font-medium gradient-text">AI Assistant</span>
+                            <motion.div 
+                              className="flex-1 h-px bg-gradient-to-r from-blue-500/50 to-transparent"
+                              initial={{ scaleX: 0 }}
+                              animate={{ scaleX: 1 }}
+                              transition={{ delay: 0.4, duration: 0.6 }}
+                              style={{ transformOrigin: 'left' }}
+                            ></motion.div>
+                          </motion.div>
+                          
+                          {/* AI Response Content with enhanced styling and animation */}
+                          <motion.div 
+                            className="ai-response-content bg-gradient-to-br from-blue-950/30 via-blue-900/20 to-indigo-950/20 border border-blue-500/20 rounded-xl p-4 shadow-lg backdrop-blur-sm relative overflow-hidden"
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.3, duration: 0.6 }}
+                          >
+                            {/* Animated background gradient */}
+                            <motion.div
+                              className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-blue-500/5"
+                              animate={{
+                                x: ['-100%', '100%']
+                              }}
+                              transition={{
+                                duration: 3,
+                                repeat: Infinity,
+                                ease: "linear"
+                              }}
+                              style={{ background: 'linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent)' }}
+                            />
+                            <div className="relative z-10">
+                              {/* Display title as question if available */}
+                              {message.title && (
+                                <div className="mb-4 pb-3 border-b border-blue-500/20">
+                                  <div className="flex items-start gap-2 mb-2">
+                                    <span className="text-blue-300 mt-1 flex-shrink-0">❓</span>
+                                    <h3 className="text-lg font-semibold text-transparent bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text leading-tight">
+                                      {message.title}
+                                    </h3>
+                                  </div>
+                                </div>
+                              )}
+                              {formatAIMarkdown(message.text)}
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      ) : (
+                        <div className="text-[16px] leading-[1.6] break-words overflow-wrap-anywhere font-normal">
+                          {formatTextWithLinks(message.text)}
+                        </div>
+                      )}
                       
                       {/* Message timestamp for own messages */}
                       {message.isOwn && (
@@ -1489,15 +2932,78 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     </div>
                   )}
                 </motion.div>
-              ))
-              )}
+              )))
+            }
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
             <div className="p-3 border-t border-philonet-border bg-philonet-background mt-auto relative">
-              {/* Mode Toggle */}
-              <div className="flex items-center gap-2 mb-2">
+              {/* Error Display */}
+              {reactionError && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="mb-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm"
+                >
+                  {reactionError}
+                </motion.div>
+              )}
+              
+              {/* AI Error Display */}
+              {aiError && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="mb-3 p-3 bg-gradient-to-r from-red-500/10 to-orange-500/10 backdrop-blur-sm border border-red-500/20 rounded-xl"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <Bot className="w-5 h-5 text-red-400" />
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-red-300">AI Assistant Error</span>
+                      </div>
+                      <p className="text-xs text-red-400/80">{aiError}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* AI Loading Display */}
+              {isGeneratingAI && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="mb-3 p-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 backdrop-blur-sm border border-purple-500/20 rounded-xl"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-400/30 border-t-purple-400"></div>
+                      <Bot className="absolute inset-0 m-auto w-3 h-3 text-purple-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-purple-300">AI Assistant</span>
+                        <div className="flex gap-1">
+                          <div className="w-1 h-1 bg-purple-400 rounded-full animate-bounce"></div>
+                          <div className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-1 h-1 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-purple-400/80">Analyzing content and generating response...</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              
+              {/* Enhanced Mode Toggle */}
+              <div className="flex items-center gap-1 mb-3 p-1 bg-philonet-card/50 backdrop-blur-sm rounded-xl border border-philonet-border/50">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1506,14 +3012,14 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     setInputMode('message');
                   }}
                   className={cn(
-                    "px-3 py-1 rounded-full text-sm transition-colors",
+                    "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex-1 justify-center",
                     inputMode === 'message'
-                      ? "bg-philonet-blue-500 text-white"
-                      : "bg-philonet-card text-philonet-text-muted hover:text-white"
+                      ? "bg-philonet-blue-500 text-white shadow-lg shadow-philonet-blue-500/25 transform scale-[1.02]"
+                      : "text-philonet-text-muted hover:text-white hover:bg-philonet-border/50"
                   )}
                 >
-                  <MessageSquare className="w-4 h-4 inline mr-1" />
-                  Message
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Message</span>
                 </button>
                 <button
                   type="button"
@@ -1523,39 +3029,56 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     setInputMode('ai');
                   }}
                   className={cn(
-                    "px-3 py-1 rounded-full text-sm transition-colors",
+                    "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex-1 justify-center relative",
                     inputMode === 'ai'
-                      ? "bg-philonet-blue-500 text-white"
-                      : "bg-philonet-card text-philonet-text-muted hover:text-white"
+                      ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25 transform scale-[1.02]"
+                      : "text-philonet-text-muted hover:text-white hover:bg-philonet-border/50"
                   )}
                 >
-                  <Bot className="w-4 h-4 inline mr-1" />
-                  Ask AI
+                  <Bot className={cn(
+                    "w-4 h-4 transition-all duration-200", 
+                    inputMode === 'ai' && "animate-pulse"
+                  )} />
+                  <span>Ask AI</span>
+                  {inputMode === 'ai' && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  )}
                 </button>
               </div>
 
-              {/* Philonet-themed Reply indicator */}
+              {/* Enhanced WhatsApp-style Reply indicator */}
               {replyingTo && (
-                <div className="flex items-start gap-3 p-3 bg-philonet-card rounded-lg border-l-4 border-philonet-blue-500 mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CornerUpLeft className="w-4 h-4 text-philonet-blue-400" />
-                      <span className="text-sm font-medium text-philonet-blue-400">
-                        Replying to {messages.find(m => m.id === replyingTo)?.author}
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="flex items-start gap-3 p-4 rounded-xl mb-3 border-l-4 shadow-lg backdrop-blur-md transition-all duration-200 hover:shadow-xl"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(37, 211, 102, 0.08) 0%, rgba(37, 211, 102, 0.12) 100%)',
+                    borderLeftColor: '#25d366',
+                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                  }}
+                >
+                  <div className="flex-1 whatsapp-text min-w-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-green-400 tracking-tight">
+                        {messages.find(m => m.id === replyingTo)?.author}
                       </span>
+                      <div className="w-1 h-1 rounded-full bg-green-400/40 flex-shrink-0" />
                     </div>
-                    <p className="text-sm text-philonet-text-secondary line-clamp-2">
-                      {messages.find(m => m.id === replyingTo)?.text.substring(0, 100)}
-                      {(messages.find(m => m.id === replyingTo)?.text.length || 0) > 100 && '...'}
+                    <p className="text-sm text-gray-200 line-clamp-2 leading-relaxed font-light tracking-wide">
+                      "{messages.find(m => m.id === replyingTo)?.text.substring(0, 100)}{(messages.find(m => m.id === replyingTo)?.text.length || 0) > 100 && '...'}"
                     </p>
                   </div>
                   <button
                     onClick={() => setReplyingTo(null)}
-                    className="w-8 h-8 hover:bg-philonet-border rounded-full transition-colors flex items-center justify-center flex-shrink-0"
+                    className="w-7 h-7 hover:bg-red-500/20 hover:text-red-400 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 group"
+                    title="Cancel reply"
                   >
-                    <X className="w-4 h-4 text-philonet-text-muted" />
+                    <X className="w-4 h-4 text-gray-400 group-hover:text-red-400 transition-colors" />
                   </button>
-                </div>
+                </motion.div>
               )}
 
               {/* Input Controls */}
@@ -1594,24 +3117,36 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 p-3 bg-philonet-blue-500 rounded-2xl border border-philonet-blue-500 focus-within:border-philonet-blue-500">
-                      <Bot className="w-5 h-5 text-philonet-blue-400 flex-shrink-0" />
-                      <Textarea
-                        placeholder="Ask AI about this topic..."
-                        value={aiQuestion}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAiQuestion(e.target.value)}
-                        rows={1}
-                        className="flex-1 bg-transparent text-white resize-none max-h-32 min-h-[2rem]"
-                        onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (aiQuestion.trim()) {
-                              handleAskAI();
+                    <div className="relative">
+                      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 backdrop-blur-sm rounded-2xl border border-purple-500/30 focus-within:border-purple-500/50 transition-all duration-200">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Bot className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+                          </div>
+                          <span className="text-xs font-medium text-purple-300">AI</span>
+                        </div>
+                        <Textarea
+                          placeholder="Ask AI about this topic..."
+                          value={aiQuestion}
+                          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAiQuestion(e.target.value)}
+                          rows={1}
+                          className="flex-1 bg-transparent text-white placeholder:text-purple-300/60 resize-none max-h-32 min-h-[2rem] border-none focus:ring-0"
+                          onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (aiQuestion.trim()) {
+                                handleAskAI();
+                              }
                             }
-                          }
-                        }}
-                      />
+                          }}
+                        />
+                      </div>
+                      {/* AI Mode Indicator */}
+                      <div className="absolute -top-2 left-4 px-2 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-medium rounded-full">
+                        AI Assistant
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1621,17 +3156,25 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (inputMode === 'message' && messageText.trim()) {
+                    if (inputMode === 'message' && messageText.trim() && !isGeneratingAI) {
                       handleSendMessage();
-                    } else if (inputMode === 'ai' && aiQuestion.trim()) {
+                    } else if (inputMode === 'ai' && aiQuestion.trim() && !isGeneratingAI) {
                       handleAskAI();
                     }
                   }}
-                  disabled={inputMode === 'message' ? !messageText.trim() : !aiQuestion.trim()}
-                  title="Send message"
+                  disabled={
+                    isGeneratingAI || 
+                    (inputMode === 'message' ? !messageText.trim() : !aiQuestion.trim())
+                  }
+                  title={inputMode === 'ai' ? "Send AI question" : "Send message"}
                   className={cn(
-                    "h-10 w-10 rounded-full bg-philonet-blue-500 hover:bg-philonet-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 relative overflow-hidden transition-all duration-300",
-                    showSendEffect && "scale-110 shadow-lg shadow-philonet-blue-500/50"
+                    "h-10 w-10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 relative overflow-hidden transition-all duration-300",
+                    inputMode === 'ai' 
+                      ? "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-lg shadow-purple-500/25"
+                      : "bg-philonet-blue-500 hover:bg-philonet-blue-600",
+                    showSendEffect && (inputMode === 'ai' 
+                      ? "scale-110 shadow-lg shadow-purple-500/50" 
+                      : "scale-110 shadow-lg shadow-philonet-blue-500/50")
                   )}
                 >
                   {/* Ripple effect */}
@@ -1644,7 +3187,10 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                   />
                   {/* Pulse effect */}
                   <motion.div
-                    className="absolute inset-0 bg-philonet-blue-300 rounded-full"
+                    className={cn(
+                      "absolute inset-0 rounded-full",
+                      inputMode === 'ai' ? "bg-purple-300" : "bg-philonet-blue-300"
+                    )}
                     animate={showSendEffect ? {
                       scale: [1, 1.5, 1],
                       opacity: [0.5, 0, 0.5]
@@ -1659,7 +3205,11 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
                     } : {}}
                     transition={{ duration: 0.6 }}
                   >
-                    <Send className="w-4 h-4 text-white" />
+                    {isGeneratingAI ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    ) : (
+                      <Send className="w-4 h-4 text-white" />
+                    )}
                   </motion.div>
                 </Button>
               </div>
@@ -1824,6 +3374,34 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
           display: none;
         }
 
+        /* Flash highlight effect for referenced messages */
+        .flash-highlight {
+          animation: flashHighlight 2s ease-in-out;
+        }
+
+        @keyframes flashHighlight {
+          0% { 
+            box-shadow: 0 0 0 rgba(55, 114, 255, 0.6);
+            background-color: rgba(55, 114, 255, 0.1);
+          }
+          25% { 
+            box-shadow: 0 0 20px rgba(55, 114, 255, 0.8);
+            background-color: rgba(55, 114, 255, 0.2);
+          }
+          50% { 
+            box-shadow: 0 0 15px rgba(55, 114, 255, 0.6);
+            background-color: rgba(55, 114, 255, 0.15);
+          }
+          75% { 
+            box-shadow: 0 0 10px rgba(55, 114, 255, 0.4);
+            background-color: rgba(55, 114, 255, 0.1);
+          }
+          100% { 
+            box-shadow: 0 0 0 rgba(55, 114, 255, 0);
+            background-color: transparent;
+          }
+        }
+
         .line-clamp-2 {
           display: -webkit-box;
           -webkit-line-clamp: 2;
@@ -1853,6 +3431,43 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
         /* WhatsApp-style animations */
         .hover\:scale-110:hover {
           transform: scale(1.1);
+        }
+
+        /* AI Mode Enhancements */
+        .ai-mode-gradient {
+          background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%);
+          animation: aiGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes aiGlow {
+          0% { 
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+          }
+          100% { 
+            box-shadow: 0 0 30px rgba(236, 72, 153, 0.3);
+          }
+        }
+
+        .ai-pulse {
+          animation: aiPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes aiPulse {
+          0%, 100% { 
+            transform: scale(1);
+            opacity: 0.8;
+          }
+          50% { 
+            transform: scale(1.05);
+            opacity: 1;
+          }
+        }
+
+        .ai-gradient-text {
+          background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
         /* Message bubble styling improvements */
@@ -2008,6 +3623,370 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
 
         .glow-success {
           animation: messageGlow 1s ease-in-out;
+        }
+
+        /* Enhanced WhatsApp-style reply indicators */
+        .whatsapp-reply {
+          border-left: 4px solid #25d366;
+          background: linear-gradient(135deg, rgba(37, 211, 102, 0.08) 0%, rgba(37, 211, 102, 0.12) 100%);
+          border-radius: 12px;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          backdrop-filter: blur(8px);
+          box-shadow: 0 2px 8px rgba(37, 211, 102, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .whatsapp-reply:hover {
+          background: linear-gradient(135deg, rgba(37, 211, 102, 0.12) 0%, rgba(37, 211, 102, 0.18) 100%);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(37, 211, 102, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .whatsapp-reply-own {
+          border-left: 4px solid rgba(255, 255, 255, 0.7);
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.12) 100%);
+          backdrop-filter: blur(8px);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .whatsapp-reply-own:hover {
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.18) 100%);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        /* Enhanced WhatsApp-style in-message reply indicators */
+        .whatsapp-reply-in-message {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.1) 100%);
+          backdrop-filter: blur(12px);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          border-radius: 12px;
+        }
+
+        .whatsapp-reply-in-message:hover {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.15) 100%);
+          transform: translateY(-2px);
+        }
+
+        .whatsapp-reply-in-message-own {
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.15) 100%);
+          backdrop-filter: blur(10px);
+        }
+
+        .whatsapp-reply-in-message-own:hover {
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.25) 100%);
+          transform: translateY(-2px);
+        }
+
+        /* Enhanced WhatsApp-style text */
+        .whatsapp-text {
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.4;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          letter-spacing: 0.2px;
+        }
+
+        /* Enhanced WhatsApp-style animations */
+        .whatsapp-fade-in {
+          animation: whatsappFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes whatsappFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(8px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        /* Enhanced reply hover effects */
+        .whatsapp-reply-hover {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .whatsapp-reply-hover:hover {
+          transform: translateY(-2px);
+        }
+
+        /* Enhanced left border styles */
+        .border-l-4 {
+          border-left-width: 4px;
+        }
+
+        /* Enhanced WhatsApp-style reply slide animation */
+        @keyframes whatsappReplySlide {
+          from {
+            opacity: 0;
+            transform: translateX(-12px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+          }
+        }
+
+        .whatsapp-reply-slide {
+          animation: whatsappReplySlide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Enhanced pulse effect for new replies */
+        @keyframes whatsappPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.4);
+          }
+          50% {
+            box-shadow: 0 0 0 8px rgba(37, 211, 102, 0.1);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+          }
+        }
+
+        .whatsapp-pulse {
+          animation: whatsappPulse 1.5s ease-out;
+        }
+
+        /* Enhanced scroll indicator */
+        .whatsapp-scroll-indicator {
+          position: absolute;
+          right: 8px;
+          top: 50%;
+          transform: translateY(-50%);
+          opacity: 0.6;
+          transition: opacity 0.2s ease;
+        }
+
+        .whatsapp-reply-hover:hover .whatsapp-scroll-indicator {
+          opacity: 1;
+        }
+
+        /* AI Response Enhanced Styling */
+        .ai-response-content {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .ai-response-content::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.02) 100%);
+          pointer-events: none;
+        }
+
+        .ai-response-content code {
+          position: relative;
+          z-index: 1;
+        }
+
+        .ai-response-content pre {
+          position: relative;
+          z-index: 1;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(59, 130, 246, 0.3) transparent;
+        }
+
+        .ai-response-content pre::-webkit-scrollbar {
+          height: 6px;
+        }
+
+        .ai-response-content pre::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 3px;
+        }
+
+        .ai-response-content pre::-webkit-scrollbar-thumb {
+          background: rgba(59, 130, 246, 0.4);
+          border-radius: 3px;
+        }
+
+        .ai-response-content pre::-webkit-scrollbar-thumb:hover {
+          background: rgba(59, 130, 246, 0.6);
+        }
+
+        /* Enhanced animations and effects */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes slideInFromLeft {
+          from {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes bounceIn {
+          0% {
+            opacity: 0;
+            transform: scale(0.3);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.05);
+          }
+          70% {
+            transform: scale(0.9);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes shimmer {
+          0% {
+            background-position: -200px 0;
+          }
+          100% {
+            background-position: calc(200px + 100%) 0;
+          }
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.6s ease-out;
+        }
+
+        .animate-slideInFromLeft {
+          animation: slideInFromLeft 0.4s ease-out;
+        }
+
+        .animate-bounceIn {
+          animation: bounceIn 0.8s ease-out;
+        }
+
+        /* Enhanced code block styling */
+        .ai-response-content pre {
+          background: linear-gradient(135deg, rgba(17, 24, 39, 0.9) 0%, rgba(31, 41, 55, 0.8) 100%);
+          backdrop-filter: blur(8px);
+          border: 1px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .ai-response-content code {
+          background: transparent;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Table hover effects */
+        .ai-response-content table tbody tr:hover {
+          background: rgba(59, 130, 246, 0.08);
+          transform: translateX(2px);
+          transition: all 0.2s ease;
+        }
+
+        /* Link hover effects */
+        .ai-response-content a {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .ai-response-content a::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.2), transparent);
+          transition: left 0.5s;
+        }
+
+        .ai-response-content a:hover::before {
+          left: 100%;
+        }
+
+        /* Blockquote enhanced styling */
+        .ai-response-content blockquote {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .ai-response-content blockquote::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          width: 4px;
+          background: linear-gradient(to bottom, #3b82f6, #6366f1);
+          animation: shimmer 2s infinite;
+        }
+
+        /* List item animations */
+        .ai-response-content li {
+          animation: slideInFromLeft 0.3s ease-out;
+          animation-fill-mode: both;
+        }
+
+        .ai-response-content li:nth-child(1) { animation-delay: 0.1s; }
+        .ai-response-content li:nth-child(2) { animation-delay: 0.2s; }
+        .ai-response-content li:nth-child(3) { animation-delay: 0.3s; }
+        .ai-response-content li:nth-child(4) { animation-delay: 0.4s; }
+        .ai-response-content li:nth-child(5) { animation-delay: 0.5s; }
+
+        /* Enhanced task list styling */
+        .ai-response-content .task-list-item {
+          position: relative;
+          padding-left: 2rem;
+        }
+
+        .ai-response-content .task-list-item input[type="checkbox"] {
+          position: absolute;
+          left: 0;
+          top: 0.25rem;
+          width: 1rem;
+          height: 1rem;
+          accent-color: #3b82f6;
+        }
+
+        /* Math expression styling */
+        .ai-response-content .math {
+          background: linear-gradient(135deg, rgba(147, 51, 234, 0.1) 0%, rgba(79, 70, 229, 0.1) 100%);
+          border: 1px solid rgba(147, 51, 234, 0.2);
+          border-radius: 6px;
+          padding: 0.25rem 0.5rem;
+          font-family: 'JetBrains Mono', 'Fira Code', monospace;
+          color: #c4b5fd;
+        }
+
+        /* Gradient text effects */
+        .gradient-text {
+          background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #34d399 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        /* Copy button enhanced styling */
+        .copy-button {
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(99, 102, 241, 0.2) 100%);
+          backdrop-filter: blur(4px);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          transition: all 0.3s ease;
+        }
+
+        .copy-button:hover {
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(99, 102, 241, 0.3) 100%);
+          border-color: rgba(59, 130, 246, 0.5);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
         }
       `}</style>
     </div>
