@@ -18,6 +18,7 @@ interface ComposerFooterProps {
   onClearSelection: () => void;
   onInsertEmoji: () => void;
   onNavigateToText?: () => void;
+  onNavigateToTaggedText?: (text: string) => void;
   commentRef: React.RefObject<HTMLTextAreaElement>;
 }
 
@@ -36,6 +37,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   onClearSelection,
   onInsertEmoji,
   onNavigateToText,
+  onNavigateToTaggedText,
   commentRef
 }) => {
   return (
@@ -87,7 +89,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
                 e.currentTarget.style.backgroundColor = 'rgba(203, 163, 57, 0.1)';
                 e.currentTarget.style.borderColor = 'rgba(203, 163, 57, 0.6)';
               }} 
-              onClick={onNavigateToText}
+              onClick={() => onNavigateToTaggedText?.(hiLiteText)}
               title="Click to navigate to highlighted text in article"
             >
               <div className="text-xs mb-1 flex items-center gap-1" style={{ color: '#CBA339' }}>

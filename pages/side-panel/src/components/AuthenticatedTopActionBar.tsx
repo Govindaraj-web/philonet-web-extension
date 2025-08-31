@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings, Reply, MessageSquare } from 'lucide-react';
 import { Button } from './ui';
 import HistoryMenu from './HistoryMenu';
+import ShareDropdown from './ShareDropdown';
 import { HistoryItem } from '../types';
 import { useApp } from '../context';
 
@@ -13,15 +14,17 @@ interface AuthenticatedTopActionBarProps {
   onToggleMoreMenu: () => void;
   onToggleHistoryMenu: () => void;
   onHistoryItemClick: (url: string) => void;
-  onShare?: () => void;
-  onSave?: () => void;
-  onSummary?: () => void;
   onViewPageData?: () => void;
   onToggleSettings?: () => void;
   onReplyToThoughtDoc?: () => void;
   onToggleThoughtRooms?: () => void;
   useContentScript?: boolean;
   isExtracting?: boolean;
+  article?: { article_id: number } | null;
+  shareUrl?: string;
+  articleTitle?: string;
+  thoughtRoomsCount?: number;
+  isGeneratingContent?: boolean;
 }
 
 const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
@@ -31,19 +34,33 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   onToggleMoreMenu,
   onToggleHistoryMenu,
   onHistoryItemClick,
-  onShare,
-  onSave,
-  onSummary,
   onViewPageData,
   onToggleSettings,
   onReplyToThoughtDoc,
   onToggleThoughtRooms,
   useContentScript = false,
-  isExtracting = false
+  isExtracting = false,
+  article = null,
+  shareUrl = "",
+  articleTitle = "",
+  thoughtRoomsCount = 0,
+  isGeneratingContent = false
 }) => {
   const { user, logout } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showShareDropdown, setShowShareDropdown] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Debug logging for button visibility
+  useEffect(() => {
+    console.log('🎯 AuthenticatedTopActionBar - Button visibility check:', {
+      hasArticle: !!article,
+      articleId: article?.article_id,
+      shouldShowButtons: article && article.article_id > 0,
+      shareUrl,
+      articleTitle
+    });
+  }, [article, shareUrl, articleTitle]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -75,10 +92,73 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
     onViewPageData?.();
   };
 
+  const handleToggleThoughtRooms = () => {
+    console.log('🎯 Thought Rooms button clicked:', {
+      hasArticle: !!article,
+      articleId: article?.article_id,
+      thoughtRoomsCount
+    });
+    
+    if (article && article.article_id > 0) {
+      onToggleThoughtRooms?.();
+      console.log('✅ Opening Thought Rooms for article ID:', article.article_id);
+    } else {
+      console.warn('⚠️ Cannot open Thought Rooms - no article ID available:', {
+        hasArticle: !!article,
+        articleId: article?.article_id
+      });
+      // Could show a toast notification here if needed
+    }
+  };
+
+  const handleToggleShare = () => {
+    console.log('🔗 Share button clicked:', {
+      hasArticle: !!article,
+      articleId: article?.article_id,
+      shareUrl,
+      articleTitle
+    });
+    
+    if (article && article.article_id > 0) {
+      setShowShareDropdown(!showShareDropdown);
+      console.log('✅ Opening Share dropdown for article ID:', article.article_id);
+    } else {
+      console.warn('⚠️ Cannot open Share - no article ID available:', {
+        hasArticle: !!article,
+        articleId: article?.article_id
+      });
+      // Could show a toast notification here if needed
+    }
+  };
+
+  const handleMobileShare = async () => {
+    console.log('📱 Mobile share clicked:', {
+      hasArticle: !!article,
+      articleId: article?.article_id,
+      shareUrl
+    });
+    
+    if (article && article.article_id > 0 && shareUrl) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        console.log('✅ Share URL copied to clipboard:', shareUrl);
+        // Could show a toast notification here
+        onToggleMoreMenu(); // Close more menu after action
+      } catch (err) {
+        console.error('❌ Failed to copy share URL:', err);
+        // Fallback: Open in new tab
+        window.open(shareUrl, '_blank');
+        onToggleMoreMenu();
+      }
+    } else {
+      console.warn('⚠️ Cannot share - no article ID or share URL available');
+    }
+  };
+
   return (
-    <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center px-4 lg:px-6">
+    <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center px-2 lg:px-4 xl:px-6 overflow-hidden">
       {/* Left side - User info */}
-      <div className="flex items-center gap-3 flex-shrink-0 relative" ref={userMenuRef}>
+      <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0 relative min-w-0" ref={userMenuRef}>
         <button
           onClick={handleUserClick}
           className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card flex items-center justify-center text-philonet-text-muted hover:border-philonet-blue-500/60 hover:bg-philonet-blue-500/10 transition-all duration-200 group"
@@ -96,7 +176,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
         </button>
         <button
           onClick={handleUserClick}
-          className="text-sm font-light tracking-philonet-wide truncate max-w-[120px] md:max-w-[160px] lg:max-w-[200px] hover:text-philonet-blue-400 transition-colors text-left"
+          className="text-xs lg:text-sm font-light tracking-philonet-wide truncate max-w-[80px] md:max-w-[120px] lg:max-w-[160px] xl:max-w-[200px] hover:text-philonet-blue-400 transition-colors text-left"
           title="User menu"
         >
           {user?.name || 'User'}
@@ -140,33 +220,77 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
       </div>
       
       {/* Right side - Action buttons */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-1 lg:gap-2 flex-shrink-0 min-w-0">
         {/* Desktop buttons */}
-        <div className="hidden md:flex items-center gap-2">
-          <Button className="h-9 px-4 text-sm" onClick={onToggleThoughtRooms}>
-            <MessageSquare className="h-4 w-4" />
-            <span className="ml-2">Thought Rooms</span>
-          </Button>
-          <Button className="h-9 px-4 text-sm" onClick={onSummary}>
-            <FileText className="h-4 w-4" />
-            <span className="ml-2">G. summary</span>
-          </Button>
-          <Button className="h-9 px-4 text-sm" onClick={onShare}>
-            <Share2 className="h-4 w-4" />
-            <span className="ml-2">Share</span>
-          </Button>
-          <Button className="h-9 px-4 text-sm" onClick={onSave}>
-            <Bookmark className="h-4 w-4" />
-            <span className="ml-2">Save</span>
-          </Button>
+        <div className="hidden md:flex items-center gap-1 lg:gap-2">
+          {/* Show loading placeholders when content is being generated */}
+          {isGeneratingContent && !article?.article_id && (
+            <>
+              <Button 
+                className="h-9 px-2 lg:px-4 text-sm bg-philonet-border/30 border-philonet-border/50 cursor-not-allowed" 
+                disabled
+                title="Generating content... Buttons will appear when ready"
+              >
+                <MessageSquare className="h-4 w-4 opacity-50" />
+                <span className="ml-1 lg:ml-2 opacity-50 hidden lg:inline">Thought Rooms</span>
+              </Button>
+              <Button 
+                className="h-9 px-2 lg:px-4 text-sm bg-philonet-border/30 border-philonet-border/50 cursor-not-allowed" 
+                disabled
+                title="Generating content... Buttons will appear when ready"
+              >
+                <Share2 className="h-4 w-4 opacity-50" />
+                <span className="ml-1 lg:ml-2 opacity-50 hidden lg:inline">Share</span>
+              </Button>
+            </>
+          )}
+
+          {/* Only show Thought Rooms and Share buttons when article is available */}
+          {article && article.article_id > 0 && (
+            <>
+              <div className="relative">
+                <Button 
+                  className="h-9 px-2 lg:px-4 text-sm bg-philonet-blue-600 hover:bg-philonet-blue-700 border-philonet-blue-500" 
+                  onClick={handleToggleThoughtRooms}
+                  title={`Open Thought Rooms for "${articleTitle}"`}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="ml-1 lg:ml-2 hidden lg:inline">Thought Rooms</span>
+                </Button>
+                {/* Conversation count badge */}
+                {thoughtRoomsCount > 0 && (
+                  <div className="absolute -top-1 -right-1 h-5 w-5 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center shadow-sm border border-philonet-card">
+                    {thoughtRoomsCount > 99 ? '99+' : thoughtRoomsCount}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Button 
+                  className="h-9 px-2 lg:px-4 text-sm" 
+                  onClick={handleToggleShare}
+                  title={`Share "${articleTitle}"`}
+                >
+                  <Share2 className="h-4 w-4" />
+                  <span className="ml-1 lg:ml-2 hidden lg:inline">Share</span>
+                </Button>
+                {/* ShareDropdown positioned relative to this button */}
+                <ShareDropdown
+                  shareUrl={shareUrl}
+                  articleTitle={articleTitle}
+                  isOpen={showShareDropdown}
+                  onToggle={handleToggleShare}
+                />
+              </div>
+            </>
+          )}
           <div className="relative" data-more-menu>
             <Button 
-              className="h-9 px-4 text-sm"
+              className="h-9 px-2 lg:px-4 text-sm"
               onClick={onToggleMoreMenu}
               title="More options"
             >
               <MoreHorizontal className="h-4 w-4" />
-              <span className="ml-2">More</span>
+              <span className="ml-1 lg:ml-2 hidden lg:inline">More</span>
             </Button>
             
             {/* More dropdown */}
@@ -230,7 +354,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
         {/* Mobile More button */}
         <div className="md:hidden relative" data-more-menu>
           <Button 
-            className="h-9 px-3 text-sm"
+            className="h-9 px-2 text-sm"
             title="More options"
             onClick={onToggleMoreMenu}
           >
@@ -248,6 +372,63 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                 className="absolute top-full right-0 mt-2 w-[200px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur shadow-xl z-50"
               >
                 <div className="p-2">
+                  {/* Show loading placeholders when content is being generated */}
+                  {isGeneratingContent && !article?.article_id && (
+                    <>
+                      {/* Thought Rooms loading placeholder - Mobile */}
+                      <div className="w-full p-3 rounded-lg border border-philonet-border/30 bg-philonet-border/10 mb-2 flex items-center gap-3">
+                        <MessageSquare className="h-4 w-4 text-philonet-text-muted opacity-50" />
+                        <span className="text-sm text-philonet-text-muted opacity-50">
+                          Thought Rooms (Loading...)
+                        </span>
+                      </div>
+
+                      {/* Share loading placeholder - Mobile */}
+                      <div className="w-full p-3 rounded-lg border border-philonet-border/30 bg-philonet-border/10 mb-2 flex items-center gap-3">
+                        <Share2 className="h-4 w-4 text-philonet-text-muted opacity-50" />
+                        <span className="text-sm text-philonet-text-muted opacity-50">
+                          Share (Loading...)
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Mobile Thought Rooms and Share buttons - show when article is available */}
+                  {article && article.article_id > 0 && (
+                    <>
+                      {/* Thought Rooms button - Mobile */}
+                      <button
+                        onClick={() => {
+                          handleToggleThoughtRooms();
+                          onToggleMoreMenu(); // Close more menu after action
+                        }}
+                        className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                      >
+                        <MessageSquare className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                        <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                          Thought Rooms
+                        </span>
+                        {thoughtRoomsCount > 0 && (
+                          <div className="ml-auto h-5 w-5 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center">
+                            {thoughtRoomsCount > 99 ? '99+' : thoughtRoomsCount}
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Share button - Mobile */}
+                      <button
+                        onClick={handleMobileShare}
+                        className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                        title={`Copy share link for "${articleTitle}"`}
+                      >
+                        <Share2 className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                        <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                          Copy Share Link
+                        </span>
+                      </button>
+                    </>
+                  )}
+
                   {/* View Page Data button - Mobile */}
                   <button
                     onClick={handleViewPageData}

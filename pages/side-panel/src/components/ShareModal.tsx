@@ -1,24 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
   Copy, 
   Check, 
   Share2, 
-  Users, 
-  User,
-  ChevronRight,
   Globe,
-  Lock,
-  MessageSquare,
-  Star,
-  Loader2,
-  Search,
-  ChevronDown,
-  UserPlus,
-  Shield
+  ExternalLink,
+  QrCode,
+  LinkIcon
 } from 'lucide-react';
-import { shareService, type Room, type Friend } from '../services/ShareService';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -26,29 +17,6 @@ interface ShareModalProps {
   shareUrl: string;
   articleTitle?: string;
   articleDescription?: string;
-  onShareToRoom?: (roomId: number) => void;
-  onShareToFriend?: (friendId: number) => void;
-}
-
-type AccessRole = 'viewer' | 'commenter' | 'editor';
-
-interface AccessUser {
-  id: string;
-  name: string;
-  username: string;
-  type: 'user' | 'room';
-  role: AccessRole;
-  isOnline?: boolean;
-  isPrivate?: boolean;
-}
-
-interface SuggestionItem {
-  id: string;
-  name: string;
-  username: string;
-  type: 'user' | 'room';
-  isOnline?: boolean;
-  isPrivate?: boolean;
 }
 
 const ShareModal: React.FC<ShareModalProps> = ({
@@ -56,31 +24,256 @@ const ShareModal: React.FC<ShareModalProps> = ({
   onClose,
   shareUrl,
   articleTitle = "Current Page",
-  articleDescription = "",
-  onShareToRoom,
-  onShareToFriend
+  articleDescription = ""
 }) => {
   const [copied, setCopied] = useState(false);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [loadingRooms, setLoadingRooms] = useState(false);
-  const [loadingFriends, setLoadingFriends] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [selectedUsers, setSelectedUsers] = useState<SuggestionItem[]>([]);
-  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<HTMLDivElement>(null);
 
-  // Load data when modal opens
+  // Reset states when modal opens
   useEffect(() => {
     if (isOpen) {
-      loadData();
-      generateSuggestions();
+      setCopied(false);
+      setShowToast(false);
     }
   }, [isOpen]);
+
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
+  const handleCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      showToastMessage('Share link copied to clipboard!');
+      setTimeout(() => setCopied(false), 3000);
+    } catch (err) {
+      console.error('Failed to copy URL:', err);
+      // Fallback for older browsers
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = shareUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopied(true);
+        showToastMessage('Share link copied to clipboard!');
+        setTimeout(() => setCopied(false), 3000);
+      } catch (fallbackError) {
+        showToastMessage('Failed to copy link. Please copy manually.');
+      }
+    }
+  };
+
+  const handleOpenInNewTab = () => {
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    showToastMessage('Opening share link in new tab');
+  };
+
+  const generateQRCode = () => {
+    // For now, we'll use a simple QR code service
+    // In production, you might want to use a dedicated QR code library
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}`;
+    return qrCodeUrl;
+  };
+
+  const [showQRCode, setShowQRCode] = useState(false);
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="bg-philonet-card border border-philonet-border rounded-philonet-lg shadow-2xl max-w-lg w-full mx-4 lg:mx-0 overflow-hidden relative"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-philonet-border">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="p-2 bg-philonet-blue-500/10 rounded-lg">
+                <Share2 className="h-5 w-5 text-philonet-blue-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-semibold text-white truncate">
+                  Share Link
+                </h2>
+                <p className="text-sm text-philonet-text-muted truncate">
+                  {articleTitle}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-philonet-text-muted hover:text-white transition-colors p-2 rounded-lg hover:bg-philonet-panel ml-3 flex-shrink-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-6">
+            {/* Article Description */}
+            {articleDescription && (
+              <div className="p-4 bg-philonet-bg/30 border border-philonet-border/50 rounded-lg">
+                <p className="text-sm text-philonet-text-secondary line-clamp-3">
+                  {articleDescription}
+                </p>
+              </div>
+            )}
+
+            {/* Share URL Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <LinkIcon className="h-4 w-4 text-philonet-blue-400" />
+                <span className="text-sm font-medium text-white">
+                  Share URL
+                </span>
+              </div>
+              
+              <div className="space-y-3">
+                {/* URL Input with Copy Button */}
+                <div className="flex items-center gap-3 p-4 bg-philonet-bg/50 border border-philonet-border/70 rounded-lg hover:border-philonet-blue-400/30 transition-colors">
+                  <Globe className="h-4 w-4 text-philonet-text-muted flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={shareUrl}
+                    readOnly
+                    className="flex-1 bg-transparent text-sm text-philonet-text truncate outline-none cursor-default select-all"
+                    onClick={(e) => e.currentTarget.select()}
+                  />
+                  <button
+                    onClick={handleCopyUrl}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all flex-shrink-0 ${
+                      copied
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                        : 'bg-philonet-blue-500 hover:bg-philonet-blue-600 text-white hover:shadow-lg hover:scale-105 active:scale-95'
+                    }`}
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleOpenInNewTab}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-philonet-panel hover:bg-philonet-panel-light border border-philonet-border/70 hover:border-philonet-blue-400/50 text-white text-sm font-medium rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open Link
+                  </button>
+                  
+                  <button
+                    onClick={() => setShowQRCode(!showQRCode)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-philonet-blue-500/10 hover:bg-philonet-blue-500/20 border border-philonet-blue-400/30 hover:border-philonet-blue-400/50 text-philonet-blue-400 hover:text-philonet-blue-300 text-sm font-medium rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    QR Code
+                  </button>
+                </div>
+
+                {/* QR Code Section */}
+                <AnimatePresence>
+                  {showQRCode && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-4 bg-white rounded-lg border border-philonet-border/50 text-center">
+                        <img
+                          src={generateQRCode()}
+                          alt="QR Code for share link"
+                          className="w-48 h-48 mx-auto rounded-lg"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling!.classList.remove('hidden');
+                          }}
+                        />
+                        <div className="hidden text-philonet-text-muted text-sm mt-2">
+                          QR Code unavailable
+                        </div>
+                        <p className="text-xs text-philonet-text-muted mt-2">
+                          Scan with your phone to open the link
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              
+              <div className="flex items-center gap-2 p-3 bg-philonet-blue-500/5 border border-philonet-blue-400/20 rounded-lg">
+                <Globe className="h-4 w-4 text-philonet-blue-400 flex-shrink-0" />
+                <p className="text-sm text-philonet-blue-200">
+                  Anyone with this link can view the shared content
+                </p>
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <div className="pt-2">
+              <button
+                onClick={onClose}
+                className="w-full px-6 py-3 bg-philonet-border hover:bg-philonet-border-light text-white text-base font-medium rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {showToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-60"
+          >
+            <div className="bg-philonet-card border border-philonet-border rounded-lg shadow-xl px-4 py-3 flex items-center gap-3 backdrop-blur-sm">
+              <div className="p-1 bg-green-500/20 rounded-full">
+                <Check className="h-3 w-3 text-green-400" />
+              </div>
+              <span className="text-sm text-white font-medium">{toastMessage}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </AnimatePresence>
+  );
+};
+
+export default ShareModal;
 
   // Handle click outside to close autocomplete
   useEffect(() => {

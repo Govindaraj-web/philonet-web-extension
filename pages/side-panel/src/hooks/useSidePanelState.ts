@@ -125,6 +125,9 @@ export function useSidePanelState() {
     highlightsLoading: false,
     currentArticleId: undefined,
     highlightsResponse: undefined,
+    // Content overlay for tagged text highlighting
+    showContentOverlay: false,
+    overlayTaggedText: "",
   });
 
   // Comment actions

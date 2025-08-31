@@ -18,6 +18,7 @@ interface CommentsSidebarProps {
   selectedCommentId?: number | null;
   onSelectComment: (comment: Comment) => void;
   onCreateNewConversation?: () => void;
+  onNavigateToTaggedText?: (text: string) => void;
   className?: string;
 }
 
@@ -25,6 +26,7 @@ interface CommentPreviewProps {
   comment: Comment;
   isSelected: boolean;
   onClick: () => void;
+  onNavigateToTaggedText?: (text: string) => void;
   hasUnreadMessages?: boolean;
   lastMessageTime?: string;
   participantCount?: number;
@@ -34,6 +36,7 @@ const CommentPreview: React.FC<CommentPreviewProps> = ({
   comment,
   isSelected,
   onClick,
+  onNavigateToTaggedText,
   hasUnreadMessages = false,
   lastMessageTime,
   participantCount = 1
@@ -104,7 +107,14 @@ const CommentPreview: React.FC<CommentPreviewProps> = ({
 
           {/* Tag if present */}
           {comment.tag?.text && (
-            <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-philonet-blue-500/10 border border-philonet-blue-500/20 mb-2">
+            <div 
+              className="inline-flex items-center px-2 py-0.5 rounded-full bg-philonet-blue-500/10 border border-philonet-blue-500/20 mb-2 cursor-pointer hover:bg-philonet-blue-500/20 hover:border-philonet-blue-500/30 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateToTaggedText?.(comment.tag!.text);
+              }}
+              title="Click to highlight this text in the article"
+            >
               <span className="text-xs text-philonet-blue-400 font-light tracking-philonet-wide">
                 {truncateText(comment.tag.text, 30)}
               </span>
@@ -141,12 +151,13 @@ const CommentPreview: React.FC<CommentPreviewProps> = ({
   );
 };
 
-const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
-  comments,
-  selectedCommentId,
-  onSelectComment,
+const CommentsSidebar: React.FC<CommentsSidebarProps> = ({ 
+  comments, 
+  selectedCommentId, 
+  onSelectComment, 
   onCreateNewConversation,
-  className
+  onNavigateToTaggedText,
+  className = '' 
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'recent'>('all');
@@ -231,6 +242,7 @@ const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
                 comment={comment}
                 isSelected={selectedCommentId === comment.id}
                 onClick={() => onSelectComment(comment)}
+                onNavigateToTaggedText={onNavigateToTaggedText}
                 hasUnreadMessages={index < 2} // For demo purposes
                 lastMessageTime={comment.ts}
                 participantCount={Math.floor(Math.random() * 4) + 2}

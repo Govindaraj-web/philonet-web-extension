@@ -4,6 +4,7 @@ export { default as AuthenticatedTopActionBar } from './AuthenticatedTopActionBa
 export { default as ContentRenderer } from './ContentRenderer';
 export { default as ComposerFooter } from './ComposerFooter';
 export { default as CommentsDock } from './CommentsDock';
+export { default as ContentOverlay } from './ContentOverlay';
 export { default as SpeechButton } from './SpeechButton';
 export { default as SourceButton } from './SourceButton';
 export { default as HistoryMenu } from './HistoryMenu';
@@ -20,6 +21,7 @@ export { default as SidePanelWithConversation } from './SidePanelWithConversatio
 export { default as ConversationRoomDemo } from './ConversationRoomDemo';
 export { default as ConversationDrawer2 } from './ConversationDrawer2';
 export { default as ThoughtRoomsIntegration2 } from './ThoughtRoomsIntegration2';
+export { default as ShareDropdown } from './ShareDropdown';
 
 // Re-export UI components
 export { Button, Textarea, ScrollArea, LoaderRing } from './ui';

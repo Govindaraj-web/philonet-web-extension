@@ -171,6 +171,9 @@ export interface SidePanelState {
   highlightsLoading: boolean;
   currentArticleId?: string;
   highlightsResponse?: HighlightsResponse;
+  // Content overlay for tagged text highlighting
+  showContentOverlay: boolean;
+  overlayTaggedText: string;
 }
 
 export interface SidePanelProps {

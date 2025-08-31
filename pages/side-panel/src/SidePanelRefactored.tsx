@@ -12,9 +12,9 @@ import {
   ComposerFooter,
   CommentsDock
 } from './components';
+import ContentOverlay from './components/ContentOverlay';
 import ThoughtRoomsIntegration from './components/ThoughtRoomsIntegration2';
 import { PdfUploadModal } from './components/PdfUploadModal';
-import ShareModal from './components/ShareModal';
 
 import {
   useSpeech,
@@ -182,9 +182,6 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // PDF upload modal state
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false);
   const [pdfUploadFileName, setPdfUploadFileName] = useState<string>('');
-
-  // Share modal state
-  const [showShareModal, setShowShareModal] = useState(false);
 
   // Enhanced PDF upload state for drag & drop
   const [isDragging, setIsDragging] = useState(false);
@@ -926,7 +923,272 @@ ${article.description}
     }
   };
 
-  // Article API functions
+  // Base62 encoding for share links
+  const BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  const encodeId = (num: number): string => {
+    let str = '';
+    do {
+      str = BASE62[num % 62] + str;
+      num = Math.floor(num / 62);
+    } while (num > 0);
+    return str;
+  };
+
+  const generateShareLink = (articleId: number): string => {
+    const encodedId = encodeId(articleId);
+    const shareLink = `https://philonet.ai/hot-room/${encodedId}`;
+    console.log(`🔗 Generating share link: Article ID ${articleId} → Encoded: ${encodedId} → Link: ${shareLink}`);
+    return shareLink;
+  };
+
+  // Enhanced webpage content fetching and processing functions
+  const fetchWebpageContent = async (url: string): Promise<PageContent | null> => {
+    try {
+      console.log('🌐 Extracting webpage content for:', url);
+      
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Enhanced webpage content extraction
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const extractUrl = () => window.location.href;
+          const extractTitle = () => document.title || document.querySelector('h1')?.textContent || 'Untitled Page';
+          
+          const extractMetaDescription = () => {
+            const meta = document.querySelector('meta[name="description"]') || 
+                         document.querySelector('meta[property="og:description"]');
+            return meta ? meta.getAttribute('content') : null;
+          };
+
+          const extractHeadings = () => {
+            const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            return Array.from(headings)
+              .map(h => ({
+                level: parseInt(h.tagName.charAt(1)),
+                text: h.textContent?.trim() || ''
+              }))
+              .filter(h => h.text.length > 0)
+              .slice(0, 20); // Limit to first 20 headings
+          };
+
+          const extractMainContent = () => {
+            // Try to find main content areas
+            const contentSelectors = [
+              'main article',
+              'main',
+              'article',
+              '[role="main"]',
+              '.content',
+              '.post-content',
+              '.entry-content',
+              '.article-content',
+              '#content',
+              '.main-content'
+            ];
+
+            let mainContent = '';
+            for (const selector of contentSelectors) {
+              const element = document.querySelector(selector);
+              if (element) {
+                mainContent = element.textContent?.trim() || '';
+                if (mainContent.length > 500) break; // Found substantial content
+              }
+            }
+
+            // Fallback to body content if no main content found
+            if (!mainContent || mainContent.length < 100) {
+              const walker = document.createTreeWalker(
+                document.body,
+                NodeFilter.SHOW_TEXT,
+                {
+                  acceptNode: (node) => {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    
+                    const style = window.getComputedStyle(parent);
+                    if (style.display === 'none' || style.visibility === 'hidden') {
+                      return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    const tagName = parent.tagName.toLowerCase();
+                    if (['script', 'style', 'noscript', 'nav', 'header', 'footer', 'aside'].includes(tagName)) {
+                      return NodeFilter.FILTER_REJECT;
+                    }
+                    
+                    return NodeFilter.FILTER_ACCEPT;
+                  }
+                }
+              );
+              
+              const textNodes: string[] = [];
+              let node;
+              while (node = walker.nextNode()) {
+                const text = node.textContent?.trim();
+                if (text && text.length > 10) {
+                  textNodes.push(text);
+                }
+              }
+              mainContent = textNodes.join(' ').substring(0, 8000); // Limit to 8000 chars
+            }
+
+            return mainContent;
+          };
+
+          const extractStructuredData = () => {
+            const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+            const structuredData: any[] = [];
+            
+            jsonLdScripts.forEach(script => {
+              try {
+                const data = JSON.parse(script.textContent || '');
+                structuredData.push(data);
+              } catch (e) {
+                // Ignore invalid JSON-LD
+              }
+            });
+
+            return structuredData;
+          };
+
+          const extractOpenGraph = () => {
+            const ogTags = document.querySelectorAll('meta[property^="og:"]');
+            const og: Record<string, string> = {};
+            ogTags.forEach(tag => {
+              const property = tag.getAttribute('property');
+              const content = tag.getAttribute('content');
+              if (property && content) {
+                og[property] = content;
+              }
+            });
+            return og;
+          };
+
+          const extractThumbnail = () => {
+            // Priority order for thumbnail extraction
+            const ogImage = document.querySelector('meta[property="og:image"]');
+            if (ogImage) return ogImage.getAttribute('content');
+
+            const twitterImage = document.querySelector('meta[name="twitter:image"]');
+            if (twitterImage) return twitterImage.getAttribute('content');
+
+            const firstImg = document.querySelector('img[src]:not([src=""])');
+            if (firstImg) {
+              const src = firstImg.getAttribute('src');
+              if (src && !src.includes('logo') && !src.includes('icon')) {
+                return src.startsWith('http') ? src : new URL(src, window.location.href).href;
+              }
+            }
+
+            const favicon = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
+            if (favicon) return favicon.getAttribute('href');
+
+            return null;
+          };
+
+          const extractAuthorInfo = () => {
+            const authorSelectors = [
+              'meta[name="author"]',
+              '[rel="author"]',
+              '.author',
+              '.byline',
+              '[class*="author"]'
+            ];
+
+            for (const selector of authorSelectors) {
+              const element = document.querySelector(selector);
+              if (element) {
+                const content = element.getAttribute('content') || element.textContent?.trim();
+                if (content) return content;
+              }
+            }
+            return null;
+          };
+
+          const extractPublishDate = () => {
+            const dateSelectors = [
+              'meta[property="article:published_time"]',
+              'meta[name="publish-date"]',
+              'time[datetime]',
+              '.date',
+              '.published',
+              '[class*="date"]'
+            ];
+
+            for (const selector of dateSelectors) {
+              const element = document.querySelector(selector);
+              if (element) {
+                const datetime = element.getAttribute('datetime') || 
+                               element.getAttribute('content') || 
+                               element.textContent?.trim();
+                if (datetime) return datetime;
+              }
+            }
+            return null;
+          };
+
+          const extractKeywords = () => {
+            const keywordsMeta = document.querySelector('meta[name="keywords"]');
+            if (keywordsMeta) {
+              return keywordsMeta.getAttribute('content')?.split(',').map(k => k.trim()) || [];
+            }
+            return [];
+          };
+
+          return {
+            url: extractUrl(),
+            title: extractTitle(),
+            metaDescription: extractMetaDescription(),
+            headings: extractHeadings(),
+            visibleText: extractMainContent(),
+            structuredData: extractStructuredData(),
+            openGraph: extractOpenGraph(),
+            thumbnailUrl: extractThumbnail(),
+            author: extractAuthorInfo(),
+            publishDate: extractPublishDate(),
+            keywords: extractKeywords(),
+            wordCount: extractMainContent().split(/\s+/).length,
+            extractedAt: new Date().toISOString(),
+            domain: window.location.hostname,
+            lang: document.documentElement.lang || 'en'
+          };
+        }
+      });
+
+      if (results[0]?.result) {
+        const webpageData = results[0].result;
+        console.log('✅ Webpage content extracted:', {
+          title: webpageData.title,
+          wordCount: webpageData.wordCount,
+          headingsCount: webpageData.headings?.length,
+          hasDescription: !!webpageData.metaDescription,
+          hasThumbnail: !!webpageData.thumbnailUrl,
+          domain: webpageData.domain
+        });
+        
+        return {
+          url: webpageData.url,
+          title: webpageData.title,
+          metaDescription: webpageData.metaDescription || '',
+          headings: webpageData.headings?.map(h => h.text) || [],
+          visibleText: webpageData.visibleText || '',
+          structuredData: webpageData.structuredData || [],
+          openGraph: webpageData.openGraph || {},
+          thumbnailUrl: webpageData.thumbnailUrl || undefined
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error extracting webpage content:', error);
+      throw error;
+    }
+  };
+
   const fetchArticle = async (params: { url?: string; hash?: string }): Promise<ArticleApiResponse | null> => {
     try {
       const token = await philonetAuthStorage.getToken();
@@ -1910,6 +2172,37 @@ ${article.description}
     }
   };
 
+  // Handle share functionality - now handled by ShareDropdown component
+  const handleShare = () => {
+    // This function is no longer needed as sharing is handled by ShareDropdown
+    // Keeping it for backward compatibility if any other components reference it
+    if (article && article.article_id > 0) {
+      const shareLink = generateShareLink(article.article_id);
+      console.log('� Share link generated:', shareLink);
+    } else {
+      console.log('⚠️ No article available to share - Share button should be hidden');
+    }
+  };
+
+  // Get the appropriate share URL
+  const getShareUrl = (): string => {
+    console.log('🔗 getShareUrl called:', { 
+      hasArticle: !!article, 
+      articleId: article?.article_id,
+      canGenerateShareLink: article && article.article_id > 0 
+    });
+    
+    if (article && article.article_id > 0) {
+      const shareLink = generateShareLink(article.article_id);
+      console.log('✅ Generated share URL:', shareLink);
+      return shareLink;
+    }
+    
+    const fallbackUrl = currentUrl || window.location.href;
+    console.log('⚠️ Using fallback URL for sharing:', fallbackUrl);
+    return fallbackUrl;
+  };
+
   // Auto-refresh modal when pageData changes (if modal is open)
   useEffect(() => {
     if (showPageData && pageData) {
@@ -1958,7 +2251,18 @@ ${article.description}
   };
 
   const toggleThoughtRooms = () => {
-    setShowThoughtRooms(!showThoughtRooms);
+    console.log('🎯 toggleThoughtRooms called:', { 
+      hasArticle: !!article, 
+      articleId: article?.article_id,
+      canToggle: article && article.article_id > 0 
+    });
+    
+    if (article && article.article_id > 0) {
+      setShowThoughtRooms(!showThoughtRooms);
+      console.log('✅ Toggling Thought Rooms to:', !showThoughtRooms);
+    } else {
+      console.log('⚠️ No article available for Thought Rooms - button should be hidden');
+    }
   };
 
   // Handlers
@@ -2005,7 +2309,30 @@ ${article.description}
     gotoDockIndex(index, dockList);
   };
 
-  const handleNavigateToText = (text?: string) => {
+  // Content overlay handlers
+  const handleShowContentOverlay = (taggedText: string) => {
+    console.log('🎯 Showing content overlay for tagged text:', taggedText);
+    updateState({ 
+      showContentOverlay: true, 
+      overlayTaggedText: taggedText 
+    });
+  };
+
+  const handleCloseContentOverlay = () => {
+    console.log('🎯 Closing content overlay');
+    updateState({ 
+      showContentOverlay: false, 
+      overlayTaggedText: '' 
+    });
+  };
+
+  // Tagged text navigation with overlay support
+  const handleNavigateToTaggedText = (text: string) => {
+    // Show overlay for tagged content clicked in thoughts
+    handleShowContentOverlay(text);
+  };
+
+  const handleNavigateToText = (text?: string, showOverlay: boolean = false) => {
     const searchText = text || state.hiLiteText;
     if (!searchText || !bodyContentRef.current) {
       console.log('⚠️ Cannot navigate: no search text or body content ref');
@@ -2014,6 +2341,12 @@ ${article.description}
 
     try {
       console.log('🔍 Navigating to highlighted text:', searchText);
+
+      // If overlay is requested, show it instead of just navigating
+      if (showOverlay && text) {
+        handleShowContentOverlay(text);
+        return;
+      }
 
       // Use the enhanced search system for better results
       if (text) {
@@ -2730,14 +3063,36 @@ ${article.description}
 
         // Update the article with the saved data if it has an ID
         if (saveResult?.article_id) {
+          console.log('🔄 Updating article with saved ID for button visibility:', saveResult.article_id);
           setArticle(currentArticle => {
-            if (!currentArticle) return currentArticle;
-            return {
+            if (!currentArticle) {
+              console.warn('⚠️ No current article to update with saved ID');
+              return currentArticle;
+            }
+            
+            const updatedArticle = {
               ...currentArticle,
               article_id: saveResult.article_id,
-              room_id: saveResult.room_id || currentArticle.room_id
+              room_id: saveResult.room_id || currentArticle.room_id,
+              // Ensure all fields are properly set for button visibility
+              title: currentArticle.title || extractResult?.title || 'Generated Content',
+              description: currentArticle.description || streamingResult,
+              summary: currentArticle.summary || extractResult?.summary
             };
+            
+            console.log('✅ Article updated with ID - buttons should now be visible:', {
+              article_id: updatedArticle.article_id,
+              room_id: updatedArticle.room_id,
+              title: updatedArticle.title
+            });
+            
+            return updatedArticle;
           });
+          
+          // Force a small delay to ensure state update is processed before UI components re-render
+          setTimeout(() => {
+            console.log('🎯 Article state should now show buttons for ID:', saveResult.article_id);
+          }, 100);
         }
       } catch (error) {
         console.error('❌ Failed to save to room:', error);
@@ -3196,15 +3551,17 @@ ${article.description}
             onToggleMoreMenu={toggleMoreMenu}
             onToggleHistoryMenu={toggleHistoryMenu}
             onHistoryItemClick={openHistoryItem}
-            onSummary={() => console.log('Generate summary clicked')}
-            onShare={() => setShowShareModal(true)}
-            onSave={() => console.log('Save clicked')}
             onViewPageData={handleViewPageData}
             onToggleSettings={toggleSettings}
             onReplyToThoughtDoc={handleReplyToThoughtDoc}
             onToggleThoughtRooms={toggleThoughtRooms}
             useContentScript={settings.useContentScript}
             isExtracting={isExtractingPageData}
+            article={article}
+            shareUrl={getShareUrl()}
+            articleTitle={article?.title || pageData?.title || document.title || "Current Page"}
+            thoughtRoomsCount={state.comments.length} // Use comments count as conversations count
+            isGeneratingContent={isGeneratingContent}
           />
 
 
@@ -3868,6 +4225,7 @@ ${article.description}
                   clearSelectionHighlight();
                 }}
                 onNavigateToText={handleNavigateToText}
+                onNavigateToTaggedText={handleNavigateToTaggedText}
                 onInsertEmoji={handleInsertEmoji}
                 commentRef={commentRef as React.RefObject<HTMLTextAreaElement>}
               />
@@ -3931,7 +4289,7 @@ ${article.description}
                 onNavigate={handleDockNavigate}
                 onMinimize={() => updateState({ dockMinimized: true })}
                 onExpand={() => updateState({ dockMinimized: false })}
-                onNavigateToText={handleNavigateToText}
+                onNavigateToText={handleNavigateToTaggedText}
                 onReplyToThought={handleReplyToThought}
               />
             </div>
@@ -4007,41 +4365,43 @@ ${article.description}
             )}
           </AnimatePresence>
 
-          {/* 🎯 Thought Rooms Integration */}
-          <ThoughtRoomsIntegration
-            isOpen={showThoughtRooms}
-            onClose={() => setShowThoughtRooms(false)}
-            article={article ? {
-              title: article.title,
-              content: article.description || article.summary,
-              url: article.url
-            } : {
-              title: pageData?.title || document.title || "Current Page",
-              content: pageData?.visibleText || "",
-              url: currentUrl
-            }}
-            taggedContent={state.hiLiteText ? {
-              sourceText: pageData?.visibleText || article?.description || "",
-              sourceUrl: currentUrl,
-              highlightedText: state.hiLiteText
-            } : undefined}
-            user={user}
-            currentArticleId={state.currentArticleId} // Pass the article ID from storage
-            onSendMessage={(message, thoughtId) => {
-              console.log('💬 Conversation message:', message, 'for thought:', thoughtId);
-              // You can integrate this with your existing comment system
-              // submitComment(message);
-            }}
-            onAskAI={(question, thoughtId) => {
-              console.log('🤖 AI question:', question, 'for thought:', thoughtId);
-              // You can integrate this with your existing AI system
-              // askAi(question);
-            }}
-            onThoughtSelect={(thoughtId) => {
-              console.log('🎯 Thought selected:', thoughtId);
-              // You can integrate this with your existing highlight system
-            }}
-          />
+          {/* 🎯 Thought Rooms Integration - only render when article is available */}
+          {article && article.article_id > 0 && (
+            <ThoughtRoomsIntegration
+              isOpen={showThoughtRooms}
+              onClose={() => setShowThoughtRooms(false)}
+              article={article ? {
+                title: article.title,
+                content: article.description || article.summary,
+                url: article.url
+              } : {
+                title: pageData?.title || document.title || "Current Page",
+                content: pageData?.visibleText || "",
+                url: currentUrl
+              }}
+              taggedContent={state.hiLiteText ? {
+                sourceText: pageData?.visibleText || article?.description || "",
+                sourceUrl: currentUrl,
+                highlightedText: state.hiLiteText
+              } : undefined}
+              user={user}
+              currentArticleId={state.currentArticleId} // Pass the article ID from storage
+              onSendMessage={(message, thoughtId) => {
+                console.log('💬 Conversation message:', message, 'for thought:', thoughtId);
+                // You can integrate this with your existing comment system
+                // submitComment(message);
+              }}
+              onAskAI={(question, thoughtId) => {
+                console.log('🤖 AI question:', question, 'for thought:', thoughtId);
+                // You can integrate this with your existing AI system
+                // askAi(question);
+              }}
+              onThoughtSelect={(thoughtId) => {
+                console.log('🎯 Thought selected:', thoughtId);
+                // You can integrate this with your existing highlight system
+              }}
+            />
+          )}
         </motion.aside>
 
         {/* Settings Modal */}
@@ -4677,21 +5037,11 @@ ${article.description}
           fileName={pdfUploadFileName}
         />
 
-        {/* Share Modal */}
-        <ShareModal
-          isOpen={showShareModal}
-          onClose={() => setShowShareModal(false)}
-          shareUrl={currentUrl || window.location.href}
-          articleTitle={article?.title || pageData?.title || document.title || "Current Page"}
-          articleDescription={article?.description || article?.summary || pageData?.metaDescription || ""}
-          onShareToRoom={(roomId) => {
-            console.log('🏠 Sharing to room:', roomId);
-            // TODO: Implement room sharing API call
-          }}
-          onShareToFriend={(friendId) => {
-            console.log('👤 Sharing to friend:', friendId);
-            // TODO: Implement friend sharing API call
-          }}
+        {/* Content Overlay for tagged text highlighting */}
+        <ContentOverlay
+          isVisible={state.showContentOverlay}
+          taggedText={state.overlayTaggedText}
+          onClose={handleCloseContentOverlay}
         />
       </div>
     );
