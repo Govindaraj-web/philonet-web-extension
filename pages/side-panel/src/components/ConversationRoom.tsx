@@ -36,7 +36,9 @@ import {
   ChevronDown,
   ChevronUp,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Type,
+  Settings
 } from 'lucide-react';
 import { cn } from '@extension/ui';
 import { Button, Textarea } from './ui';
@@ -132,9 +134,11 @@ interface ConversationRoomProps {
   articleId?: number; // Article ID for API calls
   parentCommentId?: number; // Parent comment ID for API calls
   articleContent?: string; // Article content for AI queries
+  articleTitle?: string; // Article title for display
   onThoughtSelect: (thoughtId: string) => void;
   onSendMessage: (message: string, thoughtId: string, replyToMessageId?: string) => void;
   onAskAI: (question: string, thoughtId: string) => void;
+  onClose?: () => void; // Add close function prop for closing the entire drawer
 }
 
 /* 
@@ -260,9 +264,11 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   articleId, // Add API context props
   parentCommentId, // Add API context props
   articleContent = '', // Add article content for AI queries
+  articleTitle, // Add article title for display
   onThoughtSelect,
   onSendMessage,
-  onAskAI
+  onAskAI,
+  onClose // Add close function prop
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [messageText, setMessageText] = useState('');
@@ -272,6 +278,8 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isHeaderShrunk, setIsHeaderShrunk] = useState(false);
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
+  const [isReferenceVisible, setIsReferenceVisible] = useState(true);
+  const [isLeftSidebarHovered, setIsLeftSidebarHovered] = useState(false);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -280,6 +288,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
 
   // Available reactions - organized by category
   const reactionCategories = {
@@ -293,11 +302,107 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
 
   const [selectedReactionCategory, setSelectedReactionCategory] = useState<keyof typeof reactionCategories | 'recent'>('popular');
   const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
-  const [isLeftSidebarHovered, setIsLeftSidebarHovered] = useState(false);
   const [showSendEffect, setShowSendEffect] = useState(false);
   const [particles, setParticles] = useState<Array<{id: number, x: number, y: number, emoji: string}>>([]);
   const [reactionError, setReactionError] = useState<string | null>(null);
   const [successPulse, setSuccessPulse] = useState<string | null>(null);
+
+  // Font sizing system - WhatsApp-like font preferences
+  type FontSize = 'small' | 'medium' | 'large' | 'extra-large';
+  const [fontSize, setFontSize] = useState<FontSize>('medium');
+  
+  // Font size configurations similar to WhatsApp
+  const fontSizeConfig = {
+    small: {
+      messageText: 'text-sm', // 14px
+      userName: 'text-xs', // 12px
+      timestamp: 'text-xs', // 12px
+      thoughtBody: 'text-xs', // 12px
+      aiResponse: 'text-sm', // 14px
+      headerTitle: 'text-base', // 16px
+      leading: 'leading-normal', // 1.5
+    },
+    medium: {
+      messageText: 'text-base', // 16px (default)
+      userName: 'text-sm', // 14px
+      timestamp: 'text-xs', // 12px
+      thoughtBody: 'text-sm', // 14px
+      aiResponse: 'text-base', // 16px
+      headerTitle: 'text-lg', // 18px
+      leading: 'leading-relaxed', // 1.6
+    },
+    large: {
+      messageText: 'text-lg', // 18px
+      userName: 'text-base', // 16px
+      timestamp: 'text-sm', // 14px
+      thoughtBody: 'text-base', // 16px
+      aiResponse: 'text-lg', // 18px
+      headerTitle: 'text-xl', // 20px
+      leading: 'leading-relaxed', // 1.6
+    },
+    'extra-large': {
+      messageText: 'text-xl', // 20px
+      userName: 'text-lg', // 18px
+      timestamp: 'text-base', // 16px
+      thoughtBody: 'text-lg', // 18px
+      aiResponse: 'text-xl', // 20px
+      headerTitle: 'text-2xl', // 24px
+      leading: 'leading-loose', // 1.75
+    }
+  };
+
+  // Helper to get font class
+  const getFontClass = (element: keyof typeof fontSizeConfig.medium): string => {
+    return fontSizeConfig[fontSize][element];
+  };
+
+  // Save font preference to localStorage
+  useEffect(() => {
+    const savedFontSize = localStorage.getItem('philonet-font-size') as FontSize;
+    if (savedFontSize && fontSizeConfig[savedFontSize]) {
+      setFontSize(savedFontSize);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('philonet-font-size', fontSize);
+    
+    // Add a subtle flash animation to indicate font size change
+    const fontButton = document.querySelector('[title*="Text size"]');
+    if (fontButton) {
+      fontButton.classList.add('animate-pulse');
+      setTimeout(() => {
+        fontButton.classList.remove('animate-pulse');
+      }, 1000);
+    }
+  }, [fontSize]);
+
+  // Keyboard shortcuts for font size changes (Ctrl + Plus/Minus)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        const sizes: FontSize[] = ['small', 'medium', 'large', 'extra-large'];
+        const currentIndex = sizes.indexOf(fontSize);
+        if (currentIndex < sizes.length - 1) {
+          setFontSize(sizes[currentIndex + 1]);
+        }
+      } else if (e.ctrlKey && e.key === '-') {
+        e.preventDefault();
+        const sizes: FontSize[] = ['small', 'medium', 'large', 'extra-large'];
+        const currentIndex = sizes.indexOf(fontSize);
+        if (currentIndex > 0) {
+          setFontSize(sizes[currentIndex - 1]);
+        }
+      } else if (e.ctrlKey && e.key === '0') {
+        e.preventDefault();
+        setFontSize('medium'); // Reset to default
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [fontSize]);
 
   // Close reaction picker when clicking outside
   useEffect(() => {
@@ -904,6 +1009,26 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     ? thoughtStarters.map(validateThoughtStarter).filter(Boolean)
     : [];
   const selectedThought = displayThoughtStarters.find(t => t.id === selectedThoughtId) || displayThoughtStarters[0];
+
+  // Auto-hide reference after 5 seconds
+  useEffect(() => {
+    // Reset visibility when selectedThought changes
+    if (selectedThought?.taggedContent && !isReferenceVisible) {
+      setIsReferenceVisible(true);
+    }
+  }, [selectedThought?.id]);
+
+  useEffect(() => {
+    // Start 5-second timer when reference becomes visible
+    if (selectedThought?.taggedContent && isReferenceVisible) {
+      const timer = setTimeout(() => {
+        setIsReferenceVisible(false);
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+    return () => {}; // Return empty cleanup function when no timer is set
+  }, [selectedThought?.taggedContent, isReferenceVisible]);
 
   // Filter thought starters based on search
   const filteredThoughts = displayThoughtStarters.filter(thought =>
@@ -1882,6 +2007,30 @@ Please provide a detailed analysis and answer to the question based on the artic
     }
   };
 
+  // Smart hover handler that avoids message input area
+  const handleSidebarMouseEnter = (e: React.MouseEvent) => {
+    if (!inputAreaRef.current) {
+      setIsLeftSidebarHovered(true);
+      return;
+    }
+
+    const inputAreaRect = inputAreaRef.current.getBoundingClientRect();
+    const mouseY = e.clientY;
+    
+    // Only allow hover expansion if mouse is not near the input area
+    // Add some buffer (50px) above and below the input area
+    const buffer = 50;
+    const isNearInputArea = mouseY >= (inputAreaRect.top - buffer) && mouseY <= (inputAreaRect.bottom + buffer);
+    
+    if (!isNearInputArea) {
+      setIsLeftSidebarHovered(true);
+    }
+  };
+
+  const handleSidebarMouseLeave = () => {
+    setIsLeftSidebarHovered(false);
+  };
+
   // Telegram-style user color generation
   const getUserColor = (username: string): string => {
     const colors = [
@@ -1962,175 +2111,369 @@ Please provide a detailed analysis and answer to the question based on the artic
         </AnimatePresence>
       </div>
 
-      {/* Left Sidebar - Thought Starters - Hidden on mobile when conversation is selected */}
+      {/* Left Sidebar - Collapsible Thought Starters */}
       <div 
         className={cn(
-          "border-r border-philonet-border transition-all duration-300 ease-in-out sidebar-background",
+          "border-r border-philonet-border transition-all duration-500 ease-in-out sidebar-background relative group",
           selectedThought ? "hidden sm:block" : "w-full",
-          selectedThought && !isLeftSidebarHovered 
-            ? "sm:w-[300px] md:w-[320px] sm:min-w-[300px] md:min-w-[320px] sm:max-w-[300px] md:max-w-[320px]"
-            : selectedThought && isLeftSidebarHovered
-            ? "sm:w-[450px] md:w-[500px] sm:min-w-[450px] md:min-w-[500px] sm:max-w-[450px] md:max-w-[500px]"
+          // Responsive behavior: collapsed when conversation selected, expandable on hover
+          selectedThought 
+            ? (isLeftSidebarHovered 
+                ? "sm:w-[300px] md:w-[350px] sm:min-w-[300px] md:min-w-[350px] sm:max-w-[300px] md:max-w-[350px]"
+                : "sm:w-[60px] md:w-[60px] sm:min-w-[60px] md:min-w-[60px] sm:max-w-[60px] md:max-w-[60px]")
             : "sm:w-1/2 md:w-1/3 sm:min-w-[280px] md:min-w-[320px] sm:max-w-[350px] md:max-w-[400px]"
         )}
-        onMouseEnter={() => setIsLeftSidebarHovered(true)}
-        onMouseLeave={() => setIsLeftSidebarHovered(false)}
+        onMouseEnter={selectedThought ? handleSidebarMouseEnter : undefined}
+        onMouseLeave={selectedThought ? handleSidebarMouseLeave : undefined}
       >
-        {/* Enhanced Header with Telegram-style typography */}
-        <div className="p-4 border-b border-philonet-border bg-philonet-background relative z-10">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-philonet-text-primary flex items-center gap-3">
-              <TrendingUp className="w-6 h-6 text-philonet-blue-500" />
-              Conversations
-            </h2>
-          </div>
+        {/* Adaptive Header - Collapsed/Expanded States */}
+        <div className="p-2 border-b border-philonet-border bg-philonet-background overflow-hidden">
+          {/* Collapsed State - Icon Strip */}
+          {selectedThought && !isLeftSidebarHovered ? (
+            <div className="flex flex-col items-center space-y-2 relative">
+              {/* Hamburger/Conversations Icon */}
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-philonet-blue-500 to-philonet-blue-600 flex items-center justify-center hover:scale-105 transition-transform cursor-pointer">
+                <MessageSquare className="w-4 h-4 text-white" />
+              </div>
+              
+              {/* Conversation Count Indicator */}
+              {filteredThoughts.length > 0 && (
+                <div className="w-6 h-6 bg-philonet-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-bold text-white">
+                    {filteredThoughts.length > 9 ? '9+' : filteredThoughts.length}
+                  </span>
+                </div>
+              )}
+              
+              {/* Active Indicator */}
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              
+              {/* Expand Hint */}
+              <div className="absolute -right-1 top-1/2 transform -translate-y-1/2 text-philonet-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+                <ChevronDown className="w-3 h-3 rotate-90" />
+              </div>
+              
+              {/* Smart hover zone indicator */}
+              <div className="absolute -right-2 top-2 text-xs text-philonet-blue-400/60 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Hover above chat
+              </div>
+              
+              {/* Search Icon (collapsed) */}
+              <div className="w-6 h-6 rounded-md bg-philonet-card hover:bg-philonet-border flex items-center justify-center transition-colors cursor-pointer mt-auto">
+                <Search className="w-3 h-3 text-philonet-text-muted" />
+              </div>
+            </div>
+          ) : (
+            /* Expanded State - Full Header */
+            <>
+              {/* Article Reference styled like conversation item */}
+              {(articleContent || articleTitle) && (
+                <div className="mb-3 p-3 bg-philonet-card/30 rounded-lg border border-philonet-border/50 hover:border-philonet-blue-500/40 transition-all duration-200 cursor-pointer group">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-philonet-blue-500 to-philonet-blue-600 flex items-center justify-center flex-shrink-0">
+                      📄
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className={cn("font-semibold text-philonet-text-primary line-clamp-1", getFontClass('userName'))}>
+                          {articleTitle || 'Article Discussion'}
+                        </h3>
+                        <div className="w-1 h-1 bg-philonet-blue-500 rounded-full animate-pulse"></div>
+                      </div>
+                      {articleContent && (
+                        <p className={cn("text-philonet-text-secondary line-clamp-2 mb-1", getFontClass('timestamp'), getFontClass('leading'))}>
+                          {articleContent.substring(0, 80)}{articleContent.length > 80 && '...'}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-philonet-text-muted">
+                        {articleId && <span>ID: {articleId}</span>}
+                        <span className="flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3" />
+                          Active
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose ? onClose() : onThoughtSelect('');
+                      }}
+                      className="sm:hidden p-1.5 hover:bg-philonet-border rounded-md transition-colors flex-shrink-0"
+                      title="Close conversations"
+                    >
+                      <X className="w-4 h-4 text-philonet-text-secondary" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
-          {/* Enhanced Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-philonet-text-muted" />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-philonet-card border border-philonet-border rounded-lg text-philonet-text-primary placeholder:text-philonet-text-muted focus:outline-none focus:border-philonet-blue-500 transition-colors"
-            />
-          </div>
+              {/* Compact Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-philonet-text-muted" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-philonet-card border border-philonet-border rounded-lg text-philonet-text-primary placeholder:text-philonet-text-muted focus:outline-none focus:border-philonet-blue-500 transition-colors text-sm"
+                />
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Thought Starters List */}
-        <div className="overflow-y-auto flex-1 philonet-scrollbar">
-          {filteredThoughts.map((thought) => (
-            <motion.div
-              key={thought.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileHover={{ scale: 1.01, transition: { duration: 0.15 } }}
-              className={cn(
-                "p-3 border-b border-philonet-border cursor-pointer transition-all duration-200",
-                "hover:bg-philonet-card hover:bg-opacity-50",
-                selectedThought?.id === thought.id 
-                  ? "bg-philonet-blue-500 bg-opacity-15 border-l-4 border-l-philonet-blue-500" 
-                  : ""
-              )}
-              onClick={() => onThoughtSelect(thought.id)}
-            >
-              <div className="flex items-start gap-3">
-                {/* Enhanced User Avatar with color coding */}
-                <div className="flex-shrink-0">
-                  {thought.author?.avatar ? (
-                    <div className="relative">
+        {/* Adaptive Thought Starters List */}
+        <div className="overflow-y-auto flex-1 custom-scrollbar">
+          {selectedThought && !isLeftSidebarHovered ? (
+            /* Collapsed State - Compact Vertical Stack */
+            <div className="p-2 space-y-2">
+              {filteredThoughts.slice(0, 6).map((thought, index) => (
+                <motion.div
+                  key={thought.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05, duration: 0.2 }}
+                  className={cn(
+                    "relative w-10 h-10 mx-auto rounded-lg cursor-pointer transition-all duration-200 group flex-shrink-0",
+                    "hover:scale-110 hover:shadow-md",
+                    selectedThought?.id === thought.id 
+                      ? "ring-2 ring-philonet-blue-500 bg-philonet-blue-500/10 shadow-md scale-105" 
+                      : "hover:ring-1 hover:ring-philonet-blue-300 hover:bg-philonet-card/30"
+                  )}
+                  onClick={() => onThoughtSelect(thought.id)}
+                  title={`${thought.author?.name || 'Anonymous'}: ${(thought.title || thought.thoughtBody || '').substring(0, 60)}${(thought.title || thought.thoughtBody || '').length > 60 ? '...' : ''}`}
+                >
+                  {/* Avatar or Initial */}
+                  <div className="w-full h-full rounded-lg overflow-hidden">
+                    {thought.author?.avatar ? (
                       <img
                         src={thought.author.avatar}
                         alt={thought.author.name}
-                        className="w-9 h-9 rounded-full object-cover ring-2 ring-philonet-border"
+                        className="w-full h-full object-cover"
                       />
-                      {thought.isActive && (
-                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-philonet-background"></div>
-                      )}
-                    </div>
-                  ) : (
-                    <div 
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm relative"
-                      style={{ 
-                        backgroundColor: getUserColor(thought.author?.name || 'Anonymous')
-                      }}
-                    >
-                      {(thought.author?.name || 'A').charAt(0).toUpperCase()}
-                      {thought.isActive && (
-                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-philonet-background"></div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  {/* Enhanced Header with better typography */}
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span 
-                      className="text-sm font-medium truncate"
-                      style={{ color: getUserColor(thought.author?.name || 'Anonymous') }}
-                    >
-                      {thought.author?.name || 'Anonymous'}
-                    </span>
-                    <span className="text-xs text-philonet-text-muted">•</span>
-                    <span className="text-xs text-philonet-text-muted">2h ago</span>
-                    <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
-                  </div>
-
-                  {/* Enhanced Discussion Title */}
-                  <h3 className={cn(
-                    "text-sm font-medium text-philonet-text-primary mb-2 leading-relaxed transition-all duration-300 break-words",
-                    isLeftSidebarHovered ? "line-clamp-3" : "line-clamp-2"
-                  )}>
-                    {thought.thoughtBody || thought.title}
-                    {/* Show expandable indicator if content is long */}
-                    {((thought.thoughtBody && thought.thoughtBody.length > 150) || 
-                      (thought.taggedContent && thought.taggedContent.highlightedText.length > 100)) && (
-                      <span 
-                        className="ml-1 text-philonet-blue-400 opacity-60"
-                        title="Click to expand and view full content"
+                    ) : (
+                      <div 
+                        className="w-full h-full flex items-center justify-center text-white font-bold text-sm"
+                        style={{ backgroundColor: getUserColor(thought.author?.name || 'Anonymous') }}
                       >
-                        <Maximize2 className="w-3 h-3 inline" />
-                      </span>
+                        {(thought.author?.name || 'A').charAt(0).toUpperCase()}
+                      </div>
                     )}
-                  </h3>
-
-                  {/* Refined Selected Text Preview - Telegram style */}
-                  {thought.taggedContent && (
-                    <div className={cn(
-                      "text-xs mb-2 transition-all duration-300 break-words leading-relaxed",
-                      "border-l-2 border-philonet-blue-500 pl-3 py-1.5 bg-philonet-background bg-opacity-40",
-                      isLeftSidebarHovered ? "line-clamp-4" : "line-clamp-2"
-                    )}>
-                      <span className="text-philonet-text-muted opacity-60 mr-1">"</span>
-                      <span className="text-philonet-text-secondary font-normal inline">
-                        {thought.taggedContent.highlightedText}
-                      </span>
-                      <span className="text-philonet-text-muted opacity-60 ml-1">"</span>
-                    </div>
-                  )}
-
-                  {/* Enhanced Stats */}
-                  <div className="flex items-center gap-3 text-xs text-philonet-text-muted">
-                    <span className="flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" />
-                      <span className="font-medium">{thought.reactions?.likes || 0}</span>
-                    </span>
-                    <span className="font-medium">{thought.messageCount} msgs</span>
-                    <span className="font-medium">{thought.participants} people</span>
                   </div>
-                </div>
-              </div>
+                  
+                  {/* Unified Indicator - combines message count and status */}
+                  <div className="absolute -top-1 -right-1">
+                    {thought.messageCount > 0 && (
+                      <div className="w-4 h-4 bg-philonet-blue-500 rounded-full flex items-center justify-center border border-philonet-background">
+                        <span className="text-xs font-bold text-white leading-none">
+                          {thought.messageCount > 9 ? '9' : thought.messageCount}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Status Dot */}
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    {thought.hasUnread ? (
+                      <div className="w-2.5 h-2.5 bg-red-400 rounded-full border border-philonet-background animate-pulse"></div>
+                    ) : thought.isActive ? (
+                      <div className="w-2.5 h-2.5 bg-green-400 rounded-full border border-philonet-background"></div>
+                    ) : null}
+                  </div>
+                  
+                  {/* Enhanced Hover Tooltip */}
+                  <div className="absolute left-12 top-0 bg-philonet-background/95 backdrop-blur-sm border border-philonet-border rounded-lg p-3 shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-50 w-56 transform group-hover:translate-x-1">
+                    <div className="flex items-start gap-2 mb-2">
+                      <div 
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                        style={{ backgroundColor: getUserColor(thought.author?.name || 'Anonymous') }}
+                      >
+                        {(thought.author?.name || 'A').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium text-philonet-text-primary truncate">
+                          {thought.author?.name || 'Anonymous'}
+                        </div>
+                        <div className="text-xs text-philonet-text-muted">2h ago</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-philonet-text-secondary line-clamp-3 mb-2 leading-relaxed">
+                      {thought.title || thought.thoughtBody || 'No content'}
+                    </div>
+                    {thought.taggedContent && (
+                      <div className="text-xs text-philonet-blue-400 mb-2 italic line-clamp-2">
+                        "{thought.taggedContent.highlightedText}"
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-xs text-philonet-text-muted">
+                      <span>{thought.messageCount} msgs</span>
+                      <span>•</span>
+                      <span>{thought.participants} people</span>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+              
+              {/* More Conversations Indicator - Cleaner Design */}
+              {filteredThoughts.length > 6 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="w-10 h-6 mx-auto rounded-md bg-philonet-card/50 border border-philonet-border/50 flex items-center justify-center mt-2 hover:bg-philonet-border/50 transition-colors cursor-pointer"
+                  title={`${filteredThoughts.length - 6} more conversations`}
+                >
+                  <span className="text-xs font-medium text-philonet-text-muted">
+                    +{filteredThoughts.length - 6}
+                  </span>
+                </motion.div>
+              )}
+              
+              {/* Scroll Indicator */}
+              {filteredThoughts.length > 6 && (
+                <div className="w-1 h-8 mx-auto bg-gradient-to-b from-transparent via-philonet-border to-transparent rounded-full opacity-30"></div>
+              )}
+            </div>
+          ) : (
+            /* Expanded State - Full Cards with Smooth Layout */
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-0"
+            >
+              {filteredThoughts.map((thought, index) => (
+                <motion.div
+                  key={thought.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03, duration: 0.2 }}
+                  whileHover={{ x: 2, transition: { duration: 0.15 } }}
+                  className={cn(
+                    "p-3 border-b border-philonet-border cursor-pointer transition-all duration-200 relative",
+                    "hover:bg-philonet-card/30",
+                    selectedThought?.id === thought.id 
+                      ? "bg-philonet-blue-500/10 border-l-3 border-l-philonet-blue-500 shadow-sm" 
+                      : "hover:border-l-2 hover:border-l-philonet-blue-300/50"
+                  )}
+                  onClick={() => onThoughtSelect(thought.id)}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Enhanced User Avatar with color coding */}
+                    <div className="flex-shrink-0">
+                      {thought.author?.avatar ? (
+                        <div className="relative">
+                          <img
+                            src={thought.author.avatar}
+                            alt={thought.author.name}
+                            className="w-9 h-9 rounded-full object-cover ring-2 ring-philonet-border"
+                          />
+                          {thought.isActive && (
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-philonet-background"></div>
+                          )}
+                        </div>
+                      ) : (
+                        <div 
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm relative"
+                          style={{ 
+                            backgroundColor: getUserColor(thought.author?.name || 'Anonymous')
+                          }}
+                        >
+                          {(thought.author?.name || 'A').charAt(0).toUpperCase()}
+                          {thought.isActive && (
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-philonet-background"></div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      {/* Enhanced Header with better typography */}
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span 
+                          className="text-sm font-medium truncate"
+                          style={{ color: getUserColor(thought.author?.name || 'Anonymous') }}
+                        >
+                          {thought.author?.name || 'Anonymous'}
+                        </span>
+                        <span className="text-xs text-philonet-text-muted">•</span>
+                        <span className="text-xs text-philonet-text-muted">2h ago</span>
+                        <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
+                      </div>
+
+                      {/* Enhanced Discussion Title */}
+                      <h3 className={cn(
+                        "text-sm font-medium text-philonet-text-primary mb-2 leading-relaxed transition-all duration-300 break-words",
+                        isLeftSidebarHovered ? "line-clamp-3" : "line-clamp-2"
+                      )}>
+                        {thought.thoughtBody || thought.title}
+                        {/* Show expandable indicator if content is long */}
+                        {((thought.thoughtBody && thought.thoughtBody.length > 150) || 
+                          (thought.taggedContent && thought.taggedContent.highlightedText.length > 100)) && (
+                          <span 
+                            className="ml-1 text-philonet-blue-400 opacity-60"
+                            title="Click to expand and view full content"
+                          >
+                            <Maximize2 className="w-3 h-3 inline" />
+                          </span>
+                        )}
+                      </h3>
+
+                      {/* Refined Selected Text Preview - Telegram style */}
+                      {thought.taggedContent && (
+                        <div className={cn(
+                          "text-xs mb-2 transition-all duration-300 break-words leading-relaxed",
+                          "border-l-2 border-philonet-blue-500 pl-3 py-1.5 bg-philonet-background bg-opacity-40",
+                          isLeftSidebarHovered ? "line-clamp-4" : "line-clamp-2"
+                        )}>
+                          <span className="text-philonet-text-muted opacity-60 mr-1">"</span>
+                          <span className="text-philonet-text-secondary font-normal inline">
+                            {thought.taggedContent.highlightedText}
+                          </span>
+                          <span className="text-philonet-text-muted opacity-60 ml-1">"</span>
+                        </div>
+                      )}
+
+                      {/* Enhanced Stats */}
+                      <div className="flex items-center gap-3 text-xs text-philonet-text-muted">
+                        <span className="flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" />
+                          <span className="font-medium">{thought.reactions?.likes || 0}</span>
+                        </span>
+                        <span className="font-medium">{thought.messageCount} msgs</span>
+                        <span className="font-medium">{thought.participants} people</span>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
             </motion.div>
-          ))}
+          )}
         </div>
       </div>
 
       {/* Right Panel - Conversation */}
       <div className={cn(
-        "flex flex-col min-w-0 overflow-hidden",
+        "flex flex-col min-w-0 overflow-hidden relative",
         selectedThought ? "w-full sm:flex-1" : "hidden sm:flex sm:flex-1"
       )}>
         {selectedThought ? (
           <>
+            {/* Floating Mobile Back Button */}
+            <button
+              onClick={() => onThoughtSelect('')}
+              className="sm:hidden fixed top-4 left-4 z-50 p-2 bg-philonet-background/80 backdrop-blur-sm hover:bg-philonet-card rounded-full shadow-lg border border-philonet-border transition-all"
+              title="Back to conversations"
+            >
+              <ArrowLeft className="w-5 h-5 text-philonet-text-primary" />
+            </button>
+            
             {/* Enhanced Conversation Header */}
             <div className={cn(
-              "p-3 sm:p-4 border-b border-philonet-border bg-philonet-background transition-all duration-300",
+              "p-2 sm:p-3 border-b border-philonet-border bg-philonet-background transition-all duration-300",
               isHeaderShrunk ? "py-2" : "py-3 sm:py-4"
             )}>
-              {/* Mobile back button */}
-              <div className="flex items-center gap-3 mb-3 sm:hidden">
-                <button
-                  onClick={() => onThoughtSelect('')}
-                  className="p-2 hover:bg-philonet-border rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-5 h-5 text-philonet-text-secondary" />
-                </button>
-                <span className="text-sm text-philonet-text-muted">Back to discussions</span>
-              </div>
-              
               <div className="flex items-start justify-between mb-3">
                 <div 
                   className={cn(
@@ -2200,7 +2543,13 @@ Please provide a detailed analysis and answer to the question based on the artic
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-white text-lg leading-tight">{selectedThought.author?.name || 'Anonymous'}</h3>
+                      <h3 className={cn("font-semibold text-white leading-tight", getFontClass('headerTitle'))}>{selectedThought.author?.name || 'Anonymous'}</h3>
+                      {selectedThought.taggedContent && !isReferenceVisible && (
+                        <div className="flex items-center gap-1 text-xs text-philonet-text-muted bg-philonet-card px-2 py-1 rounded-md" title="Reference hidden - click eye icon to view">
+                          <EyeOff className="w-3 h-3" />
+                          <span>ref hidden</span>
+                        </div>
+                      )}
                       <span className="text-xs text-philonet-text-muted">•</span>
                       <span className="text-xs text-philonet-text-muted">2h ago</span>
                       <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
@@ -2208,15 +2557,18 @@ Please provide a detailed analysis and answer to the question based on the artic
 
                     {/* Compact Thought Body Preview */}
                     {selectedThought.thoughtBody && (
-                      <p className={`text-sm text-philonet-text-secondary mb-2 leading-relaxed break-words overflow-hidden transition-all duration-300 ${
+                      <p className={cn(
+                        "text-philonet-text-secondary mb-1 break-words overflow-hidden transition-all duration-300",
+                        getFontClass('thoughtBody'),
+                        getFontClass('leading'),
                         isHeaderExpanded ? 'line-clamp-none' : 'line-clamp-2'
-                      }`}>
+                      )}>
                         {selectedThought.thoughtBody}
                       </p>
                     )}
 
                     {/* Simplified Stats */}
-                    <div className="flex items-center gap-4 text-sm text-philonet-text-muted mb-2">
+                    <div className="flex items-center gap-4 text-sm text-philonet-text-muted mb-1">
                       <span className="flex items-center gap-1.5 font-medium">
                         <MessageSquare className="w-4 h-4 text-philonet-blue-400" />
                         {selectedThought.messageCount}
@@ -2230,6 +2582,21 @@ Please provide a detailed analysis and answer to the question based on the artic
                 </div>
 
                 <div className="flex items-center gap-2 ml-3">
+                  {/* Reference visibility toggle button - only show if there's tagged content */}
+                  {selectedThought.taggedContent && (
+                    <Button 
+                      onClick={() => setIsReferenceVisible(!isReferenceVisible)}
+                      className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-border border-0 transition-all"
+                      title={isReferenceVisible ? "Hide reference" : "View reference"}
+                    >
+                      {isReferenceVisible ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </Button>
+                  )}
+                  
                   {/* Expand/Collapse Header Button */}
                   <Button 
                     onClick={() => setIsHeaderExpanded(!isHeaderExpanded)}
@@ -2242,21 +2609,55 @@ Please provide a detailed analysis and answer to the question based on the artic
                       <Maximize2 className="w-4 h-4" />
                     )}
                   </Button>
-                  <Button className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-border border-0 transition-all">
-                    <MoreVertical className="w-4 h-4" />
+
+                  {/* Font Size Picker */}
+                  <div className="relative">
+                    <Button 
+                      onClick={() => {
+                        const sizes: FontSize[] = ['small', 'medium', 'large', 'extra-large'];
+                        const currentIndex = sizes.indexOf(fontSize);
+                        const nextIndex = (currentIndex + 1) % sizes.length;
+                        setFontSize(sizes[nextIndex]);
+                      }}
+                      className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-border border-0 transition-all relative"
+                      title={`Text size: ${fontSize} (click to change)`}
+                    >
+                      <Type className="w-4 h-4" />
+                      {/* Font size indicator with subscript */}
+                      <span className={cn(
+                        "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold border transition-all duration-200",
+                        fontSize === 'small' ? "bg-green-500 text-white border-green-400" :
+                        fontSize === 'medium' ? "bg-philonet-blue-500 text-white border-philonet-blue-400" :
+                        fontSize === 'large' ? "bg-orange-500 text-white border-orange-400" :
+                        "bg-red-500 text-white border-red-400"
+                      )}>
+                        {fontSize === 'small' ? 'S' : fontSize === 'medium' ? 'M' : fontSize === 'large' ? 'L' : 'XL'}
+                      </span>
+                    </Button>
+                  </div>
+                  
+                  {/* Close conversation button - moved to rightmost position */}
+                  <Button 
+                    onClick={() => onClose ? onClose() : onThoughtSelect('')}
+                    className="hidden sm:flex h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-red-500/20 border-0 transition-all items-center justify-center"
+                    title="Close conversation"
+                  >
+                    <X className="w-4 h-4 text-philonet-text-secondary hover:text-red-400 transition-colors" />
                   </Button>
                 </div>
               </div>
 
               {/* Expandable Tagged Content Section with smooth animation */}
               <AnimatePresence>
-                {selectedThought.taggedContent && (
+                {selectedThought.taggedContent && isReferenceVisible && (
                   <motion.div 
-                    initial={false}
+                    initial={{ opacity: 0, height: 0 }}
                     animate={{ 
-                      height: isHeaderExpanded ? "auto" : "auto",
+                      height: "auto",
                       opacity: 1 
                     }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
                     className="mb-3 overflow-hidden"
                   >
                     <div className="p-3 bg-philonet-card border-l-4 border-philonet-blue-500 rounded-r-lg">
@@ -2264,9 +2665,12 @@ Please provide a detailed analysis and answer to the question based on the artic
                         <Quote className="w-3.5 h-3.5 text-philonet-blue-500 flex-shrink-0" />
                         <span className="text-xs font-medium text-philonet-blue-500 uppercase tracking-wide">Referenced</span>
                       </div>
-                      <blockquote className={`text-sm text-philonet-text-secondary leading-relaxed break-words overflow-hidden transition-all duration-300 ${
+                      <blockquote className={cn(
+                        "text-philonet-text-secondary break-words overflow-hidden transition-all duration-300",
+                        getFontClass('thoughtBody'),
+                        getFontClass('leading'),
                         isHeaderExpanded ? 'line-clamp-none' : 'line-clamp-2'
-                      }`}>
+                      )}>
                         <span className="text-philonet-text-muted opacity-60">"</span>
                         {selectedThought.taggedContent.highlightedText}
                         <span className="text-philonet-text-muted opacity-60">"</span>
@@ -2423,12 +2827,12 @@ Please provide a detailed analysis and answer to the question based on the artic
                     {!message.isOwn && (
                       <div className="flex items-center gap-2 mb-2">
                         <span 
-                          className="text-[14px] font-semibold break-words overflow-hidden text-white"
+                          className={cn("font-semibold break-words overflow-hidden text-white", getFontClass('userName'))}
                           style={{ color: getUserColor(message.author) }}
                         >
                           {message.author}
                         </span>
-                        <span className="text-xs font-normal" style={{ color: '#E5E7EB' }}>
+                        <span className={cn("font-normal", getFontClass('timestamp'))} style={{ color: '#E5E7EB' }}>
                           {formatTime(message.timestamp)}
                         </span>
                       </div>
@@ -2585,7 +2989,7 @@ Please provide a detailed analysis and answer to the question based on the artic
                             {/* Enhanced WhatsApp-style author name with user color */}
                             <div className="flex items-center justify-between mb-2">
                               <span 
-                                className="text-sm font-semibold truncate tracking-tight"
+                                className={cn("font-semibold truncate tracking-tight", getFontClass('userName'))}
                                 style={{ 
                                   color: message.isOwn ? 'rgba(255, 255, 255, 0.95)' : referencedAuthorColor,
                                   textShadow: message.isOwn ? '0 1px 2px rgba(0, 0, 0, 0.3)' : 'none'
@@ -2602,7 +3006,9 @@ Please provide a detailed analysis and answer to the question based on the artic
                             
                             {/* Enhanced WhatsApp-style message content preview */}
                             <p className={cn(
-                              "text-sm leading-relaxed line-clamp-2 break-words font-light tracking-wide",
+                              "line-clamp-2 break-words font-light tracking-wide",
+                              getFontClass('thoughtBody'),
+                              getFontClass('leading'),
                               message.isOwn 
                                 ? "text-white/85" 
                                 : "text-white/90"
@@ -2664,7 +3070,7 @@ Please provide a detailed analysis and answer to the question based on the artic
                           
                           {/* AI Response Content with enhanced styling and animation */}
                           <motion.div 
-                            className="ai-response-content bg-gradient-to-br from-blue-950/30 via-blue-900/20 to-indigo-950/20 border border-blue-500/20 rounded-xl p-4 shadow-lg backdrop-blur-sm relative overflow-hidden"
+                            className={cn("ai-response-content bg-gradient-to-br from-blue-950/30 via-blue-900/20 to-indigo-950/20 border border-blue-500/20 rounded-xl p-4 shadow-lg backdrop-blur-sm relative overflow-hidden", getFontClass('aiResponse'))}
                             initial={{ y: 20, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 0.3, duration: 0.6 }}
@@ -2682,31 +3088,37 @@ Please provide a detailed analysis and answer to the question based on the artic
                               }}
                               style={{ background: 'linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent)' }}
                             />
-                            <div className="relative z-10">
+                            <div className={cn("relative z-10", getFontClass('aiResponse'), getFontClass('leading'))}>
                               {/* Display title as question if available */}
                               {message.title && (
                                 <div className="mb-4 pb-3 border-b border-blue-500/20">
                                   <div className="flex items-start gap-2 mb-2">
                                     <span className="text-blue-300 mt-1 flex-shrink-0">❓</span>
-                                    <h3 className="text-lg font-semibold text-transparent bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text leading-tight">
+                                    <h3 className={cn("font-semibold text-transparent bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text leading-tight", getFontClass('headerTitle'))}>
                                       {message.title}
                                     </h3>
                                   </div>
                                 </div>
                               )}
-                              {formatAIMarkdown(message.text)}
+                              <div className={cn(getFontClass('aiResponse'))}>
+                                {formatAIMarkdown(message.text)}
+                              </div>
                             </div>
                           </motion.div>
                         </motion.div>
                       ) : (
-                        <div className="text-[16px] leading-[1.6] break-words overflow-wrap-anywhere font-normal">
+                        <div className={cn(
+                          "break-words overflow-wrap-anywhere font-normal",
+                          getFontClass('messageText'),
+                          getFontClass('leading')
+                        )}>
                           {formatTextWithLinks(message.text)}
                         </div>
                       )}
                       
                       {/* Message timestamp for own messages */}
                       {message.isOwn && (
-                        <div className="text-xs mt-2.5 text-right" style={{ color: '#E5E7EB' }}>
+                        <div className={cn("mt-2.5 text-right", getFontClass('timestamp'))} style={{ color: '#E5E7EB' }}>
                           {formatTime(message.timestamp)}
                         </div>
                       )}
@@ -2938,7 +3350,11 @@ Please provide a detailed analysis and answer to the question based on the artic
             </div>
 
             {/* Input Area */}
-            <div className="p-3 border-t border-philonet-border bg-philonet-background mt-auto relative">
+            <div ref={inputAreaRef} className="p-3 border-t border-philonet-border bg-philonet-background mt-auto relative">
+              {/* Hover-disabled zone indicator - subtle line */}
+              {selectedThought && (
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-philonet-blue-500/30 to-transparent opacity-60"></div>
+              )}
               {/* Error Display */}
               {reactionError && (
                 <motion.div 
@@ -3002,49 +3418,7 @@ Please provide a detailed analysis and answer to the question based on the artic
                 </motion.div>
               )}
               
-              {/* Enhanced Mode Toggle */}
-              <div className="flex items-center gap-1 mb-3 p-1 bg-philonet-card/50 backdrop-blur-sm rounded-xl border border-philonet-border/50">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setInputMode('message');
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex-1 justify-center",
-                    inputMode === 'message'
-                      ? "bg-philonet-blue-500 text-white shadow-lg shadow-philonet-blue-500/25 transform scale-[1.02]"
-                      : "text-philonet-text-muted hover:text-white hover:bg-philonet-border/50"
-                  )}
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span>Message</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setInputMode('ai');
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 flex-1 justify-center relative",
-                    inputMode === 'ai'
-                      ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25 transform scale-[1.02]"
-                      : "text-philonet-text-muted hover:text-white hover:bg-philonet-border/50"
-                  )}
-                >
-                  <Bot className={cn(
-                    "w-4 h-4 transition-all duration-200", 
-                    inputMode === 'ai' && "animate-pulse"
-                  )} />
-                  <span>Ask AI</span>
-                  {inputMode === 'ai' && (
-                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  )}
-                </button>
-              </div>
+
 
               {/* Enhanced WhatsApp-style Reply indicator */}
               {replyingTo && (
@@ -3062,12 +3436,16 @@ Please provide a detailed analysis and answer to the question based on the artic
                 >
                   <div className="flex-1 whatsapp-text min-w-0">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-green-400 tracking-tight">
+                      <span className={cn("font-semibold text-green-400 tracking-tight", getFontClass('userName'))}>
                         {messages.find(m => m.id === replyingTo)?.author}
                       </span>
                       <div className="w-1 h-1 rounded-full bg-green-400/40 flex-shrink-0" />
                     </div>
-                    <p className="text-sm text-gray-200 line-clamp-2 leading-relaxed font-light tracking-wide">
+                    <p className={cn(
+                      "text-gray-200 line-clamp-2 font-light tracking-wide",
+                      getFontClass('thoughtBody'),
+                      getFontClass('leading')
+                    )}>
                       "{messages.find(m => m.id === replyingTo)?.text.substring(0, 100)}{(messages.find(m => m.id === replyingTo)?.text.length || 0) > 100 && '...'}"
                     </p>
                   </div>
@@ -3083,9 +3461,44 @@ Please provide a detailed analysis and answer to the question based on the artic
 
               {/* Input Controls */}
               <div className="flex items-center gap-3">
+                {/* Compact Mode Switcher - icon only */}
+                <Button
+                  type="button"
+                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setInputMode(inputMode === 'message' ? 'ai' : 'message');
+                  }}
+                  className={cn(
+                    "h-10 w-10 rounded-full transition-all duration-300 flex-shrink-0 relative overflow-hidden border-2",
+                    inputMode === 'ai' 
+                      ? "bg-gradient-to-r from-purple-500 to-pink-500 border-purple-400 shadow-lg shadow-purple-500/25" 
+                      : "bg-philonet-blue-500 border-philonet-blue-400 shadow-lg shadow-philonet-blue-500/25"
+                  )}
+                  title={`${inputMode === 'ai' ? 'AI Assistant' : 'Chat Messages'} - Click to switch to ${inputMode === 'message' ? 'AI Assistant' : 'Chat Messages'}`}
+                >
+                  <motion.div
+                    key={inputMode}
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="relative z-10"
+                  >
+                    {inputMode === 'ai' ? (
+                      <Bot className="w-4 h-4 text-white" />
+                    ) : (
+                      <MessageSquare className="w-4 h-4 text-white" />
+                    )}
+                  </motion.div>
+                </Button>
+
                 <div className="flex-1">
                   {inputMode === 'message' ? (
-                    <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-philonet-card rounded-2xl border border-philonet-border focus-within:border-philonet-blue-500">
+                    <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-philonet-card rounded-2xl border border-philonet-border focus-within:border-philonet-blue-500 relative">
+                      {/* Subtle mode indicator */}
+                      <div className="absolute -top-1 left-3 px-2 py-0.5 bg-philonet-blue-500 text-white text-xs font-medium rounded-full opacity-75">
+                        💬
+                      </div>
                       <Textarea
                         ref={messageInputRef}
                         placeholder="Type a message..."
@@ -3119,12 +3532,11 @@ Please provide a detailed analysis and answer to the question based on the artic
                   ) : (
                     <div className="relative">
                       <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 backdrop-blur-sm rounded-2xl border border-purple-500/30 focus-within:border-purple-500/50 transition-all duration-200">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <div className="relative">
-                            <Bot className="w-5 h-5 text-purple-400 flex-shrink-0" />
-                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+                            <Bot className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                            <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse"></div>
                           </div>
-                          <span className="text-xs font-medium text-purple-300">AI</span>
                         </div>
                         <Textarea
                           placeholder="Ask AI about this topic..."
@@ -3143,9 +3555,9 @@ Please provide a detailed analysis and answer to the question based on the artic
                           }}
                         />
                       </div>
-                      {/* AI Mode Indicator */}
-                      <div className="absolute -top-2 left-4 px-2 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-medium rounded-full">
-                        AI Assistant
+                      {/* Compact AI mode indicator */}
+                      <div className="absolute -top-1 left-3 px-2 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-medium rounded-full opacity-90">
+                        🤖 AI
                       </div>
                     </div>
                   )}
@@ -3779,6 +4191,31 @@ Please provide a detailed analysis and answer to the question based on the artic
           background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.02) 100%);
           pointer-events: none;
         }
+
+        /* Font size responsive AI content */
+        .ai-response-content.text-sm p { font-size: 0.875rem; line-height: 1.5; }
+        .ai-response-content.text-sm h1 { font-size: 1.25rem; }
+        .ai-response-content.text-sm h2 { font-size: 1.125rem; }
+        .ai-response-content.text-sm h3 { font-size: 1rem; }
+        .ai-response-content.text-sm code { font-size: 0.75rem; }
+
+        .ai-response-content.text-base p { font-size: 1rem; line-height: 1.6; }
+        .ai-response-content.text-base h1 { font-size: 1.5rem; }
+        .ai-response-content.text-base h2 { font-size: 1.25rem; }
+        .ai-response-content.text-base h3 { font-size: 1.125rem; }
+        .ai-response-content.text-base code { font-size: 0.875rem; }
+
+        .ai-response-content.text-lg p { font-size: 1.125rem; line-height: 1.6; }
+        .ai-response-content.text-lg h1 { font-size: 1.75rem; }
+        .ai-response-content.text-lg h2 { font-size: 1.5rem; }
+        .ai-response-content.text-lg h3 { font-size: 1.25rem; }
+        .ai-response-content.text-lg code { font-size: 1rem; }
+
+        .ai-response-content.text-xl p { font-size: 1.25rem; line-height: 1.75; }
+        .ai-response-content.text-xl h1 { font-size: 2rem; }
+        .ai-response-content.text-xl h2 { font-size: 1.75rem; }
+        .ai-response-content.text-xl h3 { font-size: 1.5rem; }
+        .ai-response-content.text-xl code { font-size: 1.125rem; }
 
         .ai-response-content code {
           position: relative;

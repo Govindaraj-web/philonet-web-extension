@@ -642,64 +642,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               pointerEvents: 'auto'
             }}
           >
-            {/* Header - Telegram-inspired clean design */}
-            <div className={`flex items-center justify-between px-4 py-3 bg-philonet-background transition-all duration-200 border-b border-philonet-border`}>
-              <div className="flex items-center gap-3">
-                {/* Clean icon without glow effects - Telegram style */}
-                <MessageSquare className="w-5 h-5 text-philonet-blue-500" />
-                
-                <div className="flex items-center gap-2">
-                  <h2 className={`text-base font-medium text-philonet-text-primary transition-opacity duration-200`}>
-                    Conversations
-                  </h2>
-                  {article && (
-                    <>
-                      <span className="text-sm text-philonet-text-muted">on</span>
-                      {/* Clean article thumbnail - Telegram style */}
-                      <div className="w-5 h-5 rounded overflow-hidden bg-philonet-border flex-shrink-0">
-                        {article.url ? (
-                          <img
-                            src={`https://www.google.com/s2/favicons?domain=${new URL(article.url).hostname}&sz=64`}
-                            alt="Site favicon"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              if (target.src.includes('google.com')) {
-                                target.src = `https://favicon.yandex.net/favicon/${new URL(article.url).hostname}`;
-                              } else {
-                                target.style.display = 'none';
-                                target.nextElementSibling?.classList.remove('hidden');
-                              }
-                            }}
-                          />
-                        ) : null}
-                        {/* Simple fallback - no gradients */}
-                        <div className="w-full h-full bg-philonet-border flex items-center justify-center hidden">
-                          <span className="text-xs text-philonet-text-muted">📄</span>
-                        </div>
-                      </div>
-                      
-                      <span className="text-sm text-philonet-text-secondary truncate max-w-[160px]">
-                        {article.title}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              {/* Clean control buttons - Telegram style */}
-              <div className="flex items-center">
-                <button
-                  onClick={onClose}
-                  className="p-2 hover:bg-philonet-border rounded-md transition-colors duration-150"
-                  title="Close"
-                >
-                  <X className="w-4 h-4 text-philonet-text-muted" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content Area with Telegram-inspired clean styling */}
+            {/* Content Area with clean styling - now full height */}
             <AnimatePresence mode="wait">
               <motion.div
                 key="content"
@@ -966,6 +909,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                           onThoughtSelect(thoughtId);
                         }
                       }}
+                      onClose={onClose} // Pass the drawer close function to ConversationRoom
                     />
                   </div>
                 )}

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings, Eye, FileText, RefreshCw, Upload, CloudUpload, CheckCircle, AlertCircle } from "lucide-react";
+import { Settings, Eye, FileText, RefreshCw, Upload, CloudUpload, CheckCircle, AlertCircle, Search, ChevronUp, ChevronDown, X } from "lucide-react";
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
 import ContentSkeleton from './components/ContentSkeleton';
@@ -204,6 +204,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
     totalMatches: number;
   }>({ matches: [], currentIndex: -1, totalMatches: 0 });
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const [showSearchBar, setShowSearchBar] = useState(false);
   
   // Loading overlay state with minimum timer
   const [isLoadingWithMinTimer, setIsLoadingWithMinTimer] = useState(false);
@@ -502,6 +503,41 @@ ${article.description}
       clearSearch();
     }
   }, [state.dockFilterText, isSearchActive]);
+
+  // Keyboard shortcut for search (Ctrl+F or Cmd+F) - only when extension has focus
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle Ctrl+F when the side panel has focus (not the main page)
+      const isExtensionFocused = document.hasFocus() && 
+        (document.activeElement?.closest('[aria-label="Philonet side panel"]') || 
+         document.activeElement === document.body);
+      
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f' && isExtensionFocused) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        // Show search bar and focus the input
+        setShowSearchBar(true);
+        setTimeout(() => {
+          const searchInput = document.querySelector('input[placeholder="Search content..."]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+          }
+        }, 100);
+      }
+      
+      // Escape key to hide search bar and clear search
+      if (event.key === 'Escape' && (showSearchBar || isSearchActive)) {
+        setShowSearchBar(false);
+        clearSearch();
+        setSearchQuery('');
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showSearchBar, isSearchActive]);
 
   // Page change detection using content script injection
   useEffect(() => {
@@ -2186,21 +2222,10 @@ ${article.description}
 
   // Get the appropriate share URL
   const getShareUrl = (): string => {
-    console.log('🔗 getShareUrl called:', { 
-      hasArticle: !!article, 
-      articleId: article?.article_id,
-      canGenerateShareLink: article && article.article_id > 0 
-    });
-    
     if (article && article.article_id > 0) {
-      const shareLink = generateShareLink(article.article_id);
-      console.log('✅ Generated share URL:', shareLink);
-      return shareLink;
+      return generateShareLink(article.article_id);
     }
-    
-    const fallbackUrl = currentUrl || window.location.href;
-    console.log('⚠️ Using fallback URL for sharing:', fallbackUrl);
-    return fallbackUrl;
+    return currentUrl || window.location.href;
   };
 
   // Auto-refresh modal when pageData changes (if modal is open)
@@ -2251,15 +2276,8 @@ ${article.description}
   };
 
   const toggleThoughtRooms = () => {
-    console.log('🎯 toggleThoughtRooms called:', { 
-      hasArticle: !!article, 
-      articleId: article?.article_id,
-      canToggle: article && article.article_id > 0 
-    });
-    
     if (article && article.article_id > 0) {
       setShowThoughtRooms(!showThoughtRooms);
-      console.log('✅ Toggling Thought Rooms to:', !showThoughtRooms);
     } else {
       console.log('⚠️ No article available for Thought Rooms - button should be hidden');
     }
@@ -2655,24 +2673,57 @@ ${article.description}
     // Clear any existing highlights first
     removeExistingHighlights(bodyContentRef.current);
 
-    const matches = findAllTextMatches(bodyContentRef.current, query);
-    setSearchResults({
-      matches,
-      currentIndex: matches.length > 0 ? 0 : -1,
-      totalMatches: matches.length
-    });
-
-    // Highlight all matches in the body
+    // Highlight all matches in the body first
     highlightSearchTextInBody(bodyContentRef.current, query);
 
-    // Navigate to first match if available
-    if (matches.length > 0) {
-      navigateToMatch(matches[0], query);
+    // Get all highlighted elements after highlighting
+    const allHighlights = getAllSearchHighlights();
+    
+    setSearchResults({
+      matches: allHighlights, // Use actual highlight elements
+      currentIndex: allHighlights.length > 0 ? 0 : -1,
+      totalMatches: allHighlights.length
+    });
+
+    // Automatically highlight the first match and scroll to it
+    if (allHighlights.length > 0) {
+      setTimeout(() => {
+        updateCurrentMatchHighlight(0);
+        // Scroll to first match
+        allHighlights[0].scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+      }, 100);
     }
   };
 
   const highlightSearchTextInBody = (container: Element, searchText: string) => {
     const targetText = searchText.trim().toLowerCase();
+    
+    // Add pulse animation CSS if not already added
+    if (!document.getElementById('philonet-search-animations')) {
+      const style = document.createElement('style');
+      style.id = 'philonet-search-animations';
+      style.textContent = `
+        @keyframes pulse {
+          0%, 100% { 
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            transform: scale(1.05);
+          }
+          50% { 
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.8);
+            transform: scale(1.08);
+          }
+        }
+        .current-search-match {
+          position: relative;
+          z-index: 10 !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
     
     // Find all text nodes in the container
     const walker = document.createTreeWalker(
@@ -2755,17 +2806,31 @@ ${article.description}
             highlightSpan.className = 'philonet-search-highlight';
             highlightSpan.setAttribute('data-search-text', searchText);
             highlightSpan.setAttribute('data-highlight-index', `${nodeIndex}-${highlightIndex}`);
-            highlightSpan.title = `Search match: "${highlight.text}"`;
+            highlightSpan.title = `Search match: "${highlight.text}" - Click to navigate`;
+            
+            // Add click handler to navigate to this match
+            highlightSpan.addEventListener('click', () => {
+              const allHighlights = getAllSearchHighlights();
+              const clickedIndex = allHighlights.indexOf(highlightSpan);
+              if (clickedIndex >= 0) {
+                setSearchResults(prev => ({ ...prev, currentIndex: clickedIndex }));
+                updateCurrentMatchHighlight(clickedIndex);
+              }
+            });
             
             // Add hover effect
             highlightSpan.addEventListener('mouseenter', () => {
-              highlightSpan.style.backgroundColor = 'rgba(255, 193, 7, 1)';
-              highlightSpan.style.transform = 'scale(1.02)';
+              if (!highlightSpan.classList.contains('current-search-match')) {
+                highlightSpan.style.backgroundColor = 'rgba(255, 193, 7, 1)';
+                highlightSpan.style.transform = 'scale(1.02)';
+              }
             });
             
             highlightSpan.addEventListener('mouseleave', () => {
-              highlightSpan.style.backgroundColor = 'rgba(255, 235, 59, 0.9)';
-              highlightSpan.style.transform = 'scale(1)';
+              if (!highlightSpan.classList.contains('current-search-match')) {
+                highlightSpan.style.backgroundColor = 'rgba(255, 235, 59, 0.9)';
+                highlightSpan.style.transform = 'scale(1)';
+              }
             });
             
             fragment.appendChild(highlightSpan);
@@ -2791,11 +2856,64 @@ ${article.description}
     setSearchQuery('');
     setSearchResults({ matches: [], currentIndex: -1, totalMatches: 0 });
     setIsSearchActive(false);
+    setShowSearchBar(false);
     
     // Clear all search highlights from the body
     if (bodyContentRef.current) {
       removeSearchHighlights(bodyContentRef.current);
       removeExistingHighlights(bodyContentRef.current);
+    }
+    
+    // Remove injected animation styles
+    const styleElement = document.getElementById('philonet-search-animations');
+    if (styleElement) {
+      styleElement.remove();
+    }
+  };
+
+  const updateCurrentMatchHighlight = (currentIndex: number) => {
+    if (!bodyContentRef.current) return;
+    
+    // Get all search highlights in document order
+    const allHighlights = getAllSearchHighlights();
+    
+    // Reset all highlights to default style
+    allHighlights.forEach((highlight, index) => {
+      const span = highlight as HTMLElement;
+      span.style.backgroundColor = 'rgba(255, 235, 59, 0.9)'; // Default yellow
+      span.style.border = '1px solid rgba(255, 193, 7, 0.8)';
+      span.style.boxShadow = '0 2px 4px rgba(0,0,0,0.15)';
+      span.style.transform = 'scale(1)';
+      span.style.zIndex = '1';
+      span.classList.remove('current-search-match');
+    });
+    
+    // Highlight the current match with special styling
+    if (currentIndex >= 0 && currentIndex < allHighlights.length) {
+      const currentHighlight = allHighlights[currentIndex] as HTMLElement;
+      currentHighlight.style.backgroundColor = 'rgba(59, 130, 246, 0.9)'; // Blue for current
+      currentHighlight.style.border = '2px solid rgba(37, 99, 235, 1)';
+      currentHighlight.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)';
+      currentHighlight.style.transform = 'scale(1.05)';
+      currentHighlight.style.zIndex = '10';
+      currentHighlight.classList.add('current-search-match');
+      
+      // Add pulsing animation for current match
+      currentHighlight.style.animation = 'pulse 1.5s ease-in-out infinite';
+      
+      // Scroll to current match with better positioning
+      setTimeout(() => {
+        currentHighlight.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+      }, 50);
+      
+      // Remove animation after 3 seconds to avoid distraction
+      setTimeout(() => {
+        currentHighlight.style.animation = '';
+      }, 3000);
     }
   };
 
@@ -3038,12 +3156,19 @@ ${article.description}
         const saveResult = await addToRoom(addToRoomParams);
         console.log('✅ Successfully saved to room:', saveResult);
 
+        // Extract article_id from the correct location in the response
+        const articleId = saveResult?.shared_to_rooms?.[0]?.article_id;
+        const roomId = saveResult?.shared_to_rooms?.[0]?.room_id;
+
         // Set article ID and fetch highlights for the dock
-        if (saveResult?.article_id) {
-          await setArticleIdAndRefreshHighlights(saveResult.article_id.toString());
+        if (articleId) {
+          console.log('🎯 Found article_id in response:', articleId);
+          await setArticleIdAndRefreshHighlights(articleId.toString());
           
           // Auto-join room as guest in the background
-          autoJoinRoomAsGuest(saveResult.article_id);
+          autoJoinRoomAsGuest(articleId);
+        } else {
+          console.warn('⚠️ No article_id found in saveResult.shared_to_rooms[0]');
         }
 
         setContentGenerationStatus({
@@ -3062,37 +3187,28 @@ ${article.description}
         }, 1500);
 
         // Update the article with the saved data if it has an ID
-        if (saveResult?.article_id) {
-          console.log('🔄 Updating article with saved ID for button visibility:', saveResult.article_id);
+        if (articleId) {
+          console.log('🎯 Updating article state with article_id:', articleId);
           setArticle(currentArticle => {
             if (!currentArticle) {
-              console.warn('⚠️ No current article to update with saved ID');
+              console.warn('⚠️ No current article to update with article_id');
               return currentArticle;
             }
-            
             const updatedArticle = {
               ...currentArticle,
-              article_id: saveResult.article_id,
-              room_id: saveResult.room_id || currentArticle.room_id,
-              // Ensure all fields are properly set for button visibility
-              title: currentArticle.title || extractResult?.title || 'Generated Content',
-              description: currentArticle.description || streamingResult,
-              summary: currentArticle.summary || extractResult?.summary
+              article_id: articleId,
+              room_id: roomId || currentArticle.room_id
             };
-            
-            console.log('✅ Article updated with ID - buttons should now be visible:', {
-              article_id: updatedArticle.article_id,
-              room_id: updatedArticle.room_id,
-              title: updatedArticle.title
+            console.log('✅ Article state updated:', {
+              oldId: currentArticle.article_id,
+              newId: updatedArticle.article_id,
+              oldRoomId: currentArticle.room_id,
+              newRoomId: updatedArticle.room_id
             });
-            
             return updatedArticle;
           });
-          
-          // Force a small delay to ensure state update is processed before UI components re-render
-          setTimeout(() => {
-            console.log('🎯 Article state should now show buttons for ID:', saveResult.article_id);
-          }, 100);
+        } else {
+          console.warn('⚠️ No article_id in saveResult.shared_to_rooms[0], buttons will remain disabled');
         }
       } catch (error) {
         console.error('❌ Failed to save to room:', error);
@@ -3555,14 +3671,159 @@ ${article.description}
             onToggleSettings={toggleSettings}
             onReplyToThoughtDoc={handleReplyToThoughtDoc}
             onToggleThoughtRooms={toggleThoughtRooms}
+            onToggleSearch={() => setShowSearchBar(true)}
             useContentScript={settings.useContentScript}
             isExtracting={isExtractingPageData}
             article={article}
             shareUrl={getShareUrl()}
             articleTitle={article?.title || pageData?.title || document.title || "Current Page"}
             thoughtRoomsCount={state.comments.length} // Use comments count as conversations count
-            isGeneratingContent={isGeneratingContent}
           />
+
+          {/* Compact Search Bar - Floating Style */}
+          {showSearchBar && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="absolute top-14 right-3 z-40 w-72 bg-philonet-card/95 backdrop-blur-md border border-philonet-border/60 rounded-lg shadow-2xl"
+            >
+              <div className="relative p-2.5">
+                <div className="relative flex items-center bg-white/5 rounded-lg border border-white/10 focus-within:border-blue-400/50 focus-within:bg-white/8 transition-all duration-200">
+                  <Search className={`absolute left-3 w-4 h-4 transition-colors duration-200 ${
+                    isSearchActive && searchResults.totalMatches > 0 
+                      ? 'text-blue-400' 
+                      : isSearchActive && searchQuery.trim() && searchResults.totalMatches === 0
+                      ? 'text-red-400'
+                      : 'text-white/50'
+                  }`} />
+                  <input
+                    type="text"
+                    placeholder="Search content..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      const query = e.target.value;
+                      setSearchQuery(query);
+                      if (query.trim()) {
+                        performSearch(query);
+                      } else {
+                        clearSearch();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (isSearchActive && searchResults.totalMatches > 0) {
+                          // Navigate to next match on Enter, wrap around to first if at end
+                          const nextIndex = searchResults.currentIndex + 1 >= searchResults.totalMatches 
+                            ? 0 
+                            : searchResults.currentIndex + 1;
+                          setSearchResults(prev => ({ ...prev, currentIndex: nextIndex }));
+                          updateCurrentMatchHighlight(nextIndex);
+                        }
+                      }
+                      if (e.key === 'Escape') {
+                        setShowSearchBar(false);
+                        clearSearch();
+                        setSearchQuery('');
+                      }
+                      // Add Shift+Enter for previous match
+                      if (e.key === 'Enter' && e.shiftKey) {
+                        e.preventDefault();
+                        if (isSearchActive && searchResults.totalMatches > 0) {
+                          const prevIndex = searchResults.currentIndex > 0
+                            ? searchResults.currentIndex - 1
+                            : searchResults.totalMatches - 1; // Wrap to last
+                          setSearchResults(prev => ({ ...prev, currentIndex: prevIndex }));
+                          updateCurrentMatchHighlight(prevIndex);
+                        }
+                      }
+                    }}
+                    className="w-full pl-10 pr-12 py-2 bg-transparent border-0 text-white placeholder-white/50 text-sm focus:outline-none"
+                    autoFocus
+                  />
+                  
+                  {/* Search Results & Navigation - More Compact */}
+                  <div className="absolute right-2 flex items-center gap-0.5">
+                    {isSearchActive && searchResults.totalMatches > 0 && (
+                      <>
+                        <span className="text-xs text-white/60 mr-1 px-1.5 py-0.5 bg-white/10 rounded text-xs font-mono">
+                          {searchResults.currentIndex + 1}/{searchResults.totalMatches}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (searchResults.totalMatches > 0) {
+                              const newIndex = searchResults.currentIndex > 0 
+                                ? searchResults.currentIndex - 1
+                                : searchResults.totalMatches - 1; // Wrap to last
+                              setSearchResults(prev => ({ ...prev, currentIndex: newIndex }));
+                              updateCurrentMatchHighlight(newIndex);
+                            }
+                          }}
+                          disabled={searchResults.totalMatches <= 1}
+                          className="p-1 text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded hover:bg-white/10 transition-colors"
+                          title={`Previous match ${searchResults.totalMatches > 1 ? '(wraps around)' : ''}`}
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (searchResults.totalMatches > 0) {
+                              const newIndex = searchResults.currentIndex < searchResults.totalMatches - 1
+                                ? searchResults.currentIndex + 1
+                                : 0; // Wrap to first
+                              setSearchResults(prev => ({ ...prev, currentIndex: newIndex }));
+                              updateCurrentMatchHighlight(newIndex);
+                            }
+                          }}
+                          disabled={searchResults.totalMatches <= 1}
+                          className="p-1 text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded hover:bg-white/10 transition-colors"
+                          title={`Next match ${searchResults.totalMatches > 1 ? '(wraps around)' : ''}`}
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </>
+                    )}
+                    
+                    {/* No Results indicator */}
+                    {isSearchActive && searchQuery.trim() && searchResults.totalMatches === 0 && (
+                      <span className="text-xs text-red-400 mr-1 px-1.5 py-0.5 bg-red-400/10 rounded">0</span>
+                    )}
+                    
+                    <button
+                      onClick={() => {
+                        setShowSearchBar(false);
+                        clearSearch();
+                        setSearchQuery('');
+                      }}
+                      className="p-1 text-white/50 hover:text-white rounded hover:bg-white/10 transition-colors"
+                      title="Close search (Esc)"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Search tip - Only show when no query */}
+                {!searchQuery && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="mt-2 flex items-center justify-center text-xs text-white/30 gap-2"
+                  >
+                    <kbd className="px-1 py-0.5 bg-white/5 rounded text-xs font-mono">Enter</kbd>
+                    <span>next</span>
+                    <kbd className="px-1 py-0.5 bg-white/5 rounded text-xs font-mono">Shift+Enter</kbd>
+                    <span>prev</span>
+                    <kbd className="px-1 py-0.5 bg-white/5 rounded text-xs font-mono">Esc</kbd>
+                    <span>close</span>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          )}
 
 
 
@@ -4939,7 +5200,11 @@ ${article.description}
                   <h3 className="font-semibold text-philonet-blue-400 mb-3">Content</h3>
                   <div className="bg-philonet-panel/30 border border-philonet-border/50 rounded-lg p-4 max-h-96 overflow-y-auto philonet-scrollbar">
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <div className="text-philonet-text-secondary leading-relaxed whitespace-pre-wrap">
+                      <div 
+                        ref={bodyContentRef}
+                        className="text-philonet-text-secondary leading-relaxed whitespace-pre-wrap"
+                        data-article-body
+                      >
                         {article.description}
                       </div>
                     </div>

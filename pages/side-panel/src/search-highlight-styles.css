@@ -1,0 +1,64 @@
+/* Search highlight styles for enhanced visibility and interaction */
+
+.philonet-search-highlight {
+  /* Base highlighting */
+  background-color: rgba(255, 235, 59, 0.9) !important;
+  color: #000 !important;
+  font-weight: 600 !important;
+  border-radius: 3px !important;
+  padding: 2px 4px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;
+  border: 1px solid rgba(255, 193, 7, 0.8) !important;
+  display: inline !important;
+  line-height: inherit !important;
+  margin: 0 1px !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.philonet-search-highlight:hover {
+  background-color: rgba(255, 193, 7, 1) !important;
+  transform: scale(1.02) !important;
+  z-index: 2 !important;
+}
+
+/* Current match highlighting */
+.philonet-search-highlight.current-search-match {
+  background-color: rgba(59, 130, 246, 0.9) !important;
+  border: 2px solid rgba(37, 99, 235, 1) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+  transform: scale(1.05) !important;
+  z-index: 10 !important;
+  color: white !important;
+}
+
+.philonet-search-highlight.current-search-match:hover {
+  background-color: rgba(37, 99, 235, 1) !important;
+  transform: scale(1.08) !important;
+}
+
+/* Animation for when matches are first found */
+@keyframes philonet-highlight-pulse {
+  0% {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  }
+  50% {
+    box-shadow: 0 4px 8px rgba(255, 193, 7, 0.6);
+  }
+  100% {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  }
+}
+
+.philonet-search-highlight.philonet-new-match {
+  animation: philonet-highlight-pulse 0.6s ease-in-out;
+}
+
+/* Ensure highlights don't break text flow */
+.philonet-search-highlight {
+  word-break: normal !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}

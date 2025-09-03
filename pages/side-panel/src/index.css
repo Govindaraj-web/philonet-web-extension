@@ -147,4 +147,51 @@
   .animate-skeleton-pulse {
     animation: skeleton-pulse 2s infinite ease-in-out;
   }
+
+  /* Custom scrollbar styling for sidebar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.3);
+    border-radius: 2px;
+    transition: all 0.2s ease;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(148, 163, 184, 0.5);
+  }
+
+  /* Compact scrollbar for collapsed sidebar */
+  .compact-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+  }
+
+  .compact-scrollbar::-webkit-scrollbar {
+    width: 2px;
+  }
+
+  .compact-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .compact-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.2);
+    border-radius: 1px;
+  }
+
+  .compact-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(148, 163, 184, 0.4);
+  }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
-import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings, Reply, MessageSquare } from 'lucide-react';
+import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings, Reply, MessageSquare, Copy, Check, ExternalLink, Search } from 'lucide-react';
 import { Button } from './ui';
 import HistoryMenu from './HistoryMenu';
 import ShareDropdown from './ShareDropdown';
@@ -18,13 +18,13 @@ interface AuthenticatedTopActionBarProps {
   onToggleSettings?: () => void;
   onReplyToThoughtDoc?: () => void;
   onToggleThoughtRooms?: () => void;
+  onToggleSearch?: () => void;
   useContentScript?: boolean;
   isExtracting?: boolean;
   article?: { article_id: number } | null;
   shareUrl?: string;
   articleTitle?: string;
   thoughtRoomsCount?: number;
-  isGeneratingContent?: boolean;
 }
 
 const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
@@ -38,29 +38,30 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   onToggleSettings,
   onReplyToThoughtDoc,
   onToggleThoughtRooms,
+  onToggleSearch,
   useContentScript = false,
   isExtracting = false,
   article = null,
   shareUrl = "",
   articleTitle = "",
-  thoughtRoomsCount = 0,
-  isGeneratingContent = false
+  thoughtRoomsCount = 0
 }) => {
   const { user, logout } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showShareDropdown, setShowShareDropdown] = useState(false);
+  const [showMobileShareOptions, setShowMobileShareOptions] = useState(false);
+  const [copied, setCopied] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Debug logging for button visibility
+  // Debug article state changes
   useEffect(() => {
-    console.log('🎯 AuthenticatedTopActionBar - Button visibility check:', {
+    console.log('🔍 AuthenticatedTopActionBar - article prop changed:', {
+      article,
       hasArticle: !!article,
       articleId: article?.article_id,
-      shouldShowButtons: article && article.article_id > 0,
-      shareUrl,
-      articleTitle
+      shouldEnableButtons: article && article.article_id > 0
     });
-  }, [article, shareUrl, articleTitle]);
+  }, [article]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -92,73 +93,36 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
     onViewPageData?.();
   };
 
-  const handleToggleThoughtRooms = () => {
-    console.log('🎯 Thought Rooms button clicked:', {
-      hasArticle: !!article,
-      articleId: article?.article_id,
-      thoughtRoomsCount
-    });
-    
+  const toggleShareDropdown = () => {
+    setShowShareDropdown(!showShareDropdown);
+  };
+
+  const toggleMobileShareOptions = () => {
     if (article && article.article_id > 0) {
-      onToggleThoughtRooms?.();
-      console.log('✅ Opening Thought Rooms for article ID:', article.article_id);
-    } else {
-      console.warn('⚠️ Cannot open Thought Rooms - no article ID available:', {
-        hasArticle: !!article,
-        articleId: article?.article_id
-      });
-      // Could show a toast notification here if needed
+      setShowMobileShareOptions(!showMobileShareOptions);
     }
   };
 
-  const handleToggleShare = () => {
-    console.log('🔗 Share button clicked:', {
-      hasArticle: !!article,
-      articleId: article?.article_id,
-      shareUrl,
-      articleTitle
-    });
-    
-    if (article && article.article_id > 0) {
-      setShowShareDropdown(!showShareDropdown);
-      console.log('✅ Opening Share dropdown for article ID:', article.article_id);
-    } else {
-      console.warn('⚠️ Cannot open Share - no article ID available:', {
-        hasArticle: !!article,
-        articleId: article?.article_id
-      });
-      // Could show a toast notification here if needed
+  const handleMobileCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy URL:', err);
     }
   };
 
-  const handleMobileShare = async () => {
-    console.log('📱 Mobile share clicked:', {
-      hasArticle: !!article,
-      articleId: article?.article_id,
-      shareUrl
-    });
-    
-    if (article && article.article_id > 0 && shareUrl) {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        console.log('✅ Share URL copied to clipboard:', shareUrl);
-        // Could show a toast notification here
-        onToggleMoreMenu(); // Close more menu after action
-      } catch (err) {
-        console.error('❌ Failed to copy share URL:', err);
-        // Fallback: Open in new tab
-        window.open(shareUrl, '_blank');
-        onToggleMoreMenu();
-      }
-    } else {
-      console.warn('⚠️ Cannot share - no article ID or share URL available');
-    }
+  const handleMobileOpenInNewTab = () => {
+    window.open(shareUrl, '_blank');
+    setShowMobileShareOptions(false);
+    onToggleMoreMenu(); // Close the more menu
   };
 
   return (
-    <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center px-2 lg:px-4 xl:px-6 overflow-hidden">
+    <div className="absolute top-0 left-0 right-0 h-[68px] border-b border-philonet-border flex items-center px-4 lg:px-6">
       {/* Left side - User info */}
-      <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0 relative min-w-0" ref={userMenuRef}>
+      <div className="flex items-center gap-3 flex-shrink-0 relative" ref={userMenuRef}>
         <button
           onClick={handleUserClick}
           className="h-8 w-8 rounded-full border border-philonet-border-light bg-philonet-card flex items-center justify-center text-philonet-text-muted hover:border-philonet-blue-500/60 hover:bg-philonet-blue-500/10 transition-all duration-200 group"
@@ -176,7 +140,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
         </button>
         <button
           onClick={handleUserClick}
-          className="text-xs lg:text-sm font-light tracking-philonet-wide truncate max-w-[80px] md:max-w-[120px] lg:max-w-[160px] xl:max-w-[200px] hover:text-philonet-blue-400 transition-colors text-left"
+          className="text-sm font-light tracking-philonet-wide truncate max-w-[120px] md:max-w-[160px] lg:max-w-[200px] hover:text-philonet-blue-400 transition-colors text-left"
           title="User menu"
         >
           {user?.name || 'User'}
@@ -220,77 +184,62 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
       </div>
       
       {/* Right side - Action buttons */}
-      <div className="flex items-center gap-1 lg:gap-2 flex-shrink-0 min-w-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {/* Desktop buttons */}
-        <div className="hidden md:flex items-center gap-1 lg:gap-2">
-          {/* Show loading placeholders when content is being generated */}
-          {isGeneratingContent && !article?.article_id && (
-            <>
-              <Button 
-                className="h-9 px-2 lg:px-4 text-sm bg-philonet-border/30 border-philonet-border/50 cursor-not-allowed" 
-                disabled
-                title="Generating content... Buttons will appear when ready"
-              >
-                <MessageSquare className="h-4 w-4 opacity-50" />
-                <span className="ml-1 lg:ml-2 opacity-50 hidden lg:inline">Thought Rooms</span>
-              </Button>
-              <Button 
-                className="h-9 px-2 lg:px-4 text-sm bg-philonet-border/30 border-philonet-border/50 cursor-not-allowed" 
-                disabled
-                title="Generating content... Buttons will appear when ready"
-              >
-                <Share2 className="h-4 w-4 opacity-50" />
-                <span className="ml-1 lg:ml-2 opacity-50 hidden lg:inline">Share</span>
-              </Button>
-            </>
-          )}
-
-          {/* Only show Thought Rooms and Share buttons when article is available */}
-          {article && article.article_id > 0 && (
+        <div className="hidden md:flex items-center gap-2">
+          {/* Show Thought Rooms and Share buttons when article exists (enabled when article_id > 0) */}
+          {article && (
             <>
               <div className="relative">
                 <Button 
-                  className="h-9 px-2 lg:px-4 text-sm bg-philonet-blue-600 hover:bg-philonet-blue-700 border-philonet-blue-500" 
-                  onClick={handleToggleThoughtRooms}
-                  title={`Open Thought Rooms for "${articleTitle}"`}
+                  className={`h-9 px-4 text-sm transition-all duration-300 ${
+                    article.article_id > 0 
+                      ? 'opacity-100 cursor-pointer' 
+                      : 'opacity-50 cursor-wait'
+                  }`}
+                  onClick={article.article_id > 0 ? onToggleThoughtRooms : undefined}
+                  disabled={article.article_id <= 0}
+                  title={
+                    article.article_id > 0 
+                      ? "Open Thought Rooms for discussions" 
+                      : "Thought Rooms will be available after saving article..."
+                  }
                 >
                   <MessageSquare className="h-4 w-4" />
-                  <span className="ml-1 lg:ml-2 hidden lg:inline">Thought Rooms</span>
+                  <span className="ml-2">Thought Rooms</span>
+                  {article.article_id <= 0 && (
+                    <div className="ml-2 w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>
+                  )}
                 </Button>
-                {/* Conversation count badge */}
-                {thoughtRoomsCount > 0 && (
+                {/* Conversation count badge - only show when enabled */}
+                {article.article_id > 0 && thoughtRoomsCount > 0 && (
                   <div className="absolute -top-1 -right-1 h-5 w-5 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center shadow-sm border border-philonet-card">
                     {thoughtRoomsCount > 99 ? '99+' : thoughtRoomsCount}
                   </div>
                 )}
               </div>
-              <div className="relative">
-                <Button 
-                  className="h-9 px-2 lg:px-4 text-sm" 
-                  onClick={handleToggleShare}
-                  title={`Share "${articleTitle}"`}
-                >
-                  <Share2 className="h-4 w-4" />
-                  <span className="ml-1 lg:ml-2 hidden lg:inline">Share</span>
-                </Button>
-                {/* ShareDropdown positioned relative to this button */}
+              <div className={`transition-all duration-300 ${
+                article.article_id > 0 
+                  ? 'opacity-100' 
+                  : 'opacity-50 cursor-wait'
+              }`}>
                 <ShareDropdown
                   shareUrl={shareUrl}
                   articleTitle={articleTitle}
-                  isOpen={showShareDropdown}
-                  onToggle={handleToggleShare}
+                  isOpen={article.article_id > 0 ? showShareDropdown : false}
+                  onToggle={article.article_id > 0 ? toggleShareDropdown : () => {}}
                 />
               </div>
             </>
           )}
           <div className="relative" data-more-menu>
             <Button 
-              className="h-9 px-2 lg:px-4 text-sm"
+              className="h-9 px-4 text-sm"
               onClick={onToggleMoreMenu}
               title="More options"
             >
               <MoreHorizontal className="h-4 w-4" />
-              <span className="ml-1 lg:ml-2 hidden lg:inline">More</span>
+              <span className="ml-2">More</span>
             </Button>
             
             {/* More dropdown */}
@@ -314,6 +263,22 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                         View Page Data
                       </span>
                     </button>
+
+                    {/* Search button - only show when article exists */}
+                    {article && (
+                      <button
+                        onClick={onToggleSearch}
+                        className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                      >
+                        <Search className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                        <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                          Search Content
+                        </span>
+                        <span className="text-xs text-philonet-text-muted ml-auto">
+                          Ctrl+F
+                        </span>
+                      </button>
+                    )}
 
                     {/* Reply to Thought Doc button */}
                     <button
@@ -354,7 +319,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
         {/* Mobile More button */}
         <div className="md:hidden relative" data-more-menu>
           <Button 
-            className="h-9 px-2 text-sm"
+            className="h-9 px-3 text-sm"
             title="More options"
             onClick={onToggleMoreMenu}
           >
@@ -372,60 +337,92 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                 className="absolute top-full right-0 mt-2 w-[200px] rounded-philonet-lg border border-philonet-border bg-philonet-card/95 backdrop-blur shadow-xl z-50"
               >
                 <div className="p-2">
-                  {/* Show loading placeholders when content is being generated */}
-                  {isGeneratingContent && !article?.article_id && (
-                    <>
-                      {/* Thought Rooms loading placeholder - Mobile */}
-                      <div className="w-full p-3 rounded-lg border border-philonet-border/30 bg-philonet-border/10 mb-2 flex items-center gap-3">
-                        <MessageSquare className="h-4 w-4 text-philonet-text-muted opacity-50" />
-                        <span className="text-sm text-philonet-text-muted opacity-50">
-                          Thought Rooms (Loading...)
-                        </span>
-                      </div>
-
-                      {/* Share loading placeholder - Mobile */}
-                      <div className="w-full p-3 rounded-lg border border-philonet-border/30 bg-philonet-border/10 mb-2 flex items-center gap-3">
-                        <Share2 className="h-4 w-4 text-philonet-text-muted opacity-50" />
-                        <span className="text-sm text-philonet-text-muted opacity-50">
-                          Share (Loading...)
-                        </span>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Mobile Thought Rooms and Share buttons - show when article is available */}
-                  {article && article.article_id > 0 && (
+                  {/* Mobile Thought Rooms and Share buttons - only show when article exists */}
+                  {article && (
                     <>
                       {/* Thought Rooms button - Mobile */}
                       <button
-                        onClick={() => {
-                          handleToggleThoughtRooms();
-                          onToggleMoreMenu(); // Close more menu after action
-                        }}
-                        className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                        onClick={article.article_id > 0 ? onToggleThoughtRooms : undefined}
+                        disabled={article.article_id <= 0}
+                        className={`w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2 ${
+                          article.article_id > 0 
+                            ? 'cursor-pointer' 
+                            : 'cursor-wait opacity-50'
+                        }`}
+                        title={
+                          article.article_id > 0 
+                            ? "Open Thought Rooms for discussions" 
+                            : "Thought Rooms will be available after saving article..."
+                        }
                       >
                         <MessageSquare className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
                         <span className="text-sm text-philonet-text-primary group-hover:text-white">
                           Thought Rooms
                         </span>
-                        {thoughtRoomsCount > 0 && (
-                          <div className="ml-auto h-5 w-5 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center">
-                            {thoughtRoomsCount > 99 ? '99+' : thoughtRoomsCount}
+                        {article.article_id <= 0 && (
+                          <div className="ml-auto w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>
+                        )}
+                        {article.article_id > 0 && thoughtRoomsCount > 0 && (
+                          <div className="ml-auto h-4 w-4 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center">
+                            {thoughtRoomsCount > 9 ? '9+' : thoughtRoomsCount}
                           </div>
                         )}
                       </button>
 
                       {/* Share button - Mobile */}
                       <button
-                        onClick={handleMobileShare}
-                        className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
-                        title={`Copy share link for "${articleTitle}"`}
+                        onClick={article.article_id > 0 ? toggleMobileShareOptions : undefined}
+                        disabled={article.article_id <= 0}
+                        className={`w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2 ${
+                          article.article_id > 0 
+                            ? 'cursor-pointer' 
+                            : 'cursor-wait opacity-50'
+                        }`}
+                        title={
+                          article.article_id > 0 
+                            ? "Share article" 
+                            : "Share will be available after saving article..."
+                        }
                       >
                         <Share2 className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
                         <span className="text-sm text-philonet-text-primary group-hover:text-white">
-                          Copy Share Link
+                          Share Article
                         </span>
+                        {article.article_id <= 0 && (
+                          <div className="ml-auto w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>
+                        )}
                       </button>
+
+                      {/* Mobile Share Options - Show when share is expanded */}
+                      {showMobileShareOptions && article.article_id > 0 && (
+                        <div className="ml-4 mr-2 mb-2 border-l border-philonet-border pl-4">
+                          {/* Copy URL option */}
+                          <button
+                            onClick={handleMobileCopyUrl}
+                            className="w-full text-left p-2 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-1"
+                          >
+                            {copied ? (
+                              <Check className="h-3 w-3 text-green-400" />
+                            ) : (
+                              <Copy className="h-3 w-3 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                            )}
+                            <span className="text-xs text-philonet-text-primary group-hover:text-white">
+                              {copied ? 'Copied!' : 'Copy Link'}
+                            </span>
+                          </button>
+                          
+                          {/* Open in new tab option */}
+                          <button
+                            onClick={handleMobileOpenInNewTab}
+                            className="w-full text-left p-2 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3"
+                          >
+                            <ExternalLink className="h-3 w-3 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                            <span className="text-xs text-philonet-text-primary group-hover:text-white">
+                              Open in New Tab
+                            </span>
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -439,6 +436,22 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                       View Page Data
                     </span>
                   </button>
+
+                  {/* Search button - Mobile - only show when article exists */}
+                  {article && (
+                    <button
+                      onClick={onToggleSearch}
+                      className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
+                    >
+                      <Search className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                      <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                        Search Content
+                      </span>
+                      <span className="text-xs text-philonet-text-muted ml-auto">
+                        Ctrl+F
+                      </span>
+                    </button>
+                  )}
 
                   {/* Reply to Thought Doc button - Mobile */}
                   <button
