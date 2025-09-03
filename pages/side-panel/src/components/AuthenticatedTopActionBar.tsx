@@ -206,7 +206,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                   }
                 >
                   <MessageSquare className="h-4 w-4" />
-                  <span className="ml-2">Thought Rooms</span>
+                  <span className="ml-2">Conversation Rooms</span>
                   {article.article_id <= 0 && (
                     <div className="ml-2 w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>
                   )}
@@ -280,16 +280,6 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                       </button>
                     )}
 
-                    {/* Reply to Thought Doc button */}
-                    <button
-                      onClick={onReplyToThoughtDoc}
-                      className="w-full text-left p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group flex items-center gap-3 mb-2"
-                    >
-                      <Reply className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
-                      <span className="text-sm text-philonet-text-primary group-hover:text-white">
-                        Reply to Thought Doc
-                      </span>
-                    </button>
 
                     {/* Settings button */}
                     <button
@@ -357,7 +347,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                       >
                         <MessageSquare className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
                         <span className="text-sm text-philonet-text-primary group-hover:text-white">
-                          Thought Rooms
+                          Conversation Rooms
                         </span>
                         {article.article_id <= 0 && (
                           <div className="ml-auto w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>

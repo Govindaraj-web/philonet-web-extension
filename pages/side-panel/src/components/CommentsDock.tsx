@@ -224,7 +224,8 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
           {/* Reply section */}
           <div className="mt-3 pt-2 border-t border-philonet-border/60">
             <div className="flex items-center justify-between">
-              {/* Reply button */}
+              {/* Reply button - commented out until implementation is ready */}
+              {/* 
               <button
                 onClick={() => onReplyToThought && onReplyToThought(currentComment?.id)}
                 className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-philonet-text-muted hover:text-philonet-blue-400 hover:bg-philonet-blue-500/5 rounded-lg transition-colors border border-transparent hover:border-philonet-blue-500/20"
@@ -233,6 +234,7 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
                 <Reply className="h-3.5 w-3.5" />
                 <span>Reply</span>
               </button>
+              */}
               
               {/* Reply count */}
               {currentComment?.replies && currentComment.replies.length > 0 && (
