@@ -39,49 +39,52 @@ const addSelectionHighlight = (selection: Selection) => {
   const span = document.createElement('span');
   span.className = 'philonet-text-highlight';
   span.style.cssText = `
-    background: linear-gradient(120deg, rgba(203, 163, 57, 0.3) 0%, rgba(203, 163, 57, 0.4) 100%);
+    background: rgba(203, 163, 57, 0.2);
     border-radius: 4px;
     padding: 2px 4px;
     margin: -2px -4px;
     box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.5);
-    animation: philonet-highlight-pulse 0.8s ease-out;
     transition: all 0.3s ease;
-    color: #ffffff !important;
+    color: #CBA339 !important;
   `;
   
-  // Add animation keyframes if they don't exist
-  if (!document.querySelector('#philonet-highlight-styles')) {
-    const style = document.createElement('style');
-    style.id = 'philonet-highlight-styles';
-    style.textContent = `
-      @keyframes philonet-highlight-pulse {
-        0% { 
-          background: rgba(203, 163, 57, 0.5);
-          box-shadow: 0 0 0 3px rgba(203, 163, 57, 0.4);
-          color: #ffffff !important;
-        }
-        50% { 
-          background: rgba(203, 163, 57, 0.4);
-          box-shadow: 0 0 0 6px rgba(203, 163, 57, 0.3);
-          color: #ffffff !important;
-        }
-        100% { 
-          background: linear-gradient(120deg, rgba(203, 163, 57, 0.3) 0%, rgba(203, 163, 57, 0.4) 100%);
-          box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.5);
-          color: #ffffff !important;
-        }
-      }
-      .philonet-text-highlight:hover {
-        background: linear-gradient(120deg, rgba(203, 163, 57, 0.4) 0%, rgba(203, 163, 57, 0.5) 100%);
-        box-shadow: 0 0 0 2px rgba(203, 163, 57, 0.6);
-        color: #ffffff !important;
-      }
-      .philonet-text-highlight * {
-        color: #ffffff !important;
-      }
-    `;
-    document.head.appendChild(style);
+  // Add styles if they don't exist (remove old ones first)
+  const existingStyle = document.querySelector('#philonet-highlight-styles');
+  if (existingStyle) {
+    existingStyle.remove();
   }
+  
+  const style = document.createElement('style');
+  style.id = 'philonet-highlight-styles';
+  style.textContent = `
+    .philonet-text-highlight {
+      background: rgba(203, 163, 57, 0.2) !important;
+      color: #CBA339 !important;
+      border-radius: 4px !important;
+      padding: 2px 4px !important;
+      margin: -2px -4px !important;
+      box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.5) !important;
+      transition: all 0.3s ease !important;
+      animation: none !important;
+    }
+    .philonet-text-highlight:hover {
+      background: rgba(203, 163, 57, 0.3) !important;
+      box-shadow: 0 0 0 2px rgba(203, 163, 57, 0.6) !important;
+      color: #CBA339 !important;
+    }
+    .philonet-text-highlight * {
+      color: #CBA339 !important;
+    }
+    /* Override any existing animations */
+    @keyframes philonet-highlight-glow {
+      0%, 100% { 
+        background: rgba(203, 163, 57, 0.2) !important;
+        color: #CBA339 !important;
+        box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.5) !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
   
   try {
     range.surroundContents(span);

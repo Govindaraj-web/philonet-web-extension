@@ -52,6 +52,35 @@ export interface HistoryItem {
   title: string;
   url: string;
   timestamp: Date;
+  summary?: string;
+  thumbnail_url?: string;
+  category?: string;
+  comment_count?: number;
+  room?: {
+    id: number;
+    name: string;
+  };
+  shared_by?: {
+    id: string;
+    name: string;
+    picture?: string;
+  };
+  interaction_summary?: {
+    last_viewed_at: string;
+    first_viewed_at: string;
+    view_count: number;
+    read_count: number;
+    like_count: number;
+    share_count: number;
+    total_interactions: number;
+    interaction_types: string[];
+    engagement_score: number;
+    time_ago: string;
+  };
+  user_data?: {
+    is_bookmarked: boolean;
+    reading_progress: number | null;
+  };
 }
 
 export interface Highlight {
@@ -164,6 +193,10 @@ export interface SidePanelState {
   dockMinimized: boolean;
   currentSourceUrl: string;
   historyItems: HistoryItem[];
+  historyLoading: boolean;
+  historyError: string | null;
+  historyPage: number;
+  hasMoreHistoryData: boolean;
   showHistoryMenu: boolean;
   showMoreMenu: boolean;
   footerH: number;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Comment, AIAnswer, HistoryItem, SidePanelState, HighlightsResponse } from '../types';
 import { storeSmartHighlight, fetchHighlightsByArticleId } from '../services/gptSummary';
+import { fetchRecentlyViewedArticles, loadMoreHistory } from '../services/historyApi';
 import { formatTimeAgo } from '../utils';
 
 const INITIAL_COMMENTS: Comment[] = [
@@ -96,11 +97,7 @@ const INITIAL_COMMENTS: Comment[] = [
   }
 ];
 
-const INITIAL_HISTORY: HistoryItem[] = [
-  { id: 1, title: "Philonet Interface Overview", url: "https://example.com/philonet-interface-overview", timestamp: new Date() },
-  { id: 2, title: "Design Systems Guide", url: "https://example.com/design-systems", timestamp: new Date(Date.now() - 3600000) },
-  { id: 3, title: "Reading Experience Best Practices", url: "https://example.com/reading-ux", timestamp: new Date(Date.now() - 7200000) }
-];
+const INITIAL_HISTORY: HistoryItem[] = [];
 
 export function useSidePanelState() {
   const [state, setState] = useState<SidePanelState>({
@@ -118,6 +115,10 @@ export function useSidePanelState() {
     dockMinimized: false,
     currentSourceUrl: "https://example.com/philonet-interface-overview",
     historyItems: INITIAL_HISTORY,
+    historyLoading: false,
+    historyError: null,
+    historyPage: 1,
+    hasMoreHistoryData: true,
     showHistoryMenu: false,
     showMoreMenu: false,
     footerH: 172,
@@ -360,6 +361,55 @@ If you want, I can focus on introduction, details, or conclusion.`;
     setState(prev => ({ ...prev, ...updates }));
   }, []);
 
+  // History actions
+  const loadHistory = useCallback(async () => {
+    try {
+      setState(prev => ({ ...prev, historyLoading: true, historyError: null }));
+      const result = await fetchRecentlyViewedArticles(1, 20);
+      setState(prev => ({
+        ...prev,
+        historyItems: result.items,
+        hasMoreHistoryData: result.hasMore,
+        historyLoading: false,
+        historyPage: 1
+      }));
+    } catch (error) {
+      console.error('Error loading history:', error);
+      setState(prev => ({
+        ...prev,
+        historyLoading: false,
+        historyError: error instanceof Error ? error.message : 'Failed to load history'
+      }));
+    }
+  }, []);
+
+  const loadMoreHistoryItems = useCallback(async () => {
+    try {
+      setState(prev => ({ ...prev, historyLoading: true }));
+      const nextPage = state.historyPage + 1;
+      const result = await loadMoreHistory(state.historyItems, nextPage);
+      setState(prev => ({
+        ...prev,
+        historyItems: result.items,
+        hasMoreHistoryData: result.hasMore,
+        historyLoading: false,
+        historyPage: nextPage
+      }));
+    } catch (error) {
+      console.error('Error loading more history:', error);
+      setState(prev => ({
+        ...prev,
+        historyLoading: false,
+        historyError: error instanceof Error ? error.message : 'Failed to load more history'
+      }));
+    }
+  }, [state.historyItems, state.historyPage]);
+
+  // Load history when component mounts
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
   return {
     state,
     updateState,
@@ -375,5 +425,7 @@ If you want, I can focus on introduction, details, or conclusion.`;
     refreshHighlights,
     clearHighlights,
     setArticleIdAndRefreshHighlights,
+    loadHistory,
+    loadMoreHistoryItems,
   };
 }

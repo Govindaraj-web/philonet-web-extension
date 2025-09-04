@@ -155,6 +155,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
     refreshHighlights,
     clearHighlights,
     setArticleIdAndRefreshHighlights,
+    loadHistory,
+    loadMoreHistoryItems,
   } = useSidePanelState();
 
   // Speech functionality
@@ -1378,6 +1380,14 @@ ${article.description}
         // Auto-join room as guest in the background
         autoJoinRoomAsGuest(apiArticle.article_id);
         
+        // Refresh history since we just accessed an article
+        try {
+          await loadHistory();
+          console.log('📚 History refreshed after article load');
+        } catch (historyError) {
+          console.warn('⚠️ Failed to refresh history:', historyError);
+        }
+        
         setContentGenerationStatus({
           stage: 'complete',
           streamingComplete: true,
@@ -1504,6 +1514,14 @@ ${article.description}
           
           // Auto-join room as guest in the background
           autoJoinRoomAsGuest(apiArticle.article_id);
+          
+          // Refresh history since we just accessed a PDF article
+          try {
+            await loadHistory();
+            console.log('📚 History refreshed after PDF article load');
+          } catch (historyError) {
+            console.warn('⚠️ Failed to refresh history:', historyError);
+          }
           
           setContentGenerationStatus({
             stage: 'complete',
@@ -3179,6 +3197,14 @@ ${article.description}
           
           // Auto-join room as guest in the background
           autoJoinRoomAsGuest(articleId);
+          
+          // Refresh history since we just created a new article
+          try {
+            await loadHistory();
+            console.log('📚 History refreshed after creating new article');
+          } catch (historyError) {
+            console.warn('⚠️ Failed to refresh history:', historyError);
+          }
         } else {
           console.warn('⚠️ No article_id found in saveResult.shared_to_rooms[0]');
         }
@@ -3679,9 +3705,14 @@ ${article.description}
             showMoreMenu={state.showMoreMenu}
             showHistoryMenu={state.showHistoryMenu}
             historyItems={state.historyItems}
+            historyLoading={state.historyLoading}
+            historyError={state.historyError}
+            hasMoreHistoryData={state.hasMoreHistoryData}
             onToggleMoreMenu={toggleMoreMenu}
             onToggleHistoryMenu={toggleHistoryMenu}
             onHistoryItemClick={openHistoryItem}
+            onLoadHistory={loadHistory}
+            onLoadMoreHistory={loadMoreHistoryItems}
             onViewPageData={handleViewPageData}
             onToggleSettings={toggleSettings}
             onReplyToThoughtDoc={handleReplyToThoughtDoc}

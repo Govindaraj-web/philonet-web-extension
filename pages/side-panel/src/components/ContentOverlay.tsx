@@ -84,12 +84,12 @@ const ContentOverlay: React.FC<ContentOverlayProps> = ({
             const highlightSpan = document.createElement('span');
             highlightSpan.className = 'philonet-overlay-highlight';
             highlightSpan.style.cssText = `
-              background-color: #ffd54f;
-              border: 1px solid #ffb74d;
+              background-color: rgba(203, 163, 57, 0.2);
+              border: 1px solid rgba(203, 163, 57, 0.6);
               border-radius: 3px;
               padding: 1px 3px;
-              box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.3);
-              color: #3e2723;
+              box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.3);
+              color: #CBA339;
               font-weight: 500;
             `;
             highlightSpan.textContent = matchText;
@@ -115,23 +115,26 @@ const ContentOverlay: React.FC<ContentOverlayProps> = ({
       }
     };
 
-    // Add CSS animation for gentle highlight glow
+    // Add CSS styles for highlight
     if (!document.getElementById('philonet-overlay-styles')) {
+      // Remove any existing animation styles first
+      const existingStyle = document.getElementById('philonet-overlay-styles');
+      if (existingStyle) {
+        existingStyle.remove();
+      }
+      
       const style = document.createElement('style');
       style.id = 'philonet-overlay-styles';
       style.textContent = `
-        @keyframes philonet-highlight-glow {
-          0%, 100% { 
-            background-color: #ffd54f;
-            box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.3);
-          }
-          50% { 
-            background-color: #ffcc02;
-            box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.5);
-          }
-        }
         .philonet-overlay-highlight {
-          animation: philonet-highlight-glow 3s ease-in-out infinite;
+          background-color: rgba(203, 163, 57, 0.2) !important;
+          color: #CBA339 !important;
+          border: 1px solid rgba(203, 163, 57, 0.6) !important;
+          border-radius: 3px !important;
+          padding: 1px 3px !important;
+          box-shadow: 0 0 0 1px rgba(203, 163, 57, 0.3) !important;
+          font-weight: 500 !important;
+          animation: none !important;
         }
       `;
       document.head.appendChild(style);

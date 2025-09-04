@@ -6,14 +6,49 @@ import HistoryMenu from './HistoryMenu';
 import ShareDropdown from './ShareDropdown';
 import { HistoryItem } from '../types';
 import { useApp } from '../context';
+import { User } from '../services';
+
+// Article interface for API response
+interface Article {
+  article_id: number;
+  room_id: number;
+  created_at: string;
+  is_deleted: boolean;
+  pdf: boolean;
+  hash?: string;
+  category: string;
+  sparked_by: string | null;
+  url: string;
+  title: string;
+  description: string;
+  thumbnail_url: string;
+  shared_by: string;
+  tags: string[];
+  categories: string[];
+  summary: string;
+  room_name: string;
+  room_description: string;
+  room_admin: string;
+  private_space: boolean;
+  spark_owner: string | null;
+}
 
 interface AuthenticatedTopActionBarProps {
-  showMoreMenu: boolean;
-  showHistoryMenu: boolean;
+  user?: User;
+  article?: Article | null;
   historyItems: HistoryItem[];
-  onToggleMoreMenu: () => void;
+  historyLoading?: boolean;
+  historyError?: string | null;
+  hasMoreHistoryData?: boolean;
+  showHistoryMenu: boolean;
+  showMoreMenu: boolean;
+  onLogout?: () => void;
   onToggleHistoryMenu: () => void;
-  onHistoryItemClick: (url: string) => void;
+  onToggleMoreMenu: () => void;
+  onLoadHistory?: () => void;
+  onLoadMoreHistory?: () => void;
+  onOpenHistoryItem?: (url: string) => void;
+  onHistoryItemClick?: (url: string) => void;
   onViewPageData?: () => void;
   onToggleSettings?: () => void;
   onReplyToThoughtDoc?: () => void;
@@ -21,7 +56,6 @@ interface AuthenticatedTopActionBarProps {
   onToggleSearch?: () => void;
   useContentScript?: boolean;
   isExtracting?: boolean;
-  article?: { article_id: number } | null;
   shareUrl?: string;
   articleTitle?: string;
   thoughtRoomsCount?: number;
@@ -31,9 +65,14 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   showMoreMenu,
   showHistoryMenu,
   historyItems,
+  historyLoading,
+  historyError,
+  hasMoreHistoryData,
   onToggleMoreMenu,
   onToggleHistoryMenu,
   onHistoryItemClick,
+  onLoadHistory,
+  onLoadMoreHistory,
   onViewPageData,
   onToggleSettings,
   onReplyToThoughtDoc,
@@ -296,7 +335,11 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                       isOpen={showHistoryMenu}
                       onToggle={onToggleHistoryMenu}
                       historyItems={historyItems}
-                      onItemClick={onHistoryItemClick}
+                      onItemClick={onHistoryItemClick || (() => {})}
+                      loading={historyLoading}
+                      error={historyError}
+                      onLoadMore={onLoadMoreHistory}
+                      hasMoreData={hasMoreHistoryData}
                       isMobile={false}
                     />
                   </div>
@@ -469,7 +512,11 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                     isOpen={showHistoryMenu}
                     onToggle={onToggleHistoryMenu}
                     historyItems={historyItems}
-                    onItemClick={onHistoryItemClick}
+                    onItemClick={onHistoryItemClick || (() => {})}
+                    loading={historyLoading}
+                    error={historyError}
+                    onLoadMore={onLoadMoreHistory}
+                    hasMoreData={hasMoreHistoryData}
                     isMobile={true}
                   />
                 </div>

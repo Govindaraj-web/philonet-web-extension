@@ -10,7 +10,7 @@ export function useMarkdown() {
   const render = (text: string) => ({ __html: renderMD(text) });
 
   // Render with highlighting
-  const renderHighlighted = (text: string, hiLiteText: string) => {
+  const renderHighlighted = (text: string, hiLiteText?: string) => {
     const html = renderMD(text);
     if (!hiLiteText) return { __html: html };
     try {
