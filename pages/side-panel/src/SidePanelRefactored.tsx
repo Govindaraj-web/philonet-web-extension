@@ -233,6 +233,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   const [streamingResult, setStreamingResult] = useState<string>('');
   const [extractResult, setExtractResult] = useState<any>(null);
   
+  // PDF hash state for auto-save (separate from article to avoid dependency loops)
+  const [currentPdfHash, setCurrentPdfHash] = useState<string | undefined>(undefined);
+  
   // Status tracking for content generation flow
   const [contentGenerationStatus, setContentGenerationStatus] = useState<{
     stage: 'idle' | 'checking' | 'extracting' | 'streaming' | 'processing' | 'saving' | 'complete';
@@ -1451,6 +1454,9 @@ ${article.description}
       // Extract PDF content and get hash
       const pdfData: PdfUploadResponse = await extractPdfFromUrl(pdfUrl);
       console.log('📄 PDF extracted successfully:', pdfData);
+      
+      // Store PDF hash for auto-save (avoid article dependency loop)
+      setCurrentPdfHash(pdfData.metadata.fileHash);
 
       // Check if an article already exists for this PDF hash
       setContentGenerationStatus({
@@ -1757,6 +1763,9 @@ ${article.description}
       setGeneratedTags([]);
       setGeneratedCategories([]);
       setGeneratedTitle('');
+      
+      // Clear PDF hash since this is not PDF content
+      setCurrentPdfHash(undefined);
 
       console.log('🔄 Generate content requested for:', currentUrl);
 
@@ -2248,10 +2257,10 @@ ${article.description}
           const isCurrentUrlPdf = isPdfUrl(currentUrl);
           let pdfHash: string | undefined;
           
-          // Get PDF hash from article state if available
-          if (isCurrentUrlPdf && article?.pdf && article?.hash) {
-            pdfHash = article.hash;
-            console.log('📄 Using PDF hash from article state:', pdfHash);
+          // Use the stored PDF hash for auto-save to avoid article dependency loops
+          if (isCurrentUrlPdf && currentPdfHash) {
+            pdfHash = currentPdfHash;
+            console.log('📄 Using stored PDF hash for auto-save:', pdfHash);
           }
           
           await checkAndSaveToRoom(currentUrl, isCurrentUrlPdf, pdfHash);
@@ -2264,7 +2273,7 @@ ${article.description}
     };
 
     autoSaveToRoom();
-  }, [streamingCompleted, extractCompleted, streamingResult, extractResult, currentUrl, article]);
+  }, [streamingCompleted, extractCompleted, streamingResult, extractResult, currentUrl, currentPdfHash]);
 
   // Settings handlers
   const handleSettingsChange = (newSettings: Partial<Settings>) => {
@@ -3080,6 +3089,9 @@ ${article.description}
     setStreamingResult('');
     setExtractResult(null);
     
+    // Reset PDF hash state to avoid stale data
+    setCurrentPdfHash(undefined);
+    
     setContentGenerationStatus({
       stage: 'idle',
       streamingComplete: false,
@@ -3247,6 +3259,9 @@ ${article.description}
   const handlePdfUploadSuccess = async (pdfData: PdfUploadResponse) => {
     try {
       console.log('📤 PDF uploaded successfully, starting content generation...', pdfData);
+      
+      // Store PDF hash for auto-save (avoid article dependency loop)
+      setCurrentPdfHash(pdfData.metadata.fileHash);
       
       // Create a mock article from the uploaded PDF data
       const uploadedPdfArticle: Article = {
