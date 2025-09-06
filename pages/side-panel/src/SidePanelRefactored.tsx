@@ -48,6 +48,7 @@ import {
   type PageContent,
   type PdfUploadResponse 
 } from './services/gptSummary';
+import { getExtensionStorage, setExtensionStorage, removeExtensionStorage } from './utils';
 import { formatTimeAgo } from './utils';
 
 // PageData interface for web extraction
@@ -118,12 +119,23 @@ interface ArticleApiResponse {
   }>;
 }
 
+// Function to detect if screen is small (less than 14 inch laptop)
+const getDefaultFontSize = (): 'small' | 'medium' | 'large' => {
+  // Approximate 14" laptop resolution is around 1366x768
+  // We'll use width as the primary indicator
+  if (window.screen.width < 1366) {
+    return 'small';
+  }
+  return 'medium';
+};
+
 // Settings interface
 interface Settings {
   autoUpdate: boolean;
   refreshInterval: number;
   enableNotifications: boolean;
   useContentScript: boolean;
+  fontSize: 'small' | 'medium' | 'large';
 }
 
 const SidePanel: React.FC<SidePanelProps> = ({
@@ -177,7 +189,8 @@ const SidePanel: React.FC<SidePanelProps> = ({
     autoUpdate: true,
     refreshInterval: 5,
     enableNotifications: false,
-    useContentScript: true
+    useContentScript: true,
+    fontSize: getDefaultFontSize()
   });
   const [showSettings, setShowSettings] = useState(false);
   const [currentUrl, setCurrentUrl] = useState<string>('');
@@ -309,6 +322,51 @@ ${article.description}
 
   const { markdownContent, meta } = getContentData();
   const sections = parseSections(meta.body);
+
+  // Global font size class function
+  const getGlobalFontSizeClass = () => {
+    switch (settings.fontSize) {
+      case 'small': return 'text-sm';
+      case 'large': return 'text-lg';
+      default: return 'text-base';
+    }
+  };
+
+  // Settings persistence functions
+  const loadSettings = async () => {
+    try {
+      const authState = await philonetAuthStorage.get();
+      if (authState.user?.id) {
+        const storedSettings = await getExtensionStorage(`settings_${authState.user.id}`);
+        if (storedSettings) {
+          setSettings(prev => ({ ...prev, ...storedSettings }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
+
+  const saveSettings = async (newSettings: Settings) => {
+    try {
+      const authState = await philonetAuthStorage.get();
+      if (authState.user?.id) {
+        await setExtensionStorage(`settings_${authState.user.id}`, newSettings);
+      }
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    }
+  };
+
+  // Load settings on component mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  // Save settings whenever they change
+  useEffect(() => {
+    saveSettings(settings);
+  }, [settings]);
 
   // Debug logging
   console.log('📝 Using content:', article ? 'REAL ARTICLE DATA' : 'ENCOURAGING MESSAGE');
@@ -782,7 +840,7 @@ ${article.description}
         }
       });
     };
-  }, [settings.autoUpdate, settings.useContentScript, settings.refreshInterval, settings.enableNotifications, currentUrl, pageData, showPageData]);
+  }, [settings.autoUpdate, settings.useContentScript, settings.refreshInterval, settings.enableNotifications, settings.fontSize, currentUrl, pageData, showPageData]);
 
   // Check for existing articles when URL changes
   useEffect(() => {
@@ -3719,13 +3777,13 @@ ${article.description}
 
   try {
     return (
-      <div className="relative w-full h-screen bg-philonet-black text-white overflow-hidden font-inter">
+      <div className={`relative w-full h-screen bg-philonet-black text-white overflow-hidden font-inter ${getGlobalFontSizeClass()}`}>
         {/* Main Panel - always visible */}
         <motion.aside
           initial={false}
           animate={{ width: "100%" }}
           transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          className="relative h-screen bg-philonet-panel text-white shadow-2xl overflow-visible w-full max-w-none flex flex-col"
+          className="relative h-screen bg-philonet-panel text-white shadow-2xl overflow-visible w-full min-w-[420px] max-w-none flex flex-col"
           aria-label="Philonet side panel"
         >
           {/* Top Action Bar */}
@@ -3752,6 +3810,8 @@ ${article.description}
             shareUrl={getShareUrl()}
             articleTitle={article?.title || pageData?.title || document.title || "Current Page"}
             thoughtRoomsCount={state.comments.length} // Use comments count as conversations count
+            fontSize={settings.fontSize}
+            onFontSizeChange={(size) => setSettings(prev => ({ ...prev, fontSize: size }))}
           />
 
           {/* Compact Search Bar - Floating Style */}
@@ -3918,6 +3978,7 @@ ${article.description}
               footerH={state.footerH}
               sourceUrl={state.currentSourceUrl}
               joinedRoomName={joinedRoomName}
+              fontSize={settings.fontSize}
             />
           ) : (isLoadingWithMinTimer || isLoadingArticle || isGeneratingContent) ? (
             // Show skeleton only when article is still loading (not highlights)
@@ -4563,7 +4624,14 @@ ${article.description}
                 onNavigateToText={handleNavigateToText}
                 onNavigateToTaggedText={handleNavigateToTaggedText}
                 onInsertEmoji={handleInsertEmoji}
+                onOpenAskAIDrawer={(question) => {
+                  if (question) {
+                    setAiDrawerInitialQuestion(question);
+                  }
+                  setShowAskAIDrawer(true);
+                }}
                 commentRef={commentRef as React.RefObject<HTMLTextAreaElement>}
+                fontSize={settings.fontSize}
               />
             </div>
           )}
@@ -4750,6 +4818,7 @@ ${article.description}
             articleTitle={article?.title || pageData?.title || document.title || 'Current Page'}
             articleUrl={article?.url || currentUrl}
             articleContent={article ? (article.description || article.summary) : pageData?.visibleText}
+            fontSize={settings.fontSize}
           />
         </motion.aside>
 

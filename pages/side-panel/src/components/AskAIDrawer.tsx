@@ -21,6 +21,7 @@ interface AskAIDrawerProps {
   articleContent?: string; // Article content for AI context
   articleTitle?: string; // Article title for AI context
   articleUrl?: string; // Article URL for AI context
+  fontSize?: 'small' | 'medium' | 'large'; // Font size setting
 }
 
 const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
@@ -30,7 +31,8 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
   contextTitle,
   articleContent = '',
   articleTitle = '',
-  articleUrl = ''
+  articleUrl = '',
+  fontSize = 'medium' // Default to medium
 }) => {
   const [question, setQuestion] = useState(initialQuestion);
   const [conversations, setConversations] = useState<AIConversation[]>([]);
@@ -45,6 +47,20 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
   const conversationsRef = useRef<HTMLDivElement>(null);
   const thoughtRoomsAPI = new ThoughtRoomsAPI();
   const markdownRenderer = createMathMarkdownRenderer();
+
+  // Font size utility function
+  const getFontSizeClass = () => {
+    switch (fontSize) {
+      case 'small': return 'text-sm';
+      case 'large': return 'text-lg';
+      default: return 'text-base';
+    }
+  };
+
+  const getDrawerHeightClass = () => {
+    // Increase drawer height for better visibility, especially on smaller screens
+    return 'h-[75vh]'; // Increased from 60vh to 75vh
+  };
 
   // Auto-focus input when drawer opens
   useEffect(() => {
@@ -507,9 +523,9 @@ Query: ${currentQuestion}`;
       />
       
       {/* Drawer */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none">
+      <div className={`fixed bottom-0 left-0 right-0 z-40 pointer-events-none ${getFontSizeClass()}`}>
         <div 
-          className="bg-philonet-panel border border-philonet-border rounded-t-xl shadow-2xl flex flex-col h-[60vh] w-full pointer-events-auto transform transition-transform duration-300 ease-out translate-y-0"
+          className={`bg-philonet-panel border border-philonet-border rounded-t-xl shadow-2xl flex flex-col ${getDrawerHeightClass()} w-full pointer-events-auto transform transition-transform duration-300 ease-out translate-y-0`}
           onClick={(e) => e.stopPropagation()}
         >
         {/* Header */}
@@ -519,8 +535,8 @@ Query: ${currentQuestion}`;
               <Bot className="h-4 w-4 text-blue-400" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white">AI Assistant</h2>
-              <p className="text-xs text-philonet-text-muted">
+              <h2 className={`font-semibold text-white ${fontSize === 'large' ? 'text-lg' : fontSize === 'small' ? 'text-sm' : 'text-base'}`}>AI Assistant</h2>
+              <p className={`text-philonet-text-muted ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
                 {contextTitle ? `Analyzing: ${contextTitle}` : 'Ask about the content'}
               </p>
             </div>
@@ -545,10 +561,10 @@ Query: ${currentQuestion}`;
               <div className="p-3 rounded-full bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 mb-3">
                 <Bot className="h-6 w-6 text-blue-400" />
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
+              <h3 className={`font-semibold text-white mb-2 ${fontSize === 'large' ? 'text-xl' : fontSize === 'small' ? 'text-base' : 'text-lg'}`}>
                 Start asking questions
               </h3>
-              <p className="text-philonet-text-muted text-sm max-w-xs">
+              <p className={`text-philonet-text-muted max-w-xs ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
                 I can help explain concepts, summarize sections, or answer specific questions about the content.
               </p>
             </div>
@@ -559,10 +575,10 @@ Query: ${currentQuestion}`;
                 {/* Question */}
                 <div className="flex justify-end">
                   <div className="max-w-[85%] bg-gradient-to-r from-blue-600/20 to-blue-500/20 border border-blue-500/30 rounded-lg rounded-tr-sm p-3">
-                    <p className="text-white text-sm whitespace-pre-wrap break-words">
+                    <p className={`text-white whitespace-pre-wrap break-words ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
                       {conversation.question}
                     </p>
-                    <div className="flex items-center gap-2 mt-2 text-xs text-philonet-text-muted">
+                    <div className={`flex items-center gap-2 mt-2 text-philonet-text-muted ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
                       <span>You</span>
                       <span>•</span>
                       <span>{conversation.timestamp.toLocaleTimeString()}</span>
@@ -576,14 +592,18 @@ Query: ${currentQuestion}`;
                     {conversation.isLoading ? (
                       <div className="flex items-center gap-3">
                         <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-                        <span className="text-philonet-text-muted text-sm">
+                        <span className={`text-philonet-text-muted ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
                           {isStreaming ? "AI is streaming response..." : "AI is thinking..."}
                         </span>
                       </div>
                     ) : (
                       <>
                         <div 
-                          className="prose prose-invert prose-sm max-w-none text-white [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 text-sm leading-relaxed break-words overflow-wrap-anywhere"
+                          className={`prose prose-invert max-w-none text-white [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 leading-relaxed break-words overflow-wrap-anywhere ${
+                            fontSize === 'large' ? 'prose-lg text-base' : 
+                            fontSize === 'small' ? 'prose-sm text-sm' : 
+                            'prose-sm text-sm'
+                          }`}
                           style={{ 
                             wordBreak: 'break-word',
                             overflowWrap: 'anywhere',
@@ -592,7 +612,7 @@ Query: ${currentQuestion}`;
                           dangerouslySetInnerHTML={renderMarkdown(conversation.answer || '')}
                         />
                         {isStreaming && conversation.answer && (
-                          <div className="flex items-center gap-2 mt-2 text-xs text-blue-400">
+                          <div className={`flex items-center gap-2 mt-2 text-blue-400 ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
                             <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                             <span>Streaming...</span>
                           </div>
@@ -604,7 +624,7 @@ Query: ${currentQuestion}`;
                           </div>
                         )}
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-philonet-border/50">
-                          <div className="flex items-center gap-2 text-xs text-philonet-text-muted">
+                          <div className={`flex items-center gap-2 text-philonet-text-muted ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
                             <Bot className="h-3 w-3" />
                             <span>AI Assistant</span>
                             <span>•</span>
@@ -614,7 +634,7 @@ Query: ${currentQuestion}`;
                             variant="ghost"
                             size="sm"
                             onClick={() => copyToClipboard(conversation.answer, conversation.id)}
-                            className="h-6 px-2 text-xs text-philonet-text-muted hover:text-white hover:bg-philonet-border/30 rounded transition-colors"
+                            className={`h-6 px-2 text-philonet-text-muted hover:text-white hover:bg-philonet-border/30 rounded transition-colors ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}
                           >
                             {copiedId === conversation.id ? (
                               <>
@@ -642,7 +662,7 @@ Query: ${currentQuestion}`;
                 <Button
                   onClick={scrollToBottom}
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 border-blue-500 text-white shadow-lg animate-bounce text-xs px-3 py-1 h-8"
+                  className={`bg-blue-600 hover:bg-blue-700 border-blue-500 text-white shadow-lg animate-bounce px-3 py-1 h-8 ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}
                 >
                   <ChevronDown className="h-3 w-3 mr-1" />
                   Follow stream
@@ -656,7 +676,7 @@ Query: ${currentQuestion}`;
         {/* Input */}
         <div className="p-3 border-t border-philonet-border bg-philonet-card/30">
           <div className="bg-philonet-card/60 border border-philonet-border rounded-lg p-3">
-            <div className="mb-2 flex items-center gap-2 text-philonet-text-muted text-sm">
+            <div className={`mb-2 flex items-center gap-2 text-philonet-text-muted ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
               <Bot className="h-4 w-4" />
               <span>Ask a question</span>
               {isLoading && (
@@ -673,7 +693,7 @@ Query: ${currentQuestion}`;
                 onKeyDown={handleKeyDown}
                 rows={2}
                 className={cn(
-                  "bg-transparent border-0 p-0 resize-none text-white placeholder:text-philonet-text-muted focus:ring-0 text-sm",
+                  `bg-transparent border-0 p-0 resize-none text-white placeholder:text-philonet-text-muted focus:ring-0 ${fontSize === 'large' ? 'text-base' : 'text-sm'}`,
                   isLoading && "opacity-70"
                 )}
                 disabled={isLoading}
@@ -681,7 +701,7 @@ Query: ${currentQuestion}`;
             </div>
             
             <div className="flex items-center justify-between mt-2">
-              <span className="text-xs text-philonet-text-muted">
+              <span className={`text-philonet-text-muted ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
                 {isStreaming ? "AI is generating response..." : isLoading ? "AI is thinking..." : "Press Cmd/Ctrl+Enter to send"}
               </span>
               <div className="flex items-center gap-2">
@@ -690,7 +710,7 @@ Query: ${currentQuestion}`;
                     onClick={handleStopStreaming}
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 text-sm transition-colors"
+                    className={`h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 transition-colors ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}
                   >
                     <X className="h-3 w-3 mr-1" />
                     Stop
@@ -699,7 +719,7 @@ Query: ${currentQuestion}`;
                 <Button
                   onClick={handleSubmit}
                   disabled={!question.trim() || isLoading}
-                  className="h-8 px-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 border-blue-400 text-sm"
+                  className={`h-8 px-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 border-blue-400 ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}
                 >
                   {isLoading ? (
                     <Loader2 className="h-3 w-3 animate-spin" />

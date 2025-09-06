@@ -7,21 +7,32 @@ interface ContentSectionsProps {
   comments: Comment[];
   renderHighlighted: (text: string) => { __html: string };
   bodyContentRef: React.RefObject<HTMLDivElement>;
+  fontSize?: 'small' | 'medium' | 'large';
 }
 
 const ContentSectionsComponent: React.FC<ContentSectionsProps> = ({
   sections,
   comments,
   renderHighlighted,
-  bodyContentRef
+  bodyContentRef,
+  fontSize = 'medium'
 }) => {
+  // Dynamic prose size based on font size
+  const getProseSize = () => {
+    switch (fontSize) {
+      case 'small': return 'prose-sm';
+      case 'large': return 'prose-lg md:prose-xl lg:prose-2xl';
+      default: return 'prose-base md:prose-lg lg:prose-xl';
+    }
+  };
+
   return (
     <section className="px-4 md:px-6 lg:px-8 pb-6 mt-6 space-y-8">
       <div 
         ref={bodyContentRef}
         data-article-body="true"
-        className="prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-[#CBA339] prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none prose-base md:prose-lg lg:prose-xl
-        cursor-text"
+        className={`prose prose-invert prose-hr:hidden prose-headings:font-light prose-headings:tracking-philonet-wide prose-h1:text-white prose-h2:text-blue-400 prose-h3:text-blue-300 prose-h4:text-[#CBA339] prose-h5:text-green-400 prose-h6:text-purple-400 prose-p:font-light prose-p:tracking-philonet-tight prose-p:text-philonet-text-secondary prose-strong:text-white prose-a:text-philonet-text-muted hover:prose-a:text-philonet-blue-500 prose-li:marker:text-philonet-border-light prose-blockquote:border-l-philonet-border prose-table:rounded-philonet-lg prose-table:border prose-table:border-philonet-border prose-th:bg-philonet-card prose-th:px-4 prose-th:py-3 prose-td:bg-philonet-panel prose-td:px-4 prose-td:py-3 prose-td:border-t prose-td:border-philonet-border prose-th:border-b prose-th:border-philonet-border max-w-none ${getProseSize()}
+        cursor-text`}
         style={{
           '--tw-prose-selection-bg': 'rgba(203, 163, 57, 0.2)',
           '--tw-prose-selection-color': '#CBA339'

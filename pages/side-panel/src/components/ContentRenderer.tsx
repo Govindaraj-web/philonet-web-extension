@@ -18,6 +18,7 @@ interface ContentRendererProps {
   footerH: number;
   sourceUrl?: string;
   joinedRoomName?: string | null;
+  fontSize?: 'small' | 'medium' | 'large';
 }
 
 const ContentRenderer: React.FC<ContentRendererProps> = ({
@@ -33,7 +34,8 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
   bodyContentRef,
   footerH,
   sourceUrl,
-  joinedRoomName
+  joinedRoomName,
+  fontSize = 'medium'
 }) => {
   return (
     <div className="absolute left-0 right-0" style={{ top: 68, bottom: footerH }}>
@@ -53,6 +55,7 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({
           comments={comments}
           renderHighlighted={renderHighlighted}
           bodyContentRef={bodyContentRef}
+          fontSize={fontSize}
         />
       </ScrollArea>
     </div>

@@ -59,6 +59,8 @@ interface AuthenticatedTopActionBarProps {
   shareUrl?: string;
   articleTitle?: string;
   thoughtRoomsCount?: number;
+  fontSize?: 'small' | 'medium' | 'large';
+  onFontSizeChange?: (size: 'small' | 'medium' | 'large') => void;
 }
 
 const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
@@ -83,7 +85,9 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   article = null,
   shareUrl = "",
   articleTitle = "",
-  thoughtRoomsCount = 0
+  thoughtRoomsCount = 0,
+  fontSize = 'medium',
+  onFontSizeChange
 }) => {
   const { user, logout } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -317,6 +321,43 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                           Ctrl+F
                         </span>
                       </button>
+                    )}
+
+                    {/* Font Size picker - only show when article exists */}
+                    {article && onFontSizeChange && (
+                      <div className="p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group mb-2">
+                        <div className="flex items-center gap-3 mb-2">
+                          <FileText className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                          <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                            Font Size
+                          </span>
+                          <span className="text-xs text-philonet-text-muted ml-auto flex items-center">
+                            <span className="text-base font-medium">A</span>
+                            <span className="text-xs ml-0.5 mb-1">a</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center bg-black/20 rounded-lg p-0.5 backdrop-blur-sm border border-white/10">
+                          {(['small', 'medium', 'large'] as const).map((size) => (
+                            <button
+                              key={size}
+                              onClick={() => onFontSizeChange(size)}
+                              className={`flex-1 px-2 py-1 text-xs rounded-md transition-all duration-200 font-medium relative ${
+                                fontSize === size
+                                  ? 'bg-philonet-blue-500 text-white border-philonet-blue-500 shadow-lg transform scale-105'
+                                  : 'text-philonet-text-muted hover:bg-white/10 hover:text-white'
+                              }`}
+                              title={`${size.charAt(0).toUpperCase() + size.slice(1)} text size`}
+                            >
+                              <span className={size === 'small' ? 'text-xs' : size === 'large' ? 'text-sm' : 'text-xs'}>
+                                {size === 'small' ? 'S' : size === 'medium' ? 'M' : 'L'}
+                              </span>
+                              {fontSize === size && (
+                                <div className="absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-white rounded-full"></div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
 
 

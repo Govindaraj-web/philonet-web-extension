@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2, MessageCircle } from 'lucide-react';
 import { Button, Textarea } from './ui';
 import { cn } from '@extension/ui';
+import MentionSuggestions from './MentionSuggestions';
+import MentionService, { MentionSuggestion } from '../services/mentionService';
 
 interface ComposerFooterProps {
   composerTab: 'thoughts' | 'ai';
@@ -20,7 +22,9 @@ interface ComposerFooterProps {
   onInsertEmoji: () => void;
   onNavigateToText?: () => void;
   onNavigateToTaggedText?: (text: string) => void;
+  onOpenAskAIDrawer?: (question?: string) => void; // New prop for opening AI drawer
   commentRef: React.RefObject<HTMLTextAreaElement>;
+  fontSize?: 'small' | 'medium' | 'large'; // Font size prop
 }
 
 const ComposerFooter: React.FC<ComposerFooterProps> = ({
@@ -40,10 +44,154 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   onInsertEmoji,
   onNavigateToText,
   onNavigateToTaggedText,
-  commentRef
+  onOpenAskAIDrawer,
+  commentRef,
+  fontSize = 'medium'
 }) => {
+  // Mention suggestions state
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionInput, setMentionInput] = useState('');
+  const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
+  const [currentMention, setCurrentMention] = useState<{ mention: string; startPos: number; endPos: number } | null>(null);
+  
+  const composerRef = useRef<HTMLDivElement>(null);
+
+  // Handle mention detection and suggestions
+  const handleTextChange = (value: string, isCommentTab = true) => {
+    if (isCommentTab) {
+      onCommentChange(value);
+    } else {
+      onAiQuestionChange(value);
+    }
+
+    // Only handle mentions in the thoughts tab
+    if (!isCommentTab) {
+      setShowMentions(false);
+      return;
+    }
+
+    const textarea = commentRef.current;
+    if (!textarea) return;
+
+    const cursorPosition = textarea.selectionStart;
+    const mention = MentionService.getCurrentMention(value, cursorPosition);
+
+    if (mention && mention.mention.length > 1) {
+      setCurrentMention(mention);
+      setMentionInput(mention.mention);
+      setShowMentions(true);
+      
+      // Calculate position for suggestions dropdown (will be updated when suggestions load)
+      updateMentionPosition(textarea, mention.startPos);
+    } else {
+      setShowMentions(false);
+      setCurrentMention(null);
+      setMentionInput('');
+    }
+  };
+
+  // Handle suggestion count changes to update positioning
+  const handleSuggestionsChange = (count: number) => {
+    if (commentRef.current && currentMention) {
+      updateMentionPositionWithCount(commentRef.current, currentMention.startPos, count);
+    }
+  };
+
+  const updateMentionPosition = (textarea: HTMLTextAreaElement, mentionStart: number) => {
+    updateMentionPositionWithCount(textarea, mentionStart, 3); // Default estimate
+  };
+
+  const updateMentionPositionWithCount = (textarea: HTMLTextAreaElement, mentionStart: number, suggestionCount: number) => {
+    // Get the rectangle of the composer footer and textarea
+    const composerRect = composerRef.current?.getBoundingClientRect();
+    const textareaRect = textarea.getBoundingClientRect();
+    
+    if (composerRect && textareaRect) {
+      const left = 8; // Small left margin from composer edge
+      
+      // Calculate accurate height based on actual suggestion count
+      const itemHeight = 52; // Height per suggestion item
+      const footerHeight = 50; // Footer with navigation hints
+      const padding = 8; // Top and bottom padding
+      const actualHeight = Math.min(300, suggestionCount * itemHeight + footerHeight + padding);
+      
+      const gapAbove = 8; // Gap between dropdown and textarea
+      
+      // Position above the textarea using actual content height
+      const top = textareaRect.top - composerRect.top - actualHeight - gapAbove;
+      
+      // If calculated top is negative (not enough space), force it to show above anyway
+      const finalTop = top < 0 ? -actualHeight - 20 : top;
+      
+      setMentionPosition({ top: finalTop, left });
+    }
+  };
+
+  const handleUserSelect = (user: MentionSuggestion) => {
+    if (!currentMention || !commentRef.current) return;
+
+    const textarea = commentRef.current;
+    const { startPos, endPos } = currentMention;
+    
+    // Preserve existing content by only replacing the @mention part
+    const beforeMention = comment.substring(0, startPos);
+    const afterMention = comment.substring(endPos);
+    const newValue = beforeMention + user.mention + ' ' + afterMention;
+    
+    onCommentChange(newValue);
+    setShowMentions(false);
+    setCurrentMention(null);
+    
+    // Set cursor position after the mention
+    setTimeout(() => {
+      const newCursorPos = startPos + user.mention.length + 1;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      textarea.focus();
+    }, 0);
+  };
+
+  const handlePhiloSelect = () => {
+    if (!currentMention || !commentRef.current) return;
+
+    // Replace @Philo with nothing and open AI drawer with the rest as question
+    const textarea = commentRef.current;
+    const { startPos, endPos } = currentMention;
+    const textAfterMention = comment.substring(endPos).trim();
+    
+    // Preserve existing content by only removing the @Philo mention
+    const beforeMention = comment.substring(0, startPos);
+    const afterMention = comment.substring(endPos);
+    const newComment = (beforeMention + afterMention).trim();
+    
+    onCommentChange(newComment);
+    
+    setShowMentions(false);
+    setCurrentMention(null);
+    
+    // Open AI drawer with the question
+    if (onOpenAskAIDrawer) {
+      onOpenAskAIDrawer(textAfterMention || undefined);
+    }
+    
+    // Focus back on textarea
+    setTimeout(() => {
+      textarea.focus();
+    }, 100);
+  };
+
+  // Handle clicking outside to close mentions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showMentions && composerRef.current && !composerRef.current.contains(event.target as Node)) {
+        setShowMentions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMentions]);
   return (
-    <div className="absolute bottom-0 left-0 right-0 border-t border-philonet-border bg-philonet-panel px-4 py-3 md:px-6 md:py-4" data-composer-footer>
+    <div ref={composerRef} className="absolute bottom-0 left-0 right-0 border-t border-philonet-border bg-philonet-panel px-4 py-3 md:px-6 md:py-4 overflow-visible" data-composer-footer>
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-3">
         <button
@@ -122,14 +270,14 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
           <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
             <Textarea
               ref={commentRef}
-              placeholder={isSubmittingComment ? "Submitting your thought..." : "Add a thought…"}
+              placeholder={isSubmittingComment ? "Submitting your thought..." : "Add a thought… (type @ to mention users)"}
               value={comment}
               rows={commentRows}
               className={`flex-1 text-sm md:text-base ${isSubmittingComment ? 'opacity-70' : ''}`}
               disabled={isSubmittingComment}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onCommentChange(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleTextChange(e.target.value, true)}
               onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
-                if (e.key === 'Enter' && !e.shiftKey && !isSubmittingComment) { 
+                if (e.key === 'Enter' && !e.shiftKey && !isSubmittingComment && !showMentions) { 
                   e.preventDefault(); 
                   onSubmitComment(); 
                 } 
@@ -179,7 +327,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
           <Textarea
             placeholder={aiBusy ? "AI is processing your question..." : "Ask a question about this document…"}
             value={aiQuestion}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onAiQuestionChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleTextChange(e.target.value, false)}
             rows={3}
             className={`bg-transparent text-sm md:text-base ${aiBusy ? 'opacity-70' : ''}`}
             disabled={aiBusy}
@@ -214,6 +362,17 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
           </div>
         </div>
       )}
+
+      {/* Mention Suggestions */}
+      <MentionSuggestions
+        input={mentionInput}
+        onUserSelect={handleUserSelect}
+        onPhiloSelect={handlePhiloSelect}
+        isVisible={showMentions}
+        position={mentionPosition}
+        fontSize={fontSize}
+        onSuggestionsChange={handleSuggestionsChange}
+      />
     </div>
   );
 };
