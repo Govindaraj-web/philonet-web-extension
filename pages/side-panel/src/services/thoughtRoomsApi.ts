@@ -174,6 +174,7 @@ interface ReactToCommentResponse {
 interface AIQueryParams {
   text: string;
   fast?: boolean;
+  stream?: boolean;
 }
 
 interface AIQueryResponse {
@@ -380,8 +381,8 @@ export class ThoughtRoomsAPI {
     }
   }
 
-  async queryAI(params: AIQueryParams): Promise<AIQueryResponse> {
-    const { text, fast = true } = params;
+  async queryAI(params: AIQueryParams): Promise<AIQueryResponse | ReadableStream> {
+    const { text, fast = true, stream = false } = params;
     
     // Get authorization token from storage
     const token = await philonetAuthStorage.getToken();
@@ -390,11 +391,12 @@ export class ThoughtRoomsAPI {
       throw new Error('No authorization token found. Please log in.');
     }
     
-    console.log('🤖 Querying AI with text prompt (length:', text.length, 'chars)');
+    console.log('🤖 Querying AI with text prompt (length:', text.length, 'chars), streaming:', stream);
     
     const requestBody = {
       text,
-      fast
+      fast,
+      stream
     };
 
     try {
@@ -415,16 +417,26 @@ export class ThoughtRoomsAPI {
         throw new Error(`AI query API request failed: ${response.status} ${response.statusText}`);
       }
 
-      const data: AIQueryResponse = await response.json();
-      
-      // Validate the response has the expected structure
-      if (!data.summary || typeof data.summary !== 'string') {
-        console.error('❌ Invalid AI response structure:', data);
-        throw new Error('Invalid response format from AI service');
+      if (stream) {
+        // Return the response body for streaming
+        console.log('📡 Starting AI streaming response');
+        if (!response.body) {
+          throw new Error('No response body available for streaming');
+        }
+        return response.body;
+      } else {
+        // Traditional non-streaming response
+        const data: AIQueryResponse = await response.json();
+        
+        // Validate the response has the expected structure
+        if (!data.summary || typeof data.summary !== 'string') {
+          console.error('❌ Invalid AI response structure:', data);
+          throw new Error('Invalid response format from AI service');
+        }
+        
+        console.log('✅ AI query completed successfully, summary length:', data.summary.length);
+        return data;
       }
-      
-      console.log('✅ AI query completed successfully, summary length:', data.summary.length);
-      return data;
     } catch (error) {
       console.error('❌ AI query API request failed:', error);
       throw error;

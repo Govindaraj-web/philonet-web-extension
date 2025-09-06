@@ -11,6 +11,17 @@ export interface Comment {
   likeCount?: number;
   isLiked?: boolean;
   replyCount?: number;
+  // Enhanced reactions system
+  reactions?: Array<{
+    type: string;
+    count: number;
+    users: Array<{
+      id: string;
+      name: string;
+      avatar?: string;
+    }>;
+    userReacted: boolean;
+  }>;
 }
 
 export interface ConversationMessage {
@@ -207,6 +218,8 @@ export interface SidePanelState {
   // Content overlay for tagged text highlighting
   showContentOverlay: boolean;
   overlayTaggedText: string;
+  // Comment submission loading state
+  isSubmittingComment: boolean;
 }
 
 export interface SidePanelProps {

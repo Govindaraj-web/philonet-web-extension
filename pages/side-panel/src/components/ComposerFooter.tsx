@@ -10,6 +10,7 @@ interface ComposerFooterProps {
   aiQuestion: string;
   aiBusy: boolean;
   hiLiteText: string;
+  isSubmittingComment: boolean;
   onTabChange: (tab: 'thoughts' | 'ai') => void;
   onCommentChange: (value: string) => void;
   onAiQuestionChange: (value: string) => void;
@@ -29,6 +30,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   aiQuestion,
   aiBusy,
   hiLiteText,
+  isSubmittingComment,
   onTabChange,
   onCommentChange,
   onAiQuestionChange,
@@ -120,13 +122,14 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
           <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
             <Textarea
               ref={commentRef}
-              placeholder="Add a thought…"
+              placeholder={isSubmittingComment ? "Submitting your thought..." : "Add a thought…"}
               value={comment}
               rows={commentRows}
-              className="flex-1 text-sm md:text-base"
+              className={`flex-1 text-sm md:text-base ${isSubmittingComment ? 'opacity-70' : ''}`}
+              disabled={isSubmittingComment}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onCommentChange(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
-                if (e.key === 'Enter' && !e.shiftKey) { 
+                if (e.key === 'Enter' && !e.shiftKey && !isSubmittingComment) { 
                   e.preventDefault(); 
                   onSubmitComment(); 
                 } 
@@ -135,22 +138,30 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
             <button
               type="button"
               title="Insert emoji"
-              className="ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 h-9 w-9 md:h-10 md:w-10"
+              className={`ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 h-9 w-9 md:h-10 md:w-10 ${isSubmittingComment ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={onInsertEmoji}
+              disabled={isSubmittingComment}
             >
               <Smile className="h-5 w-5 md:h-6 md:w-6" />
             </button>
             <Button 
-              disabled={!comment.trim()} 
+              disabled={!comment.trim() || isSubmittingComment} 
               onClick={onSubmitComment} 
               className="ml-1 h-10 px-4 md:h-11 md:px-5"
             >
-              <CornerDownLeft className="h-4 w-4 md:h-5 md:w-5" />
+              {isSubmittingComment ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4 md:h-5 md:w-5" />
+                  <span className="hidden sm:inline ml-2">Posting...</span>
+                </>
+              ) : (
+                <CornerDownLeft className="h-4 w-4 md:h-5 md:w-5" />
+              )}
             </Button>
           </div>
           <div className="mt-2 flex justify-end">
             <span className="text-philonet-text-subtle text-sm md:text-base">
-              {Math.max(0, 280 - comment.length)} characters left
+              {isSubmittingComment ? "Submitting thought..." : `${Math.max(0, 280 - comment.length)} characters left`}
             </span>
           </div>
         </div>

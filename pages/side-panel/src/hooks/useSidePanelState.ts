@@ -15,6 +15,35 @@ const INITIAL_COMMENTS: Comment[] = [
     likeCount: 24,
     isLiked: false,
     replyCount: 8,
+    reactions: [
+      {
+        type: "like",
+        count: 12,
+        users: [
+          { id: "user1", name: "Jamie Kim", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jamie&backgroundColor=c0aede" },
+          { id: "user2", name: "Sarah Thompson", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah&backgroundColor=ffd93d" },
+          { id: "user3", name: "Mike Johnson" }
+        ],
+        userReacted: false
+      },
+      {
+        type: "love",
+        count: 8,
+        users: [
+          { id: "user4", name: "Emma Wilson" },
+          { id: "user5", name: "David Brown" }
+        ],
+        userReacted: true
+      },
+      {
+        type: "celebrate",
+        count: 3,
+        users: [
+          { id: "user6", name: "Lisa Garcia" }
+        ],
+        userReacted: false
+      }
+    ],
     replies: [
       {
         id: 11,
@@ -24,7 +53,18 @@ const INITIAL_COMMENTS: Comment[] = [
         profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jamie&backgroundColor=c0aede",
         likeCount: 3,
         isLiked: false,
-        replyCount: 0
+        replyCount: 0,
+        reactions: [
+          {
+            type: "like",
+            count: 5,
+            users: [
+              { id: "user1", name: "Alex Chen" },
+              { id: "user2", name: "Sarah Thompson" }
+            ],
+            userReacted: false
+          }
+        ]
       },
       {
         id: 12,
@@ -33,7 +73,17 @@ const INITIAL_COMMENTS: Comment[] = [
         ts: "30 minutes ago",
         likeCount: 1,
         isLiked: false,
-        replyCount: 0
+        replyCount: 0,
+        reactions: [
+          {
+            type: "heart",
+            count: 2,
+            users: [
+              { id: "user1", name: "Alex Chen" }
+            ],
+            userReacted: false
+          }
+        ]
       }
     ]
   },
@@ -47,6 +97,25 @@ const INITIAL_COMMENTS: Comment[] = [
     likeCount: 12,
     isLiked: true,
     replyCount: 3,
+    reactions: [
+      {
+        type: "thinking",
+        count: 6,
+        users: [
+          { id: "user1", name: "Alex Chen" },
+          { id: "user3", name: "Mike Johnson" }
+        ],
+        userReacted: true
+      },
+      {
+        type: "clap",
+        count: 4,
+        users: [
+          { id: "user4", name: "Emma Wilson" }
+        ],
+        userReacted: false
+      }
+    ],
     replies: [
       {
         id: 21,
@@ -56,7 +125,25 @@ const INITIAL_COMMENTS: Comment[] = [
         profilePic: "https://api.dicebear.com/7.x/avataaars/svg?seed=Mike&backgroundColor=6bcf7f",
         likeCount: 2,
         isLiked: false,
-        replyCount: 0
+        replyCount: 0,
+        reactions: [
+          {
+            type: "wow",
+            count: 3,
+            users: [
+              { id: "user2", name: "Sarah Thompson" }
+            ],
+            userReacted: false
+          },
+          {
+            type: "thinking",
+            count: 2,
+            users: [
+              { id: "user1", name: "Alex Chen" }
+            ],
+            userReacted: true
+          }
+        ]
       }
     ]
   },
@@ -70,6 +157,26 @@ const INITIAL_COMMENTS: Comment[] = [
     likeCount: 6,
     isLiked: false,
     replyCount: 1,
+    reactions: [
+      {
+        type: "thinking",
+        count: 8,
+        users: [
+          { id: "user1", name: "Alex Chen" },
+          { id: "user2", name: "Sarah Thompson" },
+          { id: "user4", name: "Emma Wilson" }
+        ],
+        userReacted: true
+      },
+      {
+        type: "fire",
+        count: 3,
+        users: [
+          { id: "user5", name: "David Park" }
+        ],
+        userReacted: false
+      }
+    ],
     replies: []
   },
   {
@@ -82,6 +189,36 @@ const INITIAL_COMMENTS: Comment[] = [
     likeCount: 18,
     isLiked: false,
     replyCount: 5,
+    reactions: [
+      {
+        type: "love",
+        count: 14,
+        users: [
+          { id: "user1", name: "Alex Chen" },
+          { id: "user2", name: "Sarah Thompson" },
+          { id: "user3", name: "Mike Rodriguez" },
+          { id: "user5", name: "David Park" }
+        ],
+        userReacted: false
+      },
+      {
+        type: "celebrate",
+        count: 7,
+        users: [
+          { id: "user6", name: "Lisa Garcia" },
+          { id: "user7", name: "Tom Anderson" }
+        ],
+        userReacted: true
+      },
+      {
+        type: "clap",
+        count: 5,
+        users: [
+          { id: "user8", name: "Jenny Smith" }
+        ],
+        userReacted: false
+      }
+    ],
     replies: []
   },
   {
@@ -93,6 +230,34 @@ const INITIAL_COMMENTS: Comment[] = [
     likeCount: 9,
     isLiked: false,
     replyCount: 2,
+    reactions: [
+      {
+        type: "wow",
+        count: 6,
+        users: [
+          { id: "user1", name: "Alex Chen" },
+          { id: "user4", name: "Emma Wilson" }
+        ],
+        userReacted: false
+      },
+      {
+        type: "thinking",
+        count: 4,
+        users: [
+          { id: "user2", name: "Sarah Thompson" },
+          { id: "user3", name: "Mike Rodriguez" }
+        ],
+        userReacted: true
+      },
+      {
+        type: "care",
+        count: 2,
+        users: [
+          { id: "user6", name: "Lisa Garcia" }
+        ],
+        userReacted: false
+      }
+    ],
     replies: []
   }
 ];
@@ -129,12 +294,17 @@ export function useSidePanelState() {
     // Content overlay for tagged text highlighting
     showContentOverlay: false,
     overlayTaggedText: "",
+    // Comment submission loading state
+    isSubmittingComment: false,
   });
 
   // Comment actions
   const submitComment = useCallback(() => {
     const text = state.comment.trim();
-    if (!text) return;
+    if (!text || state.isSubmittingComment) return;
+    
+    // Set loading state
+    setState(prev => ({ ...prev, isSubmittingComment: true }));
     
     const newComment: Comment = { 
       id: Date.now(), 
@@ -149,8 +319,9 @@ export function useSidePanelState() {
       comments: [newComment, ...prev.comments],
       comment: "",
       commentRows: 1,
+      isSubmittingComment: false,
     }));
-  }, [state.comment, state.hiLiteText]);
+  }, [state.comment, state.hiLiteText, state.isSubmittingComment]);
 
   // Enhanced comment submission with highlight storage
   const submitCommentWithHighlight = useCallback(async (
@@ -158,7 +329,10 @@ export function useSidePanelState() {
     bodyContentRef?: React.RefObject<HTMLDivElement | null>
   ) => {
     const text = state.comment.trim();
-    if (!text) return;
+    if (!text || state.isSubmittingComment) return;
+    
+    // Set loading state
+    setState(prev => ({ ...prev, isSubmittingComment: true }));
     
     const newComment: Comment = { 
       id: Date.now(), 
@@ -195,24 +369,41 @@ export function useSidePanelState() {
         const result = await storeSmartHighlight(highlightData);
         console.log('✅ Highlight stored successfully:', result);
         
-        // Refresh highlights after successful storage
+        // Clear the comment and reset state first
+        setState(prev => ({
+          ...prev,
+          comment: "",
+          commentRows: 1,
+          isSubmittingComment: false,
+        }));
+        
+        // Refresh highlights after successful storage - this will add the comment from backend
         if (state.currentArticleId) {
           await refreshHighlights(state.currentArticleId);
         }
         
       } catch (error) {
         console.error('❌ Failed to store highlight:', error);
-        // Don't block comment submission if highlight storage fails
+        // On error, add the comment locally and reset loading state
+        setState(prev => ({
+          ...prev,
+          comments: [newComment, ...prev.comments],
+          comment: "",
+          commentRows: 1,
+          isSubmittingComment: false,
+        }));
       }
+    } else {
+      // No highlight to store, just add comment locally
+      setState(prev => ({
+        ...prev,
+        comments: [newComment, ...prev.comments],
+        comment: "",
+        commentRows: 1,
+        isSubmittingComment: false,
+      }));
     }
-    
-    setState(prev => ({
-      ...prev,
-      comments: [newComment, ...prev.comments],
-      comment: "",
-      commentRows: 1,
-    }));
-  }, [state.comment, state.hiLiteText, state.currentSourceUrl, state.currentArticleId]);
+  }, [state.comment, state.hiLiteText, state.currentSourceUrl, state.currentArticleId, state.isSubmittingComment]);
 
   // Function to fetch and refresh highlights from the backend
   const refreshHighlights = useCallback(async (articleId: string) => {

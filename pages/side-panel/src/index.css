@@ -49,6 +49,36 @@
     border-left: 4px solid #3b82f6 !important; /* Blue accent */
   }
 
+  /* Smooth scrolling for AI responses */
+  .ai-response-container {
+    scroll-behavior: smooth;
+  }
+
+  /* Prevent scroll jump during streaming */
+  .philonet-scrollbar {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+  }
+
+  .philonet-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .philonet-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .philonet-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.3);
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+  }
+
+  .philonet-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.5);
+  }
+
   /* Text selection highlight styles */
   .philonet-text-highlight {
     background: rgba(59, 130, 246, 0.15) !important;
@@ -220,5 +250,296 @@
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  /* Prose styling for AI drawer markdown content */
+  .prose-invert {
+    color: #e5e7eb;
+  }
+  
+  .prose-invert h1,
+  .prose-invert h2,
+  .prose-invert h3,
+  .prose-invert h4,
+  .prose-invert h5,
+  .prose-invert h6 {
+    color: #ffffff;
+    font-weight: 600;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+  }
+  
+  .prose-invert h1 { font-size: 1.5em; }
+  .prose-invert h2 { font-size: 1.3em; }
+  .prose-invert h3 { font-size: 1.1em; }
+  .prose-invert h4 { font-size: 1em; }
+  
+  .prose-invert p {
+    margin-top: 0.75em;
+    margin-bottom: 0.75em;
+    line-height: 1.6;
+  }
+  
+  .prose-invert strong {
+    color: #ffffff;
+    font-weight: 600;
+  }
+  
+  .prose-invert em {
+    color: #d1d5db;
+    font-style: italic;
+  }
+  
+  .prose-invert code {
+    background: rgba(31, 41, 55, 0.6);
+    color: #fbbf24;
+    padding: 0.125em 0.25em;
+    border-radius: 4px;
+    font-size: 0.875em;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  }
+  
+  .prose-invert pre {
+    background: rgba(31, 41, 55, 0.8);
+    color: #e5e7eb;
+    padding: 1em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 1em 0;
+    border-left: 4px solid #3b82f6;
+  }
+  
+  .prose-invert pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+  }
+  
+  .prose-invert ul,
+  .prose-invert ol {
+    margin: 0.75em 0;
+    padding-left: 1.5em;
+  }
+  
+  .prose-invert li {
+    margin: 0.25em 0;
+    line-height: 1.6;
+  }
+  
+  .prose-invert blockquote {
+    border-left: 4px solid #3b82f6;
+    padding-left: 1em;
+    margin: 1em 0;
+    font-style: italic;
+    color: #d1d5db;
+    background: rgba(59, 130, 246, 0.05);
+    border-radius: 0 4px 4px 0;
+  }
+  
+  .prose-invert a {
+    color: #60a5fa;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  
+  .prose-invert a:hover {
+    color: #93c5fd;
+    text-decoration: underline;
+  }
+  
+  .prose-invert table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+  }
+  
+  .prose-invert th,
+  .prose-invert td {
+    border: 1px solid #374151;
+    padding: 0.5em;
+    text-align: left;
+  }
+  
+  .prose-invert th {
+    background: rgba(59, 130, 246, 0.1);
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  /* Enhanced markdown elements for AI responses */
+  .prose-invert hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #374151, transparent);
+    margin: 1.5em 0;
+  }
+
+  .prose-invert img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 1em 0;
+  }
+
+  /* Enhanced list styling */
+  .prose-invert ul li::marker {
+    color: #60a5fa;
+  }
+
+  .prose-invert ol li::marker {
+    color: #60a5fa;
+    font-weight: 600;
+  }
+
+  /* Math expressions styling */
+  .prose-invert .katex-display {
+    margin: 1.5em 0 !important;
+    padding: 1em !important;
+    background: rgba(31, 41, 55, 0.5) !important;
+    border-radius: 8px !important;
+    border-left: 4px solid #8b5cf6 !important; /* Purple accent for math */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  .prose-invert .katex {
+    font-size: 1.05em !important;
+  }
+
+  /* Inline code enhancements */
+  .prose-invert :not(pre) > code {
+    background: rgba(139, 92, 246, 0.15) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(139, 92, 246, 0.2) !important;
+    font-weight: 500;
+  }
+
+  /* Code block enhancements */
+  .prose-invert pre {
+    background: rgba(17, 24, 39, 0.8) !important;
+    border: 1px solid #374151 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    position: relative;
+  }
+
+  .prose-invert pre::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+    border-radius: 8px 8px 0 0;
+  }
+
+  /* Better spacing for nested lists */
+  .prose-invert ul ul,
+  .prose-invert ol ol,
+  .prose-invert ul ol,
+  .prose-invert ol ul {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+  }
+
+  /* Highlight important text */
+  .prose-invert mark {
+    background: rgba(251, 191, 36, 0.3);
+    color: #fbbf24;
+    padding: 0.1em 0.2em;
+    border-radius: 3px;
+  }
+
+  /* Better blockquote styling */
+  .prose-invert blockquote {
+    position: relative;
+    padding: 1em 1.5em 1em 2em;
+    margin: 1.5em 0;
+    background: rgba(59, 130, 246, 0.08);
+    border-radius: 8px;
+    border-left: 4px solid #60a5fa;
+  }
+
+  .prose-invert blockquote::before {
+    content: '"';
+    position: absolute;
+    left: 0.5em;
+    top: 0.2em;
+    font-size: 2em;
+    color: #60a5fa;
+    opacity: 0.3;
+    font-family: Georgia, serif;
+  }
+
+  /* Specific styling for enhanced inline code */
+  .prose-invert .inline-code {
+    background: rgba(139, 92, 246, 0.15) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(139, 92, 246, 0.2) !important;
+    padding: 0.15em 0.3em !important;
+    border-radius: 4px !important;
+    font-weight: 500 !important;
+    font-size: 0.85em !important;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  }
+
+  /* AI response container enhancements */
+  .ai-response-container {
+    animation: fadeInUp 0.3s ease-out;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Smooth transitions for interactive elements */
+  .prose-invert a,
+  .prose-invert code,
+  .prose-invert .inline-code {
+    transition: all 0.2s ease;
+  }
+
+  .prose-invert a:hover,
+  .prose-invert .inline-code:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Handle overflow and long text in AI responses */
+  .prose-invert {
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+
+  .prose-invert p,
+  .prose-invert li,
+  .prose-invert div {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .prose-invert pre {
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .prose-invert code {
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+
+  /* Ensure long URLs and text don't overflow */
+  .prose-invert a {
+    word-break: break-all;
+    overflow-wrap: anywhere;
   }
 }

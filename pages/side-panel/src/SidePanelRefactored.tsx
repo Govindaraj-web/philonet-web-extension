@@ -14,6 +14,7 @@ import {
 } from './components';
 import ContentOverlay from './components/ContentOverlay';
 import ThoughtRoomsIntegration from './components/ThoughtRoomsIntegration2';
+import AskAIDrawer from './components/AskAIDrawer';
 import { PdfUploadModal } from './components/PdfUploadModal';
 
 import {
@@ -228,6 +229,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
   
   // Thought Rooms drawer state
   const [showThoughtRooms, setShowThoughtRooms] = useState(false);
+  
+  // Ask AI drawer state
+  const [showAskAIDrawer, setShowAskAIDrawer] = useState(false);
+  const [aiDrawerInitialQuestion, setAiDrawerInitialQuestion] = useState('');
   
   // Persistent state for parallel operations to prevent data loss during page switches
   const [streamingCompleted, setStreamingCompleted] = useState(false);
@@ -2347,7 +2352,30 @@ ${article.description}
   };
 
   const handleAskAi = () => {
-    askAi(meta, sections);
+    // Get the current AI question from state if any
+    const currentQuestion = state.aiQuestion.trim();
+    
+    if (currentQuestion) {
+      // If there's a question, set it and auto-submit when drawer opens
+      setAiDrawerInitialQuestion(currentQuestion);
+      setShowAskAIDrawer(true);
+      
+      // Clear the AI question from the footer immediately
+      updateState({ aiQuestion: '' });
+      
+      // Auto-submit the question after drawer opens
+      setTimeout(() => {
+        // Trigger auto-submit by setting a flag or calling submit directly
+        const event = new CustomEvent('autoSubmitAIQuestion', { 
+          detail: { question: currentQuestion } 
+        });
+        window.dispatchEvent(event);
+      }, 100);
+    } else {
+      // If no question, just open the drawer for manual input
+      setAiDrawerInitialQuestion('');
+      setShowAskAIDrawer(true);
+    }
   };
 
   const handleDockNavigate = (index: number) => {
@@ -4522,6 +4550,7 @@ ${article.description}
                 aiQuestion={state.aiQuestion}
                 aiBusy={state.aiBusy}
                 hiLiteText={state.hiLiteText}
+                isSubmittingComment={state.isSubmittingComment}
                 onTabChange={(tab: 'thoughts' | 'ai') => updateState({ composerTab: tab })}
                 onCommentChange={handleCommentChange}
                 onAiQuestionChange={(value: string) => updateState({ aiQuestion: value })}
@@ -4699,9 +4728,11 @@ ${article.description}
                 // submitComment(message);
               }}
               onAskAI={(question, thoughtId) => {
-                console.log('🤖 AI question:', question, 'for thought:', thoughtId);
-                // You can integrate this with your existing AI system
-                // askAi(question);
+                console.log('🤖 AI question from thought rooms:', question, 'for thought:', thoughtId);
+                // Open AI drawer with the question from thought rooms
+                setAiDrawerInitialQuestion(question);
+                setShowAskAIDrawer(true);
+                setShowThoughtRooms(false); // Close thought rooms when opening AI drawer
               }}
               onThoughtSelect={(thoughtId) => {
                 console.log('🎯 Thought selected:', thoughtId);
@@ -4709,6 +4740,17 @@ ${article.description}
               }}
             />
           )}
+
+          {/* 🤖 Ask AI Drawer */}
+          <AskAIDrawer
+            isOpen={showAskAIDrawer}
+            onClose={() => setShowAskAIDrawer(false)}
+            initialQuestion={aiDrawerInitialQuestion}
+            contextTitle={article?.title || pageData?.title || document.title || 'Current Page'}
+            articleTitle={article?.title || pageData?.title || document.title || 'Current Page'}
+            articleUrl={article?.url || currentUrl}
+            articleContent={article ? (article.description || article.summary) : pageData?.visibleText}
+          />
         </motion.aside>
 
         {/* Settings Modal */}

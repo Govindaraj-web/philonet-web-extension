@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { UserRound, Tag, ChevronLeft, ChevronRight, ChevronDown, Reply } from 'lucide-react';
 import { LoaderRing } from './ui';
 import { Comment } from '../types';
+import ReactionButton, { type ReactionType, type CommentReaction } from './ReactionButton';
 
 interface CommentsDockProps {
   isOpen: boolean;
@@ -15,6 +16,8 @@ interface CommentsDockProps {
   onExpand: () => void;
   onNavigateToText?: (text: string) => void;
   onReplyToThought?: (thoughtId: number) => void;
+  onReactToThought?: (commentId: number, reactionType: ReactionType) => void;
+  onRemoveReaction?: (commentId: number, reactionType: ReactionType) => void;
 }
 
 const CommentsDock: React.FC<CommentsDockProps> = ({
@@ -27,7 +30,9 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
   onMinimize,
   onExpand,
   onNavigateToText,
-  onReplyToThought
+  onReplyToThought,
+  onReactToThought,
+  onRemoveReaction
 }) => {
   if (!isOpen) return null;
 
@@ -221,8 +226,27 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
             </div>
           )}
 
-          {/* Reply section */}
-          <div className="mt-3 pt-2 border-t border-philonet-border/60">
+          {/* Reply and Reactions section */}
+          <div className="mt-3 pt-2 border-t border-philonet-border/60 space-y-2">
+            {/* Reactions */}
+            {currentComment && onReactToThought && onRemoveReaction && (
+              <div className="flex items-center justify-start">
+                <ReactionButton
+                  commentId={currentComment.id}
+                  reactions={(currentComment.reactions || []).map(r => ({
+                    type: r.type as ReactionType,
+                    count: r.count,
+                    users: r.users,
+                    userReacted: r.userReacted
+                  }))}
+                  onReact={onReactToThought}
+                  onRemoveReaction={onRemoveReaction}
+                  size="sm"
+                  compact={true}
+                />
+              </div>
+            )}
+            
             <div className="flex items-center justify-between">
               {/* Reply button - commented out until implementation is ready */}
               {/* 

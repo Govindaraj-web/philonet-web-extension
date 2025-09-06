@@ -43,6 +43,8 @@ import {
 import { cn } from '@extension/ui';
 import { Button, Textarea } from './ui';
 import { reactToComment, queryAI, addComment } from '../services/thoughtRoomsApi';
+import MessageWithReactions from './MessageWithReactions';
+import ReactionButton from './ReactionButton';
 
 interface ThoughtStarter {
   id: string;
@@ -3249,76 +3251,62 @@ Please provide a detailed analysis and answer to the question based on the artic
                       </div>
                     )}
 
-                    {/* Philonet-themed Message reactions */}
-                    {message.reactions && message.reactions.length > 0 && (
-                      <div className="flex gap-1 mt-2">
-                        {message.reactions.map((reaction, index) => {
-                          const isUserReaction = reaction.users?.includes(currentUser.id);
-                          return (
-                            <motion.button
-                              key={index}
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ 
-                                scale: 0.95,
-                                transition: { duration: 0.1 }
-                              }}
-                              onClick={() => {
-                                handleAddReaction(message.id, reaction.emoji);
-                              }}
-                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all duration-200 shadow-sm cursor-pointer group relative overflow-hidden ${
-                                isUserReaction 
-                                  ? 'bg-philonet-blue-500 border-2 border-philonet-blue-400 text-white' 
-                                  : 'bg-philonet-card border border-philonet-border hover:bg-philonet-blue-500 hover:border-philonet-blue-500'
-                              }`}
-                              title={`React with ${reaction.emoji} (${reaction.count})${isUserReaction ? ' - You reacted' : ''}`}
-                            >
-                              {/* Ripple effect on click */}
-                              <motion.div
-                                className="absolute inset-0 bg-philonet-blue-400 rounded-full opacity-0"
-                                whileTap={{
-                                  scale: [0, 1],
-                                  opacity: [0.5, 0],
-                                }}
-                                transition={{ duration: 0.3 }}
-                              />
-                              <motion.span 
-                                className={`text-base group-hover:scale-110 transition-transform duration-200 relative z-10 ${
-                                  isUserReaction ? 'drop-shadow-sm' : ''
-                                }`}
-                                whileTap={{ 
-                                  scale: [1, 1.3, 1],
-                                  rotate: [0, 15, -15, 0]
-                                }}
-                                transition={{ 
-                                  duration: 0.4,
-                                  ease: "easeInOut"
-                                }}
-                                key={`${reaction.emoji}-${reaction.count}`} // This will trigger animation when count changes
-                              >
-                                {reaction.emoji}
-                              </motion.span>
-                              <motion.span 
-                                className={`text-xs font-medium transition-colors duration-200 relative z-10 ${
-                                  isUserReaction 
-                                    ? 'text-white' 
-                                    : 'text-philonet-text-secondary group-hover:text-white'
-                                }`}
-                                whileTap={{ 
-                                  scale: [1, 1.2, 1]
-                                }}
-                                transition={{ 
-                                  duration: 0.3,
-                                  ease: "easeInOut"
-                                }}
-                                key={`count-${reaction.count}`} // This will trigger animation when count changes
-                              >
-                                {reaction.count}
-                              </motion.span>
-                            </motion.button>
-                          );
+                    {/* Enhanced Philonet-themed Message reactions with comprehensive emoji system */}
+                    <div className="flex items-center gap-2 mt-3">
+                      <ReactionButton
+                        commentId={message.comment_id || parseInt(message.id, 10)}
+                        reactions={(message.reactions || []).map(reaction => {
+                          // Map emoji to our reaction type
+                          const reactionType = (() => {
+                            switch(reaction.emoji) {
+                              case '❤️': return 'love';
+                              case '👍': return 'like';
+                              case '👎': return 'dislike';
+                              case '😂': return 'laugh';
+                              case '😮': return 'wow';
+                              case '😠': return 'angry';
+                              case '😢': return 'sad';
+                              case '🤗': return 'care';
+                              case '🎉': return 'celebrate';
+                              case '🤔': return 'thinking';
+                              case '👏': return 'clap';
+                              case '🔥': return 'fire';
+                              default: return 'like'; // fallback
+                            }
+                          })();
+                          
+                          return {
+                            type: reactionType as any,
+                            count: reaction.count,
+                            users: reaction.users?.map(user => ({ 
+                              id: user, 
+                              name: user, 
+                              avatar: undefined 
+                            })) || [],
+                            userReacted: reaction.users?.includes(currentUser.id) || false
+                          };
                         })}
-                      </div>
-                    )}
+                        onReact={(commentId, reactionType) => {
+                          // Map our reaction type back to emoji for the API
+                          const emojiMap = {
+                            love: '❤️', like: '👍', dislike: '👎', laugh: '😂',
+                            wow: '😮', angry: '😠', sad: '😢', care: '🤗',
+                            celebrate: '🎉', thinking: '🤔', clap: '👏', fire: '🔥'
+                          };
+                          handleAddReaction(message.id, emojiMap[reactionType]);
+                        }}
+                        onRemoveReaction={(commentId, reactionType) => {
+                          // Map our reaction type back to emoji for the API
+                          const emojiMap = {
+                            love: '❤️', like: '👍', dislike: '👎', laugh: '😂',
+                            wow: '😮', angry: '😠', sad: '😢', care: '🤗',
+                            celebrate: '🎉', thinking: '🤔', clap: '👏', fire: '🔥'
+                          };
+                          handleAddReaction(message.id, emojiMap[reactionType]); // Remove is handled by same function
+                        }}
+                        size="sm"
+                      />
+                    </div>
 
                     {message.isOwn && (
                       <div className="flex items-center justify-end gap-2 text-xs" style={{ color: '#E5E7EB' }}>
