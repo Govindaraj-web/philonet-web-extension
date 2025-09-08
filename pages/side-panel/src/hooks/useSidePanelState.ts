@@ -421,7 +421,15 @@ export function useSidePanelState() {
         text: highlight.message || 'No comment',
         ts: formatTimeAgo(new Date(highlight.created_at)),
         tag: highlight.highlighted_text ? { text: highlight.highlighted_text } : null,
-        profilePic: highlight.user_profile_pic || undefined
+        profilePic: highlight.user_profile_pic || undefined,
+        // Map mentioned_users from API to mentionedUsers for dock display
+        mentionedUsers: highlight.mentioned_users ? highlight.mentioned_users.map(user => ({
+          id: user.user_id,
+          name: user.name,
+          username: user.username,
+          avatar: user.avatar,
+          mention: user.mention || `@${user.username || user.name}`
+        })) : undefined
       }));
       
       console.log('🔄 Converted highlights to comments:', highlightComments);

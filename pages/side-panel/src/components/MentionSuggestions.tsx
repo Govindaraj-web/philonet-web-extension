@@ -174,6 +174,7 @@ const MentionSuggestions: React.FC<MentionSuggestionsProps> = ({
           bottom: 'auto',
           maxHeight: Math.min(300, suggestions.length * 52 + 58) // More accurate: 52px per item + 58px footer
         }}
+        data-mention-suggestions
       >
         {loading ? (
           <div className="p-3 flex items-center gap-2 text-philonet-text-muted">

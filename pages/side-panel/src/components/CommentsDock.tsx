@@ -209,6 +209,43 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
             {currentComment?.text || ''}
           </div>
 
+          {/* Mentioned Users Display */}
+          {currentComment?.mentionedUsers && currentComment.mentionedUsers.length > 0 && (
+            <div className="mt-3 pt-2 border-t border-philonet-border/40">
+              <div className="text-[11px] text-philonet-text-muted mb-2 flex items-center gap-1">
+                <span>📍 Tagged:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {currentComment.mentionedUsers.map((user, index) => (
+                  <div 
+                    key={user.id || index}
+                    className="flex items-center gap-1.5 px-2 py-1 bg-philonet-blue-500/10 border border-philonet-blue-500/30 rounded-full text-[10px] text-philonet-blue-400 hover:bg-philonet-blue-500/20 transition-colors"
+                    title={`${user.name}${user.username ? ` (@${user.username})` : ''}`}
+                  >
+                    {user.avatar ? (
+                      <img 
+                        src={user.avatar} 
+                        alt={user.name}
+                        className="w-3 h-3 rounded-full border border-philonet-blue-400/50"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name.charAt(0))}&background=4285f4&color=fff&size=12&bold=true`;
+                        }}
+                      />
+                    ) : (
+                      <div className="w-3 h-3 rounded-full bg-philonet-blue-500 flex items-center justify-center text-white text-[8px] font-bold">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="font-medium truncate max-w-[60px]">
+                      {user.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Tagged excerpt */}
           {currentComment?.tag?.text && (
             <div className="mt-3 pt-2 border-t border-philonet-border/60">
@@ -397,6 +434,15 @@ const CommentsDock: React.FC<CommentsDockProps> = ({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Tag className="h-3 w-3 text-philonet-blue-400 flex-shrink-0" />
                   <span className="text-philonet-blue-400 truncate">{currentComment.tag.text}</span>
+                </div>
+              ) : currentComment?.mentionedUsers && currentComment.mentionedUsers.length > 0 ? (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="h-3 w-3 rounded-full bg-philonet-blue-500 flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0">
+                    @
+                  </div>
+                  <span className="text-philonet-blue-400 truncate">
+                    {currentComment.mentionedUsers.length} tagged
+                  </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1">

@@ -464,6 +464,14 @@ export class ThoughtRoomsAPI {
         highlightedText: comment.quote
       } : undefined,
       thoughtBody: comment.content,
+      // Map mentioned_users from API to mentionedUsers for dock display
+      mentionedUsers: comment.mentioned_users ? comment.mentioned_users.map((user: any) => ({
+        id: user.user_id || user.id,
+        name: user.name || user.user_name,
+        username: user.username,
+        avatar: user.avatar || user.user_picture,
+        mention: user.mention || `@${user.username || user.name}`
+      })) : undefined,
       author: {
         id: comment.user_id,
         name: comment.user_name,

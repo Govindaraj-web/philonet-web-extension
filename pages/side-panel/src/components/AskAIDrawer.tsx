@@ -3,6 +3,12 @@ import { X, Bot, Send, Loader2, Copy, Check, ChevronDown } from 'lucide-react';
 import { Button, Textarea } from './ui';
 import { cn } from '@extension/ui';
 import { ThoughtRoomsAPI } from '../services/thoughtRoomsApi';
+
+// Define AIQueryResponse interface locally since it's not exported from the API
+interface AIQueryResponse {
+  summary: string;
+  summarymini?: string;
+}
 import { createMathMarkdownRenderer } from '../utils/markdownRenderer';
 
 interface AIConversation {
@@ -71,11 +77,11 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
 
   // Set initial question when prop changes and auto-submit if provided
   useEffect(() => {
-    if (initialQuestion && initialQuestion !== question) {
+    if (initialQuestion && initialQuestion !== question && question === '') {
       setQuestion(initialQuestion);
       setShouldAutoSubmit(true);
     }
-  }, [initialQuestion, question]);
+  }, [initialQuestion]);
 
   // Auto-submit when shouldAutoSubmit is true and conditions are met
   useEffect(() => {
@@ -222,7 +228,7 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
     const loadingConversation: AIConversation = {
       id: conversationId,
       question: currentQuestion,
-      answer: '',
+      answer: '', // Will be populated during streaming
       timestamp: new Date(),
       isLoading: true
     };
@@ -272,8 +278,11 @@ Query: ${currentQuestion}`;
         stream: true
       });
 
+      console.log('🔍 Response type:', typeof response, 'Response:', response);
+
       // Handle streaming response
-      if (response && 'getReader' in response) {
+      if (response && typeof response === 'object' && 'getReader' in response) {
+        console.log('📡 Detected streaming response, initializing reader...');
         // Streaming response - read chunks in real-time
         const reader = (response as ReadableStream).getReader();
         const decoder = new TextDecoder();
@@ -295,11 +304,17 @@ Query: ${currentQuestion}`;
           }, 50); // Throttle updates to every 50ms for smoother streaming
         };
 
+        // Set up a timeout for streaming to prevent hanging
+        const streamTimeout = setTimeout(() => {
+          console.log('⏱️ Streaming timeout reached, aborting...');
+          abortController.abort();
+        }, 30000); // 30 second timeout
+
         try {
           while (true) {
             // Check if streaming was aborted
             if (abortController.signal.aborted) {
-              console.log('🛑 Streaming aborted by user');
+              console.log('🛑 Streaming aborted by user or timeout');
               break;
             }
 
@@ -312,6 +327,7 @@ Query: ${currentQuestion}`;
 
             const chunk = decoder.decode(value);
             const lines = chunk.split('\n');
+            console.log('📦 Received chunk with', lines.length, 'lines:', chunk.substring(0, 200));
 
             for (const line of lines) {
               if (line.trim() === '') continue;
@@ -332,7 +348,7 @@ Query: ${currentQuestion}`;
                   if (parsedData.type === 'content') {
                     // Accumulate content chunks - handle both 'content' and 'text' fields
                     const contentChunk = parsedData.content || parsedData.text || '';
-                    console.log('📝 Adding chunk:', contentChunk);
+                    console.log('📝 Adding chunk (length:', contentChunk.length, '):', contentChunk.substring(0, 50));
                     accumulatedAnswer += contentChunk;
                     
                     // Update conversation with throttled streaming content
@@ -342,6 +358,23 @@ Query: ${currentQuestion}`;
                     throw new Error(parsedData.message);
                   } else if (parsedData.type === 'metadata') {
                     console.log('📊 Stream metadata:', parsedData);
+                  } else {
+                    // Handle direct content without type wrapper (some APIs send raw content)
+                    if (typeof parsedData === 'string' && parsedData.trim()) {
+                      console.log('📝 Adding raw string content:', parsedData.substring(0, 50));
+                      accumulatedAnswer += parsedData;
+                      updateConversation(accumulatedAnswer);
+                    } else if (parsedData.content || parsedData.text || parsedData.summary) {
+                      // Handle different response formats
+                      const contentChunk = parsedData.content || parsedData.text || parsedData.summary || '';
+                      if (contentChunk) {
+                        console.log('📝 Adding alternate format content:', contentChunk.substring(0, 50));
+                        accumulatedAnswer += contentChunk;
+                        updateConversation(accumulatedAnswer);
+                      }
+                    } else {
+                      console.log('⚠️ Unknown streaming data format:', parsedData);
+                    }
                   }
                 }
               } catch (parseError) {
@@ -351,24 +384,86 @@ Query: ${currentQuestion}`;
             }
           }
         } finally {
+          // Clear the stream timeout
+          clearTimeout(streamTimeout);
+          
           reader.releaseLock();
           // Final update to ensure all content is displayed
           if (updateTimeout) {
             clearTimeout(updateTimeout);
           }
+          
+          // Ensure we have some content, even if streaming failed
+          const finalAnswer = accumulatedAnswer.trim() || '⚠️ No response received from AI. Please try again.';
+          
           setConversations(prev => prev.map(conv => 
             conv.id === conversationId 
-              ? { ...conv, answer: accumulatedAnswer, isLoading: false }
+              ? { ...conv, answer: finalAnswer, isLoading: false }
               : conv
           ));
         }
 
-        console.log('✅ AI streaming response completed:', accumulatedAnswer.substring(0, 100) + '...');
+        console.log('✅ AI streaming response completed:', accumulatedAnswer ? accumulatedAnswer.substring(0, 100) + '...' : 'No content received');
+        
+        // Reset loading states immediately after streaming completes
+        setIsLoading(false);
+        setIsStreaming(false);
+        
+        // If streaming failed to get any content, try fallback non-streaming request
+        if (!accumulatedAnswer.trim()) {
+          console.log('⚠️ Streaming produced no content, trying fallback non-streaming request...');
+          // Set loading back to true only for the fallback request
+          setIsLoading(true);
+          try {
+            const fallbackResponse = await thoughtRoomsAPI.queryAI({ 
+              text: enhancedPrompt, 
+              fast: true,
+              stream: false // Explicitly disable streaming for fallback
+            }) as AIQueryResponse;
+            
+            if (fallbackResponse?.summary) {
+              setConversations(prev => prev.map(conv => 
+                conv.id === conversationId 
+                  ? { ...conv, answer: fallbackResponse.summary, isLoading: false }
+                  : conv
+              ));
+              // Reset loading states after fallback completes
+              setIsLoading(false);
+              setIsStreaming(false);
+              console.log('✅ Fallback request successful');
+              return;
+            }
+          } catch (fallbackError) {
+            console.error('❌ Fallback request also failed:', fallbackError);
+            // Reset loading states even if fallback fails
+            setIsLoading(false);
+            setIsStreaming(false);
+          }
+        }
       } else {
         // Fallback to non-streaming response
         console.log('📝 Using non-streaming response');
         const aiResponse = response as any;
-        const summary = aiResponse?.summary || aiResponse || 'No response received';
+        
+        // More robust response extraction
+        let summary = '';
+        if (typeof aiResponse === 'string') {
+          summary = aiResponse;
+        } else if (aiResponse?.summary && typeof aiResponse.summary === 'string') {
+          summary = aiResponse.summary;
+        } else if (aiResponse?.text && typeof aiResponse.text === 'string') {
+          summary = aiResponse.text;
+        } else if (aiResponse?.content && typeof aiResponse.content === 'string') {
+          summary = aiResponse.content;
+        } else {
+          console.warn('⚠️ Unexpected response format:', aiResponse);
+          summary = '⚠️ Received an unexpected response format. Please try again.';
+        }
+        
+        // Ensure we have meaningful content
+        if (!summary || summary.trim() === '') {
+          summary = '⚠️ No response content received from AI. Please try again.';
+        }
         
         setConversations(prev => prev.map(conv => 
           conv.id === conversationId 
@@ -377,17 +472,27 @@ Query: ${currentQuestion}`;
         ));
 
         console.log('✅ AI response received:', summary.substring(0, 100) + '...');
+        
+        // Reset loading states after non-streaming response
+        setIsLoading(false);
+        setIsStreaming(false);
       }
 
     } catch (error) {
       if (abortController.signal.aborted) {
-        console.log('🛑 AI query aborted by user');
+        console.log('🛑 AI query aborted by user or timeout');
+        // Check if this was a user abort or a timeout
+        const wasTimeout = error instanceof Error && error.name === 'AbortError';
+        const abortMessage = wasTimeout 
+          ? '⏱️ Request timed out. The AI service is taking too long to respond. Please try again.'
+          : '🛑 Response generation was stopped.';
+          
         // Update with aborted message
         setConversations(prev => prev.map(conv => 
           conv.id === conversationId 
             ? { 
                 ...conv, 
-                answer: '🛑 Response generation was stopped.',
+                answer: abortMessage,
                 isLoading: false 
               }
             : conv
@@ -395,12 +500,27 @@ Query: ${currentQuestion}`;
       } else {
         console.error('❌ AI query failed:', error);
         
+        // Provide more specific error messages based on error type
+        let errorMessage = '❌ Sorry, I encountered an error while processing your question. Please try again.';
+        
+        if (error instanceof Error) {
+          if (error.message.includes('Authentication failed')) {
+            errorMessage = '🔐 Authentication error. Please log in again and try.';
+          } else if (error.message.includes('Failed to fetch') || error.message.includes('network')) {
+            errorMessage = '🌐 Network error. Please check your connection and try again.';
+          } else if (error.message.includes('Invalid response format')) {
+            errorMessage = '⚠️ Received invalid response from AI service. Please try again.';
+          } else if (error.message.includes('No response body')) {
+            errorMessage = '📭 No response received from AI service. Please try again.';
+          }
+        }
+        
         // Update with error message
         setConversations(prev => prev.map(conv => 
           conv.id === conversationId 
             ? { 
                 ...conv, 
-                answer: '❌ Sorry, I encountered an error while processing your question. Please try again.',
+                answer: errorMessage,
                 isLoading: false 
               }
             : conv
@@ -431,7 +551,7 @@ Query: ${currentQuestion}`;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isLoading) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isLoading && !isStreaming && question.trim()) {
       e.preventDefault();
       handleSubmit();
     }
@@ -617,10 +737,10 @@ Query: ${currentQuestion}`;
                             <span>Streaming...</span>
                           </div>
                         )}
-                        {/* Debug info - remove in production */}
-                        {!conversation.answer && !conversation.isLoading && (
-                          <div className="text-red-400 text-xs mt-2">
-                            Debug: Answer is undefined or empty
+                        {/* Show message if no answer and not loading */}
+                        {(!conversation.answer || conversation.answer.trim() === '') && !conversation.isLoading && (
+                          <div className="text-amber-400 text-xs mt-2 italic bg-amber-400/10 border border-amber-400/20 rounded p-2">
+                            ⚠️ No response received from AI service. Please try asking your question again.
                           </div>
                         )}
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-philonet-border/50">
@@ -679,30 +799,32 @@ Query: ${currentQuestion}`;
             <div className={`mb-2 flex items-center gap-2 text-philonet-text-muted ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
               <Bot className="h-4 w-4" />
               <span>Ask a question</span>
-              {isLoading && (
-                <span className="text-blue-400 ml-2">Processing...</span>
+              {(isLoading || isStreaming) && (
+                <span className="text-amber-400 ml-2">
+                  {isStreaming ? "🔄 Streaming..." : "🤔 Processing..."} 
+                  <span className="text-xs ml-1">(Type next question or wait)</span>
+                </span>
               )}
             </div>
             
             <div className="relative">
               <Textarea
                 ref={textareaRef}
-                placeholder={isLoading ? "AI is processing your question..." : "What would you like to know about this content?"}
+                placeholder={isLoading ? "Type your next question while AI processes..." : "What would you like to know about this content?"}
                 value={question}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
                 rows={2}
                 className={cn(
-                  `bg-transparent border-0 p-0 resize-none text-white placeholder:text-philonet-text-muted focus:ring-0 ${fontSize === 'large' ? 'text-base' : 'text-sm'}`,
-                  isLoading && "opacity-70"
+                  `bg-transparent border-0 p-0 resize-none text-white placeholder:text-philonet-text-muted focus:ring-0 ${fontSize === 'large' ? 'text-base' : 'text-sm'}`
                 )}
-                disabled={isLoading}
+                disabled={false} // Always allow typing
               />
             </div>
             
             <div className="flex items-center justify-between mt-2">
               <span className={`text-philonet-text-muted ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
-                {isStreaming ? "AI is generating response..." : isLoading ? "AI is thinking..." : "Press Cmd/Ctrl+Enter to send"}
+                {isStreaming ? "Wait for response to finish or stop it..." : isLoading ? "Wait for AI to finish or stop it..." : "Press Cmd/Ctrl+Enter to send"}
               </span>
               <div className="flex items-center gap-2">
                 {isStreaming && (
@@ -718,8 +840,13 @@ Query: ${currentQuestion}`;
                 )}
                 <Button
                   onClick={handleSubmit}
-                  disabled={!question.trim() || isLoading}
-                  className={`h-8 px-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 border-blue-400 ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}
+                  disabled={!question.trim() || isLoading || isStreaming}
+                  className={cn(
+                    `h-8 px-3 transition-all duration-200 ${fontSize === 'large' ? 'text-base' : 'text-sm'}`,
+                    (isLoading || isStreaming) 
+                      ? "bg-gray-600 cursor-not-allowed opacity-50 border-gray-500" 
+                      : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 border-blue-400"
+                  )}
                 >
                   {isLoading ? (
                     <Loader2 className="h-3 w-3 animate-spin" />

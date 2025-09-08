@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2, MessageCircle } from 'lucide-react';
+import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2, MessageCircle, AlertCircle } from 'lucide-react';
 import { Button, Textarea } from './ui';
 import { cn } from '@extension/ui';
+import { motion, AnimatePresence } from 'framer-motion';
 import MentionSuggestions from './MentionSuggestions';
 import MentionService, { MentionSuggestion } from '../services/mentionService';
 
@@ -54,7 +55,64 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   const [currentMention, setCurrentMention] = useState<{ mention: string; startPos: number; endPos: number } | null>(null);
   
+  // Validation state for thought submission
+  const [validationMessage, setValidationMessage] = useState<string>('');
+  const [showValidationMessage, setShowValidationMessage] = useState(false);
+  
   const composerRef = useRef<HTMLDivElement>(null);
+
+  // Validation function for thought submission
+  const validateThoughtSubmission = (): { isValid: boolean; message: string } => {
+    // Check if comment is empty or only whitespace
+    if (!comment.trim()) {
+      return {
+        isValid: false,
+        message: 'Please enter some content for your thought before posting.'
+      };
+    }
+
+    // Check if there's no tagged content
+    if (!hiLiteText || !hiLiteText.trim()) {
+      return {
+        isValid: false,
+        message: 'Please select some text from the article first to create a meaningful thought with context.'
+      };
+    }
+
+    // All validation passed - @mentions are optional
+    return { isValid: true, message: '' };
+  };
+
+  // Enhanced submit handler with validation
+  const handleSubmitWithValidation = () => {
+    const validation = validateThoughtSubmission();
+    
+    if (!validation.isValid) {
+      setValidationMessage(validation.message);
+      setShowValidationMessage(true);
+      
+      // Auto-hide validation message after 5 seconds
+      setTimeout(() => {
+        setShowValidationMessage(false);
+      }, 5000);
+      
+      return;
+    }
+
+    // Clear any existing validation messages
+    setShowValidationMessage(false);
+    setValidationMessage('');
+    
+    // Proceed with submission
+    onSubmitComment();
+  };
+
+  // Hide validation message when user addresses the validation issues
+  useEffect(() => {
+    if (showValidationMessage && comment.trim() && hiLiteText && hiLiteText.trim()) {
+      setShowValidationMessage(false);
+    }
+  }, [comment, hiLiteText, showValidationMessage]);
 
   // Handle mention detection and suggestions
   const handleTextChange = (value: string, isCommentTab = true) => {
@@ -267,7 +325,37 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
       {/* Content */}
       {composerTab === 'thoughts' ? (
         <div>
-          <div className="rounded-full border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3">
+          <div className={`relative border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3 ${commentRows > 1 ? 'rounded-xl' : 'rounded-full'}`}>
+            {/* Validation Hint - Top Right Corner */}
+            <AnimatePresence>
+              {showValidationMessage && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 5 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 5 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute -top-12 right-2 z-50 bg-amber-500/95 text-amber-50 text-xs px-3 py-1.5 rounded-lg shadow-lg border border-amber-400/30 flex items-center gap-1.5 backdrop-blur-sm max-w-64"
+                >
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                  <span className="flex-1 text-wrap">
+                    {!comment.trim() 
+                      ? "Enter some content" 
+                      : !hiLiteText || !hiLiteText.trim()
+                        ? "Select text from article first"
+                        : "Validation error"
+                    }
+                  </span>
+                  <button
+                    onClick={() => setShowValidationMessage(false)}
+                    className="w-3 h-3 rounded-full hover:bg-amber-400/30 flex items-center justify-center transition-colors ml-1"
+                    title="Dismiss"
+                  >
+                    <span className="text-[10px] leading-none">×</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
             <Textarea
               ref={commentRef}
               placeholder={isSubmittingComment ? "Submitting your thought..." : "Add a thought… (type @ to mention users)"}
@@ -279,7 +367,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
               onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
                 if (e.key === 'Enter' && !e.shiftKey && !isSubmittingComment && !showMentions) { 
                   e.preventDefault(); 
-                  onSubmitComment(); 
+                  handleSubmitWithValidation(); 
                 } 
               }}
             />
@@ -293,9 +381,21 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
               <Smile className="h-5 w-5 md:h-6 md:w-6" />
             </button>
             <Button 
-              disabled={!comment.trim() || isSubmittingComment} 
-              onClick={onSubmitComment} 
-              className="ml-1 h-10 px-4 md:h-11 md:px-5"
+              disabled={isSubmittingComment} 
+              onClick={handleSubmitWithValidation} 
+              className={cn(
+                "ml-1 h-10 px-4 md:h-11 md:px-5 transition-all duration-200",
+                !comment.trim() || (!hiLiteText || !hiLiteText.trim())
+                  ? "opacity-50 cursor-not-allowed" 
+                  : ""
+              )}
+              title={
+                !comment.trim() 
+                  ? "Please enter some content"
+                  : !hiLiteText || !hiLiteText.trim()
+                    ? "Please select text from the article first"
+                    : "Post your thought"
+              }
             >
               {isSubmittingComment ? (
                 <>
@@ -307,6 +407,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
               )}
             </Button>
           </div>
+          
           <div className="mt-2 flex justify-end">
             <span className="text-philonet-text-subtle text-sm md:text-base">
               {isSubmittingComment ? "Submitting thought..." : `${Math.max(0, 280 - comment.length)} characters left`}

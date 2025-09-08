@@ -97,6 +97,14 @@ interface ThoughtStarter {
     readBy: number;
     unreadBy: number;
   };
+  // Tagged users data for dock display
+  mentionedUsers?: Array<{
+    id: string;
+    name: string;
+    username?: string;
+    avatar?: string;
+    mention: string;
+  }>;
 }
 
 interface Message {

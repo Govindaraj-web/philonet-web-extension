@@ -16,6 +16,7 @@ import ContentOverlay from './components/ContentOverlay';
 import ThoughtRoomsIntegration from './components/ThoughtRoomsIntegration2';
 import AskAIDrawer from './components/AskAIDrawer';
 import { PdfUploadModal } from './components/PdfUploadModal';
+import EditProfileModal from './components/EditProfileModal';
 
 import {
   useSpeech,
@@ -48,6 +49,13 @@ import {
   type PageContent,
   type PdfUploadResponse 
 } from './services/gptSummary';
+import {
+  fetchYouTubeCaptionsFromPage,
+  isYouTubeVideo,
+  generateYouTubeTimestampUrl,
+  type YoutubeTranscriptData,
+  type TranscriptSegment
+} from '@extension/shared';
 import { getExtensionStorage, setExtensionStorage, removeExtensionStorage } from './utils';
 import { formatTimeAgo } from './utils';
 
@@ -146,6 +154,33 @@ const SidePanel: React.FC<SidePanelProps> = ({
 }) => {
   console.log('🔧 SidePanel component initializing...');
   
+  // Local user state that can be updated when profile changes
+  const [localUser, setLocalUser] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  } | undefined>(user ? {
+    id: user.id,
+    name: user.name,
+    email: '', // We'll update this when we have the full profile data
+    avatar: user.avatar
+  } : undefined);
+  
+  // Update local user when prop changes
+  useEffect(() => {
+    if (user) {
+      setLocalUser({
+        id: user.id,
+        name: user.name,
+        email: '', // Will be updated when profile is loaded
+        avatar: user.avatar
+      });
+    } else {
+      setLocalUser(undefined);
+    }
+  }, [user]);
+  
   // Refs
   const contentRef = useRef<HTMLDivElement>(null);
   const bodyContentRef = useRef<HTMLDivElement>(null);
@@ -198,6 +233,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // PDF upload modal state
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false);
   const [pdfUploadFileName, setPdfUploadFileName] = useState<string>('');
+
+  // Edit Profile modal state
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   // Enhanced PDF upload state for drag & drop
   const [isDragging, setIsDragging] = useState(false);
@@ -255,6 +293,26 @@ const SidePanel: React.FC<SidePanelProps> = ({
   
   // PDF hash state for auto-save (separate from article to avoid dependency loops)
   const [currentPdfHash, setCurrentPdfHash] = useState<string | undefined>(undefined);
+  
+  // Store the original generation context to preserve parameters across tab switches
+  const [generationContext, setGenerationContext] = useState<{
+    url: string;
+    isPdf: boolean;
+    pdfHash?: string;
+    pageData?: PageContent;
+  } | null>(null);
+  
+  // Track whether URL change is from same-tab navigation vs tab switching
+  const [lastNavigationType, setLastNavigationType] = useState<'tab-switch' | 'page-navigation' | null>(null);
+  
+  // Race condition prevention - track current request sequence
+  const [currentRequestSequence, setCurrentRequestSequence] = useState<number>(0);
+  const requestSequenceRef = useRef<number>(0);
+  
+  // YouTube transcript state
+  const [youtubeTranscript, setYoutubeTranscript] = useState<YoutubeTranscriptData | null>(null);
+  const [isLoadingTranscript, setIsLoadingTranscript] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true); // Show by default
   
   // Status tracking for content generation flow
   const [contentGenerationStatus, setContentGenerationStatus] = useState<{
@@ -505,9 +563,10 @@ ${article.description}
       const isInComments = target.closest('[data-thoughts-dock]');
       const isInComposer = target.closest('[data-composer-footer]');
       const isInTaggedText = target.closest('[data-tagged-text]');
+      const isInMentionSuggestions = target.closest('[data-mention-suggestions]');
       
       // If clicked outside these areas and we have selected text, clear it
-      if (!isInComments && !isInComposer && !isInTaggedText && state.hiLiteText) {
+      if (!isInComments && !isInComposer && !isInTaggedText && !isInMentionSuggestions && state.hiLiteText) {
         console.log('🧹 Clearing selection - clicked outside thoughts/dock area');
         updateState({ hiLiteText: "", dockFilterText: "" });
         
@@ -619,6 +678,7 @@ ${article.description}
         // Always update current URL and extract page data when tab becomes active
         if (tab.url !== currentUrl) {
           console.log('🔄 Tab switched or page changed:', tab.url);
+          setLastNavigationType('tab-switch'); // Default to tab-switch for active tab query
           setCurrentUrl(tab.url);
           
           // Extract page data immediately for the new tab/page
@@ -653,10 +713,11 @@ ${article.description}
                   console.log('🔄 Page URL changed:', currentUrl);
                   lastUrl = currentUrl;
                   
-                  // Send message to extension about URL change
+                  // Send message to extension about URL change - this is same-tab navigation
                   chrome.runtime.sendMessage({
                     type: 'PAGE_URL_CHANGED',
                     url: currentUrl,
+                    navigationType: 'page-navigation', // Indicate this is same-tab navigation
                     timestamp: Date.now()
                   }).catch(() => {
                     // Ignore errors if extension context is not available
@@ -710,6 +771,7 @@ ${article.description}
               const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
               if (currentTab.url && currentTab.url !== currentUrl) {
                 console.log('🔄 Page URL changed (polling):', currentTab.url);
+                setLastNavigationType('page-navigation'); // Polling detected same-tab navigation
                 setCurrentUrl(currentTab.url);
                 console.log('🔄 Auto-refreshing page data due to URL change...');
                 setTimeout(() => {
@@ -750,6 +812,8 @@ ${article.description}
         console.log('📩 Received page change message:', message.url);
         
         if (message.url !== currentUrl) {
+          // Set navigation type based on message content
+          setLastNavigationType(message.navigationType || 'page-navigation');
           setCurrentUrl(message.url);
           console.log('🔄 Auto-refreshing page data due to URL change...');
           
@@ -779,6 +843,7 @@ ${article.description}
         const tab = await chrome.tabs.get(activeInfo.tabId);
         if (tab.url && tab.url !== currentUrl) {
           console.log('🔄 Tab activated with different URL:', tab.url);
+          setLastNavigationType('tab-switch'); // This is definitely a tab switch
           setCurrentUrl(tab.url);
           
           // Extract page data for the newly activated tab
@@ -799,6 +864,7 @@ ${article.description}
     const handleTabUpdated = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
       if (changeInfo.status === 'complete' && tab.active && tab.url && tab.url !== currentUrl) {
         console.log('🔄 Active tab updated:', tab.url);
+        setLastNavigationType('page-navigation'); // Tab content updated is same-tab navigation
         setCurrentUrl(tab.url);
         
         // Extract page data for the updated tab
@@ -846,13 +912,38 @@ ${article.description}
   useEffect(() => {
     if (currentUrl && settings.autoUpdate) {
       console.log('🔍 Checking for existing article for URL:', currentUrl);
+      console.log('🔄 Navigation type:', lastNavigationType);
+      
+      // IMMEDIATELY clear article state to prevent stale content from showing
+      setArticle(null);
+      setArticleError(null);
+      clearHighlights();
+      setJoinedRoomName(null);
+      updateState({ currentSourceUrl: "" });
+      
+      // Increment request sequence to invalidate any pending requests
+      requestSequenceRef.current++;
+      
       checkAndLoadArticle(currentUrl);
     }
-    // Reset streaming state when URL changes
-    resetStreamingState();
+    
+    // Reset streaming state based on navigation type
+    if (lastNavigationType === 'page-navigation') {
+      // For same-tab page navigation, fully reset including generation context
+      console.log('🔄 Page navigation detected - fully resetting state');
+      resetStreamingState(true); // true = clear generation context
+    } else if (lastNavigationType === 'tab-switch') {
+      // For tab switches, preserve generation context
+      console.log('🔄 Tab switch detected - preserving generation context');
+      resetStreamingState(false); // false = preserve generation context
+    } else {
+      // Default behavior for initial load or unclear navigation
+      resetStreamingState(false);
+    }
+    
     // Clear any active search highlights when URL changes
     clearSearch();
-  }, [currentUrl, settings.autoUpdate]);
+  }, [currentUrl, settings.autoUpdate, lastNavigationType]);
 
   // Auto-hide notifications with timeout - TEMPORARILY DISABLED
   useEffect(() => {
@@ -921,6 +1012,26 @@ ${article.description}
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id || !tab.url) return;
 
+      // Check if this is a YouTube video and extract transcript
+      let transcriptData: YoutubeTranscriptData | null = null;
+      if (isYouTubeVideo(tab.url)) {
+        try {
+          setIsLoadingTranscript(true);
+          console.log('🎬 Extracting YouTube transcript for:', tab.url);
+          transcriptData = await fetchYouTubeCaptionsFromPage(tab.url);
+          setYoutubeTranscript(transcriptData);
+          console.log('✅ YouTube transcript extracted:', transcriptData);
+        } catch (error) {
+          console.error('❌ Failed to extract YouTube transcript:', error);
+          setYoutubeTranscript(null);
+        } finally {
+          setIsLoadingTranscript(false);
+        }
+      } else {
+        // Clear transcript for non-YouTube pages
+        setYoutubeTranscript(null);
+      }
+
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => {
@@ -981,14 +1092,55 @@ ${article.description}
             return og;
           };
           const extractThumbnail = () => {
-            const ogImage = document.querySelector('meta[property="og:image"]');
-            if (ogImage) {
-              return ogImage.getAttribute('content');
+            // For YouTube videos, prioritize extracting video ID directly and generate thumbnail URL
+            if (location.hostname.includes('youtube.com') || location.hostname.includes('youtu.be')) {
+              let videoId = null;
+              
+              // Handle youtube.com/watch?v= format
+              if (location.hostname.includes('youtube.com')) {
+                videoId = new URLSearchParams(location.search).get('v');
+              }
+              // Handle youtu.be/ format
+              else if (location.hostname.includes('youtu.be')) {
+                videoId = location.pathname.substring(1).split('?')[0]; // Remove leading slash and query params
+              }
+              
+              if (videoId && videoId.length === 11) { // YouTube video IDs are always 11 characters
+                // Return high quality thumbnail - this will be overridden by transcript data if available
+                return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+              }
             }
-            const favicon = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
-            if (favicon) {
-              return favicon.getAttribute('href');
+
+            // Try Open Graph image (but not for YouTube since it often returns generic logos)
+            if (!location.hostname.includes('youtube.com') && !location.hostname.includes('youtu.be')) {
+              const ogImage = document.querySelector('meta[property="og:image"]');
+              if (ogImage?.getAttribute('content')) {
+                const ogImageUrl = ogImage.getAttribute('content');
+                // Skip generic YouTube logos
+                if (!ogImageUrl?.includes('yt_1200.png') && !ogImageUrl?.includes('youtube.com/img/')) {
+                  return ogImageUrl;
+                }
+              }
             }
+
+            // Try Twitter card image as fallback
+            const twitterImage = document.querySelector('meta[name="twitter:image"]');
+            if (twitterImage?.getAttribute('content')) {
+              const twitterImageUrl = twitterImage.getAttribute('content');
+              // Skip generic YouTube logos
+              if (!twitterImageUrl?.includes('yt_1200.png') && !twitterImageUrl?.includes('youtube.com/img/')) {
+                return twitterImageUrl;
+              }
+            }
+
+            // Fallback to favicon as last resort (but not for YouTube)
+            if (!location.hostname.includes('youtube.com') && !location.hostname.includes('youtu.be')) {
+              const favicon = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
+              if (favicon) {
+                return favicon.getAttribute('href');
+              }
+            }
+            
             return null;
           };
 
@@ -1009,12 +1161,34 @@ ${article.description}
 
       if (results[0]?.result) {
         const pageData = results[0].result;
+        
+        // If we have transcript data, include it in the visible text for better processing
+        if (transcriptData && transcriptData.transcriptText) {
+          const enhancedVisibleText = `${pageData.visibleText}\n\n[Video Transcript]\n${transcriptData.transcriptText}`;
+          pageData.visibleText = enhancedVisibleText.substring(0, 10000); // Increase limit for transcript
+          pageData.wordCount = enhancedVisibleText.split(/\s+/).length;
+          
+          // Use YouTube thumbnail URL if available (higher quality than page meta tags)
+          if (transcriptData.thumbnailUrl) {
+            pageData.thumbnailUrl = transcriptData.thumbnailUrl;
+          }
+          
+          // Add transcript metadata to structured data
+          pageData.structuredData = {
+            ...pageData.structuredData,
+            hasTranscript: true,
+            transcriptSegments: transcriptData.segments.length,
+            videoComments: transcriptData.comments.length
+          } as any;
+        }
+        
         setPageData(pageData);
         
         // Update last fetched time
         setLastFetchedTime(new Date());
         
         console.log('📊 Page data extracted:', pageData);
+        console.log('🎬 YouTube transcript included:', !!transcriptData?.transcriptText);
         
         if (settings.enableNotifications) {
           console.log('🔔 Page data extracted for:', pageData.title);
@@ -1381,6 +1555,12 @@ ${article.description}
       return;
     }
 
+    // Generate a unique sequence number for this request to prevent race conditions
+    const thisRequestSequence = ++requestSequenceRef.current;
+    setCurrentRequestSequence(thisRequestSequence);
+    
+    console.log(`🔄 Starting article check for URL: ${url} (sequence: ${thisRequestSequence})`);
+
     try {
       setContentGenerationStatus({
         stage: 'checking',
@@ -1396,8 +1576,23 @@ ${article.description}
       
       const result = await fetchArticle({ url });
       
+      // CHECK FOR RACE CONDITION: Ensure this response is still relevant
+      if (thisRequestSequence !== requestSequenceRef.current) {
+        console.log(`🚫 Ignoring stale response for sequence ${thisRequestSequence} (current: ${requestSequenceRef.current})`);
+        return;
+      }
+      
+      // DOUBLE CHECK: Ensure the URL still matches what we're expecting
+      if (url !== currentUrl) {
+        console.log(`🚫 Ignoring response for old URL: ${url} (current: ${currentUrl})`);
+        return;
+      }
+      
       // Enhanced debugging for API response
       console.log('🔍 API Response Debug:', {
+        requestSequence: thisRequestSequence,
+        requestUrl: url,
+        currentUrl,
         result,
         success: result?.success,
         count: result?.count,
@@ -1432,6 +1627,18 @@ ${article.description}
           private_space: apiArticle.private_space,
           spark_owner: apiArticle.spark_owner
         };
+        
+        // FINAL RACE CONDITION CHECK before updating state
+        if (thisRequestSequence !== requestSequenceRef.current || url !== currentUrl) {
+          console.log(`🚫 Final check failed - ignoring article update for sequence ${thisRequestSequence}`);
+          return;
+        }
+        
+        // Override thumbnail with high-quality YouTube thumbnail if available
+        if (youtubeTranscript && youtubeTranscript.thumbnailUrl) {
+          console.log('🎬 Overriding article thumbnail with YouTube transcript thumbnail:', youtubeTranscript.thumbnailUrl);
+          convertedArticle.thumbnail_url = youtubeTranscript.thumbnailUrl;
+        }
         
         setArticle(convertedArticle);
         // Update the source URL to point to the actual article URL
@@ -1469,6 +1676,12 @@ ${article.description}
         console.log('✅ Article found and converted:', convertedArticle);
         console.log('🔗 Source URL updated to:', apiArticle.url);
       } else {
+        // RACE CONDITION CHECK before clearing state
+        if (thisRequestSequence !== requestSequenceRef.current || url !== currentUrl) {
+          console.log(`🚫 Ignoring state clear for sequence ${thisRequestSequence}`);
+          return;
+        }
+        
         setArticle(null);
         clearHighlights();
         setJoinedRoomName(null); // Clear room name when no article is found
@@ -1497,6 +1710,12 @@ ${article.description}
         }
       }
     } catch (error) {
+      // RACE CONDITION CHECK before setting error state
+      if (thisRequestSequence !== requestSequenceRef.current || url !== currentUrl) {
+        console.log(`🚫 Ignoring error for sequence ${thisRequestSequence}:`, error);
+        return;
+      }
+      
       console.error('❌ Error checking for article:', error);
       setArticle(null);
       clearHighlights();
@@ -1506,14 +1725,24 @@ ${article.description}
       
       setArticleError(error instanceof Error ? error.message : 'Failed to fetch article');
     } finally {
-      setIsLoadingArticle(false);
-      endLoadingWithMinTimer();
+      // Only update loading states if this is still the current request
+      if (thisRequestSequence === requestSequenceRef.current) {
+        setIsLoadingArticle(false);
+        endLoadingWithMinTimer();
+      }
     }
   };
 
   // PDF content generation function
   const generatePdfContent = async (pdfUrl: string) => {
     try {
+      // Store the generation context at the start to preserve across tab switches
+      setGenerationContext({
+        url: pdfUrl,
+        isPdf: true,
+        pdfHash: undefined // Will be set after PDF extraction
+      });
+
       setContentGenerationStatus({
         stage: 'extracting',
         streamingComplete: false,
@@ -1530,6 +1759,12 @@ ${article.description}
       
       // Store PDF hash for auto-save (avoid article dependency loop)
       setCurrentPdfHash(pdfData.metadata.fileHash);
+      
+      // Update generation context with the PDF hash
+      setGenerationContext(prev => prev ? {
+        ...prev,
+        pdfHash: pdfData.metadata.fileHash
+      } : null);
 
       // Check if an article already exists for this PDF hash
       setContentGenerationStatus({
@@ -1825,7 +2060,24 @@ ${article.description}
       return;
     }
 
+    // Generate a unique sequence number for this content generation to prevent race conditions
+    const thisGenerationSequence = ++requestSequenceRef.current;
+    setCurrentRequestSequence(thisGenerationSequence);
+    
+    console.log(`🚀 Starting content generation for URL: ${currentUrl} (sequence: ${thisGenerationSequence})`);
+
     try {
+      // Store the generation context at the start to preserve across tab switches
+      const isCurrentUrlPdf = isPdfUrl(currentUrl);
+      const isCurrentUrlLocalFile = isLocalFile(currentUrl);
+      
+      // Note: pageData will be set later after extraction, initial context just preserves URL/PDF info
+      setGenerationContext({
+        url: currentUrl,
+        isPdf: isCurrentUrlPdf || isCurrentUrlLocalFile,
+        pdfHash: currentPdfHash
+      });
+
       setContentGenerationStatus({
         stage: 'extracting',
         streamingComplete: false,
@@ -1850,10 +2102,6 @@ ${article.description}
 
       console.log('🔄 Generate content requested for:', currentUrl);
 
-      // Check if URL is a PDF (including local files)
-      const isCurrentUrlPdf = isPdfUrl(currentUrl);
-      const isCurrentUrlLocalFile = isLocalFile(currentUrl);
-      
       console.log('🔍 URL Analysis:', {
         url: currentUrl,
         isPdf: isCurrentUrlPdf,
@@ -1925,18 +2173,35 @@ ${article.description}
           };
 
           const extractThumbnailUrl = (): string | null => {
-            // Try Open Graph image
+            // Enhanced YouTube handling with better video ID extraction (prioritize over meta tags)
+            if (location.hostname.includes('youtube.com') || location.hostname.includes('youtu.be')) {
+              let videoId = null;
+              
+              // Handle youtube.com/watch?v= format
+              if (location.hostname.includes('youtube.com')) {
+                videoId = new URLSearchParams(location.search).get('v');
+              }
+              // Handle youtu.be/ format
+              else if (location.hostname.includes('youtu.be')) {
+                videoId = location.pathname.substring(1); // Remove leading slash
+              }
+              
+              if (videoId) {
+                // Use maxresdefault for higher quality
+                return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+              }
+            }
+
+            // Try Open Graph image as fallback
             const ogImage = document.querySelector('meta[property="og:image"]');
             if (ogImage?.getAttribute('content')) {
               return ogImage.getAttribute('content');
             }
 
-            // YouTube fallback
-            if (location.hostname.includes('youtube.com')) {
-              const videoId = new URLSearchParams(location.search).get('v');
-              if (videoId) {
-                return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-              }
+            // Try Twitter card image as fallback
+            const twitterImage = document.querySelector('meta[name="twitter:image"]');
+            if (twitterImage?.getAttribute('content')) {
+              return twitterImage.getAttribute('content');
             }
 
             return null;
@@ -1961,18 +2226,42 @@ ${article.description}
 
       const extractedPageData = results[0].result;
       console.log('📄 Extracted page data:', extractedPageData);
+      console.log('🖼️ Extracted thumbnail URL:', extractedPageData.thumbnailUrl);
+      console.log('🖼️ YouTube transcript thumbnail:', youtubeTranscript?.thumbnailUrl);
 
-      // Create PageContent object
+      // Use YouTube transcript thumbnail if available (higher quality)
+      const finalThumbnailUrl = youtubeTranscript?.thumbnailUrl || extractedPageData.thumbnailUrl;
+      
+      // Use YouTube transcript content if available (more comprehensive than visible text)
+      const finalContent = (youtubeTranscript?.segments && youtubeTranscript.segments.length > 0)
+        ? youtubeTranscript.segments.map(s => s.text).join(' ')
+        : extractedPageData.visibleText || '';
+
+      // Create PageContent object with enhanced YouTube support
       const pageContent: PageContent = {
         url: extractedPageData.url,
         title: extractedPageData.title,
         metaDescription: extractedPageData.metaDescription || '',
         headings: extractedPageData.headings || [],
-        visibleText: extractedPageData.visibleText || '',
+        visibleText: finalContent,
         structuredData: extractedPageData.structuredData || {},
-        openGraph: extractedPageData.openGraph || {},
-        thumbnailUrl: extractedPageData.thumbnailUrl || undefined
+        openGraph: {
+          ...extractedPageData.openGraph,
+          // Ensure og:image is set to our final thumbnail (preferring YouTube transcript)
+          'og:image': finalThumbnailUrl || (extractedPageData.openGraph as any)?.['og:image']
+        },
+        thumbnailUrl: finalThumbnailUrl || undefined
       };
+
+      console.log('🖼️ Final PageContent thumbnail URL:', pageContent.thumbnailUrl);
+      console.log('🖼️ PageContent og:image:', pageContent.openGraph?.['og:image']);
+      console.log('📝 Using content source:', (youtubeTranscript?.segments && youtubeTranscript.segments.length > 0) ? 'YouTube transcript' : 'extracted text');
+
+      // Update generation context with fresh page data (especially important for thumbnail)
+      setGenerationContext(prev => prev ? {
+        ...prev,
+        pageData: pageContent
+      } : null);
 
       // Create an initial mock article immediately to update the main content area
       const initialArticle: Article = {
@@ -2036,6 +2325,13 @@ ${article.description}
         }
       }, 2000); // 2 second timeout
       
+      console.log('🚀 Starting streaming with pageContent:', {
+        url: pageContent.url,
+        title: pageContent.title,
+        thumbnailUrl: pageContent.thumbnailUrl,
+        hasContent: !!pageContent.visibleText
+      });
+      
       // Start streaming operation
       const streamingPromise = streamWebSummaryFromEvents(
         pageContent,
@@ -2094,21 +2390,31 @@ ${article.description}
       setStreamingResult('');
       setExtractResult(null);
       
+      console.log('🚀 Starting extract with content data:', {
+        url: pageContent.url,
+        title: pageContent.title,
+        thumbnailUrl: pageContent.thumbnailUrl,
+        visibleTextLength: pageContent.visibleText?.length || 0
+      });
+      
       // Start extract operation in parallel - render immediately when ready
       extractArticleData({
         rawText: pageContent.visibleText,
         content: {
-          url: pageContent.url,
-          title: pageContent.title,
-          metaDescription: pageContent.metaDescription,
-          headings: pageContent.headings,
-          visibleText: pageContent.visibleText,
-          structuredData: pageContent.structuredData,
-          openGraph: pageContent.openGraph,
-          thumbnailUrl: pageContent.thumbnailUrl
-        }
+          ...pageContent,
+          // Additional explicit thumbnail references for API
+          thumbnail: pageContent.thumbnailUrl,
+          image_url: pageContent.thumbnailUrl
+        } as any
       }, extractEndpoint).then((extractDetails: any) => {
+        // CHECK FOR RACE CONDITION: Ensure this response is still relevant
+        if (thisGenerationSequence !== requestSequenceRef.current) {
+          console.log(`🚫 Ignoring stale extract response for sequence ${thisGenerationSequence} (current: ${requestSequenceRef.current})`);
+          return;
+        }
+        
         console.log('📄 Extract article completed:', extractDetails);
+        console.log('🖼️ Extract result thumbnail:', extractDetails?.metadata?.thumbnail_url || extractDetails?.thumbnail_url);
         setExtractCompleted(true);
         setExtractResult(extractDetails);
         
@@ -2127,6 +2433,8 @@ ${article.description}
               ...initialArticle,
               title: extractDetails.title || initialArticle.title,
               summary: extractDetails.summary, // Use extracted API summary for header description
+              // Prioritize our extracted thumbnail over API's thumbnail
+              thumbnail_url: pageContent.thumbnailUrl || extractDetails.metadata?.thumbnail_url || extractDetails.thumbnail_url || initialArticle.thumbnail_url,
               tags: extractDetails.tags,
               categories: extractDetails.categories.map((cat: any) => 
                 typeof cat === 'string' ? cat : cat[0]
@@ -2138,6 +2446,8 @@ ${article.description}
               ...currentArticle,
               title: extractDetails.title || currentArticle.title,
               summary: extractDetails.summary, // Use extracted API summary for header description
+              // Prioritize our extracted thumbnail over API's thumbnail
+              thumbnail_url: pageContent.thumbnailUrl || extractDetails.metadata?.thumbnail_url || extractDetails.thumbnail_url || currentArticle.thumbnail_url,
               tags: extractDetails.tags,
               categories: extractDetails.categories.map((cat: any) => 
                 typeof cat === 'string' ? cat : cat[0]
@@ -2155,7 +2465,10 @@ ${article.description}
           title: extractDetails.title,
           tags: extractDetails.tags,
           categories: extractDetails.categories,
-          summary: extractDetails.summary
+          summary: extractDetails.summary,
+          ourThumbnail: pageContent.thumbnailUrl,
+          apiThumbnail: extractDetails.metadata?.thumbnail_url || extractDetails.thumbnail_url,
+          finalThumbnail: pageContent.thumbnailUrl || extractDetails.metadata?.thumbnail_url || extractDetails.thumbnail_url
         });
         
         // Turn off loading states immediately when extract completes
@@ -2167,6 +2480,12 @@ ${article.description}
         
         // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
+        // CHECK FOR RACE CONDITION before setting error state
+        if (thisGenerationSequence !== requestSequenceRef.current) {
+          console.log(`🚫 Ignoring extract error for sequence ${thisGenerationSequence}:`, error);
+          return;
+        }
+        
         console.error('❌ Extract article failed:', error);
         setArticleError(error instanceof Error ? error.message : 'Failed to extract article metadata');
         
@@ -2178,6 +2497,12 @@ ${article.description}
 
       // Let streaming continue independently - handle completion separately
       streamingPromise.then(() => {
+        // CHECK FOR RACE CONDITION: Ensure this response is still relevant
+        if (thisGenerationSequence !== requestSequenceRef.current) {
+          console.log(`🚫 Ignoring stale streaming response for sequence ${thisGenerationSequence} (current: ${requestSequenceRef.current})`);
+          return;
+        }
+        
         console.log('✅ Streaming content generation completed independently');
         console.log('📝 Final streamed content length:', streamingContent.length);
         
@@ -2203,6 +2528,12 @@ ${article.description}
         
         // Note: Auto-save is now handled by useEffect when both operations complete
       }).catch((error) => {
+        // CHECK FOR RACE CONDITION before setting error state
+        if (thisGenerationSequence !== requestSequenceRef.current) {
+          console.log(`🚫 Ignoring streaming error for sequence ${thisGenerationSequence}:`, error);
+          return;
+        }
+        
         console.error('❌ Streaming failed:', error);
         
         // Clear timeout on error
@@ -2222,6 +2553,12 @@ ${article.description}
       updateState({ currentSourceUrl: pageContent.url });
 
     } catch (error) {
+      // CHECK FOR RACE CONDITION before setting error state
+      if (thisGenerationSequence !== requestSequenceRef.current) {
+        console.log(`🚫 Ignoring generation error for sequence ${thisGenerationSequence}:`, error);
+        return;
+      }
+      
       console.error('❌ Error generating content:', error);
       setArticle(null);
       clearHighlights();
@@ -2328,23 +2665,14 @@ ${article.description}
   // Auto-save to room when both streaming and extraction are completed
   useEffect(() => {
     const autoSaveToRoom = async () => {
-      if (streamingCompleted && extractCompleted && streamingResult && extractResult && currentUrl) {
+      if (streamingCompleted && extractCompleted && streamingResult && extractResult && generationContext) {
         try {
           console.log('🔄 Auto-saving to room - both operations completed');
           console.log('📊 Streaming result length:', streamingResult.length);
           console.log('📊 Extract result:', extractResult);
+          console.log('🎯 Using original generation context:', generationContext);
           
-          // Check if current context is PDF-related
-          const isCurrentUrlPdf = isPdfUrl(currentUrl);
-          let pdfHash: string | undefined;
-          
-          // Use the stored PDF hash for auto-save to avoid article dependency loops
-          if (isCurrentUrlPdf && currentPdfHash) {
-            pdfHash = currentPdfHash;
-            console.log('📄 Using stored PDF hash for auto-save:', pdfHash);
-          }
-          
-          await checkAndSaveToRoom(currentUrl, isCurrentUrlPdf, pdfHash);
+          await checkAndSaveToRoom(generationContext.url, generationContext.isPdf, generationContext.pdfHash);
           
         } catch (error) {
           console.error('❌ Auto-save to room failed:', error);
@@ -2354,7 +2682,7 @@ ${article.description}
     };
 
     autoSaveToRoom();
-  }, [streamingCompleted, extractCompleted, streamingResult, extractResult, currentUrl, currentPdfHash]);
+  }, [streamingCompleted, extractCompleted, streamingResult, extractResult, generationContext]);
 
   // Settings handlers
   const handleSettingsChange = (newSettings: Partial<Settings>) => {
@@ -2371,6 +2699,23 @@ ${article.description}
     } else {
       console.log('⚠️ No article available for Thought Rooms - button should be hidden');
     }
+  };
+
+  const toggleEditProfile = () => {
+    setShowEditProfile(!showEditProfile);
+  };
+
+  // Handle profile update callback
+  const handleProfileUpdate = (updatedProfile: any) => {
+    // Update local user state with new profile data
+    setLocalUser(prev => prev ? {
+      ...prev,
+      name: updatedProfile.display_name || updatedProfile.name || prev.name,
+      email: updatedProfile.email || prev.email,
+      avatar: updatedProfile.display_pic || prev.avatar
+    } : prev);
+    
+    console.log('✅ Profile updated in side panel:', updatedProfile);
   };
 
   // Handlers
@@ -3180,7 +3525,7 @@ ${article.description}
   };
   
   // Reset streaming content state
-  const resetStreamingState = () => {
+  const resetStreamingState = (clearGenerationContext: boolean = true) => {
     setStreamingContent('');
     setGeneratedTags([]);
     setGeneratedCategories([]);
@@ -3192,6 +3537,11 @@ ${article.description}
     setExtractCompleted(false);
     setStreamingResult('');
     setExtractResult(null);
+    
+    // Only reset generation context if explicitly requested (e.g., for new page navigation)
+    if (clearGenerationContext) {
+      setGenerationContext(null);
+    }
     
     // Reset PDF hash state to avoid stale data
     setCurrentPdfHash(undefined);
@@ -3233,27 +3583,50 @@ ${article.description}
 
         console.log('💾 Both operations completed - saving to room...');
         
-        // Get thumbnail URL from multiple sources
+        // Get thumbnail URL from multiple sources - prioritize fresh generation context data
         let thumbnailUrl = null;
         
-        // Priority 1: Use thumbnail from current article if available
-        if (article?.thumbnail_url) {
-          thumbnailUrl = article.thumbnail_url;
+        // Priority 1: Use thumbnail from generation context (fresh page data from current video)
+        if (generationContext?.pageData?.thumbnailUrl) {
+          thumbnailUrl = generationContext.pageData.thumbnailUrl;
+          console.log('🖼️ Using thumbnail from generation context:', thumbnailUrl);
         }
-        // Priority 2: Try to extract from extract result
+        // Priority 2: Use thumbnail from current article if available
+        else if (article?.thumbnail_url) {
+          thumbnailUrl = article.thumbnail_url;
+          console.log('🖼️ Using thumbnail from current article:', thumbnailUrl);
+        }
+        // Priority 3: Try to extract from extract result
         else if (extractResult?.metadata?.thumbnail_url) {
           thumbnailUrl = extractResult.metadata.thumbnail_url;
+          console.log('🖼️ Using thumbnail from extract result metadata:', thumbnailUrl);
         }
-        // Priority 3: Try to extract from page data
+        // Priority 4: Try to extract from extract result (alternative location)
+        else if (extractResult?.thumbnail_url) {
+          thumbnailUrl = extractResult.thumbnail_url;
+          console.log('🖼️ Using thumbnail from extract result direct:', thumbnailUrl);
+        }
+        // Priority 5: Fallback to old pageData state (may be stale)
         else if (pageData?.thumbnailUrl) {
           thumbnailUrl = pageData.thumbnailUrl;
+          console.log('🖼️ Using thumbnail from pageData fallback:', thumbnailUrl);
+        }
+        else {
+          console.log('🖼️ No thumbnail found from any source');
         }
         
-        console.log('🖼️ Thumbnail URL resolution:', {
+        console.log('🖼️ Thumbnail URL resolution summary:', {
+          generationContextThumbnail: generationContext?.pageData?.thumbnailUrl,
           articleThumbnail: article?.thumbnail_url,
-          extractResultThumbnail: extractResult?.metadata?.thumbnail_url,
+          extractResultMetadataThumbnail: extractResult?.metadata?.thumbnail_url,
+          extractResultDirectThumbnail: extractResult?.thumbnail_url,
           pageDataThumbnail: pageData?.thumbnailUrl,
-          finalThumbnail: thumbnailUrl
+          finalThumbnail: thumbnailUrl,
+          source: thumbnailUrl === generationContext?.pageData?.thumbnailUrl ? 'generation-context' :
+                  thumbnailUrl === article?.thumbnail_url ? 'article' :
+                  thumbnailUrl === extractResult?.metadata?.thumbnail_url ? 'extract-metadata' :
+                  thumbnailUrl === extractResult?.thumbnail_url ? 'extract-direct' :
+                  thumbnailUrl === pageData?.thumbnailUrl ? 'pageData-fallback' : 'none'
         });
         
         const addToRoomParams = {
@@ -3268,6 +3641,8 @@ ${article.description}
           description: streamingResult,
           ...(isPdf && pdfHash ? { hash: pdfHash, pdf: true } : {})
         };
+
+        console.log('💾 Sending to addToRoom with thumbnail:', addToRoomParams.thumbnail_url);
 
         const saveResult = await addToRoom(addToRoomParams);
         console.log('✅ Successfully saved to room:', saveResult);
@@ -3371,6 +3746,13 @@ ${article.description}
   const handlePdfUploadSuccess = async (pdfData: PdfUploadResponse) => {
     try {
       console.log('📤 PDF uploaded successfully, starting content generation...', pdfData);
+      
+      // Store the generation context for uploaded PDF
+      setGenerationContext({
+        url: currentUrl, // Original file:// URL
+        isPdf: true,
+        pdfHash: pdfData.metadata.fileHash
+      });
       
       // Store PDF hash for auto-save (avoid article dependency loop)
       setCurrentPdfHash(pdfData.metadata.fileHash);
@@ -3799,11 +4181,14 @@ ${article.description}
             onHistoryItemClick={openHistoryItem}
             onLoadHistory={loadHistory}
             onLoadMoreHistory={loadMoreHistoryItems}
+            user={localUser} // Use localUser for updated profile data
+            onLogout={onLogout}
             onViewPageData={handleViewPageData}
             onToggleSettings={toggleSettings}
             onReplyToThoughtDoc={handleReplyToThoughtDoc}
             onToggleThoughtRooms={toggleThoughtRooms}
             onToggleSearch={() => setShowSearchBar(true)}
+            onToggleEditProfile={toggleEditProfile}
             useContentScript={settings.useContentScript}
             isExtracting={isExtractingPageData}
             article={article}
@@ -3983,7 +4368,11 @@ ${article.description}
           ) : (isLoadingWithMinTimer || isLoadingArticle || isGeneratingContent) ? (
             // Show skeleton only when article is still loading (not highlights)
             <div className="absolute left-0 right-0" style={{ top: 68, bottom: state.footerH }}>
-              <div className="h-full overflow-y-auto pr-1">
+              <div className="h-full overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" 
+                style={{
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none',
+                }}>
                 <ContentSkeleton />
               </div>
             </div>
@@ -5368,6 +5757,85 @@ ${article.description}
                   </div>
                 </div>
 
+                {/* YouTube Transcript Section */}
+                {((youtubeTranscript && youtubeTranscript.segments.length > 0) || isLoadingTranscript) && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-philonet-blue-400 flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM9 17V7l7 5-7 5z"/>
+                        </svg>
+                        Video Transcript
+                        {isLoadingTranscript && (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-philonet-blue-400"></div>
+                        )}
+                      </h3>
+                      {!isLoadingTranscript && youtubeTranscript && (
+                        <button
+                          onClick={() => setShowTranscript(!showTranscript)}
+                          className="text-philonet-text-muted hover:text-philonet-blue-400 transition-colors text-sm"
+                        >
+                          {showTranscript ? 'Hide' : 'Show'} ({youtubeTranscript.segments.length} segments)
+                        </button>
+                      )}
+                    </div>
+                    
+                    {isLoadingTranscript && (
+                      <div className="bg-philonet-panel/30 border border-philonet-border/50 rounded-lg p-4">
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-philonet-blue-400"></div>
+                          <span className="ml-3 text-philonet-text-muted">Extracting video transcript...</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!isLoadingTranscript && showTranscript && youtubeTranscript && (
+                      <div className="bg-philonet-panel/30 border border-philonet-border/50 rounded-lg p-4 max-h-80 overflow-y-auto philonet-scrollbar">
+                        <div className="space-y-2">
+                          {youtubeTranscript.segments.map((segment, index) => (
+                            <div
+                              key={index}
+                              className="flex gap-3 p-2 rounded hover:bg-philonet-panel/50 transition-colors cursor-pointer group"
+                              onClick={() => {
+                                // Generate timestamp URL and open in new tab
+                                const timestampUrl = generateYouTubeTimestampUrl(youtubeTranscript.videoUrl, segment.startTime);
+                                window.open(timestampUrl, '_blank');
+                              }}
+                            >
+                              <span className="text-philonet-blue-400 text-xs font-mono whitespace-nowrap mt-0.5 group-hover:text-philonet-blue-300">
+                                {segment.formattedTime}
+                              </span>
+                              <p className="text-philonet-text-secondary text-sm leading-relaxed group-hover:text-philonet-text">
+                                {segment.text}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {youtubeTranscript.comments.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-philonet-border/30">
+                            <h4 className="font-medium text-philonet-text mb-2 text-sm">
+                              Video Comments ({youtubeTranscript.comments.length})
+                            </h4>
+                            <div className="space-y-2 max-h-32 overflow-y-auto philonet-scrollbar">
+                              {youtubeTranscript.comments.slice(0, 5).map((comment, index) => (
+                                <p key={index} className="text-philonet-text-muted text-xs leading-relaxed">
+                                  {comment}
+                                </p>
+                              ))}
+                              {youtubeTranscript.comments.length > 5 && (
+                                <p className="text-philonet-blue-400 text-xs">
+                                  +{youtubeTranscript.comments.length - 5} more comments
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Additional Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-philonet-border/50">
                   <div>
@@ -5457,6 +5925,13 @@ ${article.description}
           onClose={closePdfUploadModal}
           onUploadSuccess={handlePdfUploadSuccess}
           fileName={pdfUploadFileName}
+        />
+
+        {/* Edit Profile Modal */}
+        <EditProfileModal
+          isOpen={showEditProfile}
+          onClose={() => setShowEditProfile(false)}
+          onProfileUpdated={handleProfileUpdate}
         />
 
         {/* Content Overlay for tagged text highlighting */}

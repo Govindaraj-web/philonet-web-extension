@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
-import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings, Reply, MessageSquare, Copy, Check, ExternalLink, Search } from 'lucide-react';
+import { UserRound, Share2, Bookmark, MoreHorizontal, LogOut, FileText, Eye, Settings, Reply, MessageSquare, Copy, Check, ExternalLink, Search, Edit } from 'lucide-react';
 import { Button } from './ui';
 import HistoryMenu from './HistoryMenu';
 import ShareDropdown from './ShareDropdown';
@@ -54,6 +54,7 @@ interface AuthenticatedTopActionBarProps {
   onReplyToThoughtDoc?: () => void;
   onToggleThoughtRooms?: () => void;
   onToggleSearch?: () => void;
+  onToggleEditProfile?: () => void;
   useContentScript?: boolean;
   isExtracting?: boolean;
   shareUrl?: string;
@@ -64,6 +65,7 @@ interface AuthenticatedTopActionBarProps {
 }
 
 const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
+  user: propUser, // Rename to avoid conflict
   showMoreMenu,
   showHistoryMenu,
   historyItems,
@@ -80,6 +82,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   onReplyToThoughtDoc,
   onToggleThoughtRooms,
   onToggleSearch,
+  onToggleEditProfile,
   useContentScript = false,
   isExtracting = false,
   article = null,
@@ -89,7 +92,10 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   fontSize = 'medium',
   onFontSizeChange
 }) => {
-  const { user, logout } = useApp();
+  const { user: contextUser, logout } = useApp();
+  
+  // Use prop user if available, otherwise fall back to context user
+  const user = propUser || contextUser;
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showShareDropdown, setShowShareDropdown] = useState(false);
   const [showMobileShareOptions, setShowMobileShareOptions] = useState(false);
@@ -204,6 +210,16 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                   <p className="text-sm font-medium text-white truncate">{user?.name}</p>
                   <p className="text-xs text-philonet-text-muted truncate">{user?.email}</p>
                 </div>
+                <button
+                  onClick={() => {
+                    onToggleEditProfile?.();
+                    setShowUserMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-philonet-text-secondary hover:text-white hover:bg-philonet-border/30 rounded-lg transition-colors"
+                >
+                  <UserRound className="h-4 w-4" />
+                  Edit Profile
+                </button>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-philonet-text-secondary hover:text-white hover:bg-philonet-border/30 rounded-lg transition-colors"
@@ -525,6 +541,43 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                         Ctrl+F
                       </span>
                     </button>
+                  )}
+
+                  {/* Font Size picker - Mobile - only show when article exists */}
+                  {article && onFontSizeChange && (
+                    <div className="p-3 rounded-lg border border-transparent hover:border-philonet-border-light hover:bg-philonet-panel/60 transition-colors group mb-2">
+                      <div className="flex items-center gap-3 mb-2">
+                        <FileText className="h-4 w-4 text-philonet-text-muted group-hover:text-philonet-blue-500" />
+                        <span className="text-sm text-philonet-text-primary group-hover:text-white">
+                          Font Size
+                        </span>
+                        <span className="text-xs text-philonet-text-muted ml-auto flex items-center">
+                          <span className="text-base font-medium">A</span>
+                          <span className="text-xs ml-0.5 mb-1">a</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center bg-black/20 rounded-lg p-0.5 backdrop-blur-sm border border-white/10">
+                        {(['small', 'medium', 'large'] as const).map((size) => (
+                          <button
+                            key={size}
+                            onClick={() => onFontSizeChange(size)}
+                            className={`flex-1 px-2 py-1 text-xs rounded-md transition-all duration-200 font-medium relative ${
+                              fontSize === size
+                                ? 'bg-philonet-blue-500 text-white border-philonet-blue-500 shadow-lg transform scale-105'
+                                : 'text-philonet-text-muted hover:bg-white/10 hover:text-white'
+                            }`}
+                            title={`${size.charAt(0).toUpperCase() + size.slice(1)} text size`}
+                          >
+                            <span className={size === 'small' ? 'text-xs' : size === 'large' ? 'text-sm' : 'text-xs'}>
+                              {size === 'small' ? 'S' : size === 'medium' ? 'M' : 'L'}
+                            </span>
+                            {fontSize === size && (
+                              <div className="absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-white rounded-full"></div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
 
                   {/* Reply to Thought Doc button - Mobile */}

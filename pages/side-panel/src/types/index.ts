@@ -22,6 +22,14 @@ export interface Comment {
     }>;
     userReacted: boolean;
   }>;
+  // Tagged users in thoughts
+  mentionedUsers?: Array<{
+    id: string;
+    name: string;
+    username?: string;
+    avatar?: string;
+    mention?: string;
+  }>;
 }
 
 export interface ConversationMessage {
@@ -112,6 +120,13 @@ export interface Highlight {
   is_read: boolean;
   read_at?: string | null;
   priority_order: number;
+  mentioned_users?: Array<{
+    user_id: string;
+    name: string;
+    username?: string;
+    avatar?: string;
+    mention?: string;
+  }>;
 }
 
 export interface HighlightsResponse {

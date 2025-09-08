@@ -17,14 +17,27 @@ export const Button = ({ className = "", children, ...props }: any) => (
   </button>
 );
 
-export const Textarea = React.forwardRef<HTMLTextAreaElement, any>(({ className = "", rows = 1, ...props }, ref) => (
+export const Textarea = React.forwardRef<HTMLTextAreaElement, any>(({ className = "", rows = 1, style = {}, ...props }, ref) => (
   <textarea
     ref={ref}
     rows={rows}
     {...props}
+    style={{
+      // Subtle scrollbar styling
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'rgba(75, 85, 99, 0.3) transparent',
+      ...style,
+    }}
     className={cn(
       "w-full bg-transparent text-white resize-none",
       "placeholder:text-philonet-text-subtle font-light tracking-philonet-tight leading-6 focus:outline-none",
+      // Custom webkit scrollbar styling for Chrome/Safari
+      "[&::-webkit-scrollbar]:w-1",
+      "[&::-webkit-scrollbar]:h-1",
+      "[&::-webkit-scrollbar-track]:bg-transparent",
+      "[&::-webkit-scrollbar-thumb]:bg-gray-600/20",
+      "[&::-webkit-scrollbar-thumb]:rounded-full",
+      "[&::-webkit-scrollbar-thumb:hover]:bg-gray-500/30",
       className
     )}
   />
