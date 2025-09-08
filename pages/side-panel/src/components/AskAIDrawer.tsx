@@ -44,15 +44,28 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
   const [conversations, setConversations] = useState<AIConversation[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
+  const [pendingAutoSubmit, setPendingAutoSubmit] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamAbortController, setStreamAbortController] = useState<AbortController | null>(null);
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
+  const [contextResetMessage, setContextResetMessage] = useState<string>('');
+  const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string>('');
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationsRef = useRef<HTMLDivElement>(null);
   const thoughtRoomsAPI = new ThoughtRoomsAPI();
   const markdownRenderer = createMathMarkdownRenderer();
+
+  // Track the current context to detect tab changes
+  const [currentContext, setCurrentContext] = useState<{
+    url: string;
+    title: string;
+    content: string;
+  }>({
+    url: articleUrl,
+    title: contextTitle || '',
+    content: articleContent
+  });
 
   // Font size utility function
   const getFontSizeClass = () => {
@@ -77,33 +90,56 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
 
   // Set initial question when prop changes and auto-submit if provided
   useEffect(() => {
-    if (initialQuestion && initialQuestion !== question && question === '') {
+    if (initialQuestion && initialQuestion.trim() && initialQuestion !== question && question === '' && isOpen) {
+      console.log('📝 Setting initial question from prop:', initialQuestion);
       setQuestion(initialQuestion);
-      setShouldAutoSubmit(true);
+      // Auto-submit immediately after setting question
+      setTimeout(() => {
+        console.log('🚀 Auto-submitting initial question:', initialQuestion.trim());
+        if (!isLoading && !isStreaming) {
+          handleSubmit();
+        }
+      }, 150); // Single timeout for setting question and submitting
     }
-  }, [initialQuestion]);
+  }, [initialQuestion, question, isOpen, isLoading, isStreaming]);
 
-  // Auto-submit when shouldAutoSubmit is true and conditions are met
+  // Simple auto-submit when pendingAutoSubmit flag is set (from custom events)  
   useEffect(() => {
-    if (shouldAutoSubmit && isOpen && question.trim() && !isLoading) {
-      setShouldAutoSubmit(false);
-      const timer = setTimeout(() => {
-        handleSubmit();
-      }, 300);
-      
-      return () => clearTimeout(timer);
+    if (pendingAutoSubmit && isOpen && !isLoading && !isStreaming && question.trim()) {
+      console.log('🚀 Auto-submitting from event:', question.trim());
+      setPendingAutoSubmit(false);
+      // Immediate submission without additional delays
+      handleSubmit();
+    } else if (pendingAutoSubmit) {
+      // Clear the flag if conditions aren't met
+      console.warn('⚠️ Auto-submit cancelled - conditions not met:', { 
+        hasQuestion: !!question.trim(), 
+        isOpen, 
+        isLoading, 
+        isStreaming 
+      });
+      setPendingAutoSubmit(false);
     }
-    
-    return undefined;
-  }, [shouldAutoSubmit, isOpen, question, isLoading]);
+  }, [pendingAutoSubmit, isOpen, isLoading, isStreaming, question]);
 
   // Listen for auto-submit events from parent component
   useEffect(() => {
     const handleAutoSubmit = (event: CustomEvent) => {
       const { question: autoQuestion } = event.detail;
-      if (autoQuestion && autoQuestion.trim() && isOpen && !isLoading) {
+      console.log('🎯 Received autoSubmitAIQuestion event:', { autoQuestion, isOpen, isLoading, isStreaming });
+      
+      if (autoQuestion && autoQuestion.trim() && isOpen && !isLoading && !isStreaming) {
+        console.log('🔥 Directly submitting from custom event:', autoQuestion.trim());
         setQuestion(autoQuestion);
-        setShouldAutoSubmit(true);
+        // Use the pendingAutoSubmit flag for cleaner state management
+        setPendingAutoSubmit(true);
+      } else {
+        console.warn('⚠️ Auto-submit event ignored:', { 
+          hasQuestion: !!autoQuestion?.trim(), 
+          isOpen, 
+          isLoading,
+          isStreaming
+        });
       }
     };
 
@@ -116,7 +152,7 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
     }
     
     return undefined;
-  }, [isOpen, isLoading]);
+  }, [isOpen, isLoading, isStreaming]);
 
   // Auto-scroll to bottom when new conversation is added (but not during streaming updates)
   useEffect(() => {
@@ -197,6 +233,34 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
     }
   }, [isStreaming]);
 
+  // Reset conversations when drawer closes to ensure fresh start
+  useEffect(() => {
+    if (!isOpen) {
+      // Clear any pending auto-submit
+      setPendingAutoSubmit(false);
+      
+      // Reset conversations on close to ensure fresh start when reopening
+      // This complements the tab-switching reset behavior
+      if (conversations.length > 0) {
+        setConversations([]);
+        console.log('🚪 Ask AI drawer closed - cleared', conversations.length, 'conversations for fresh start');
+      }
+      
+      setQuestion('');
+      setIsLoading(false);
+      setIsStreaming(false);
+      setCopiedId(null);
+      setUserHasScrolledUp(false);
+      setLastSubmittedQuestion('');
+
+      // Abort any ongoing streaming
+      if (streamAbortController) {
+        streamAbortController.abort();
+        setStreamAbortController(null);
+      }
+    }
+  }, [isOpen, conversations.length, streamAbortController]);
+
   // Handle Escape key to close drawer
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -214,10 +278,91 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
     };
   }, [isOpen, onClose]);
 
-  const handleSubmit = async () => {
-    if (!question.trim() || isLoading) return;
+  // Reset conversations when tab/context changes
+  useEffect(() => {
+    const newContext = {
+      url: articleUrl || '',
+      title: contextTitle || '',
+      content: articleContent || ''
+    };
 
+    // Check if any of the context properties have changed significantly
+    const urlChanged = newContext.url !== currentContext.url && newContext.url !== '';
+    const titleChanged = newContext.title !== currentContext.title && Math.abs(newContext.title.length - currentContext.title.length) > 5;
+    const contentChanged = newContext.content !== currentContext.content && Math.abs(newContext.content.length - currentContext.content.length) > 100;
+
+    // Only reset if there are significant changes (not just minor updates)
+    const shouldReset = urlChanged || (titleChanged && newContext.title.length > 5) || (contentChanged && newContext.content.length > 50);
+
+    if (shouldReset && conversations.length > 0) {
+      console.log('🔄 Tab/context changed significantly, resetting Ask AI conversations:', {
+        urlChanged,
+        titleChanged,
+        contentChanged,
+        oldContext: currentContext,
+        newContext,
+        conversationsCount: conversations.length
+      });
+
+      // Reset all conversation state
+      setConversations([]);
+      setQuestion('');
+      setIsLoading(false);
+      setIsStreaming(false);
+      setCopiedId(null);
+      setPendingAutoSubmit(false);
+      setUserHasScrolledUp(false);
+      setLastSubmittedQuestion('');
+
+      // Show brief reset message
+      setContextResetMessage('Switched to new content - previous conversations cleared');
+      setTimeout(() => setContextResetMessage(''), 3000);
+
+      // Abort any ongoing streaming
+      if (streamAbortController) {
+        streamAbortController.abort();
+        setStreamAbortController(null);
+      }
+    }
+
+    // Always update the tracked context to avoid repeated checks
+    setCurrentContext(newContext);
+  }, [articleUrl, contextTitle, articleContent, conversations.length, currentContext, streamAbortController]);
+
+  const handleSubmit = async () => {
+    if (!question.trim() || isLoading || isStreaming) {
+      console.log('⏸️ handleSubmit blocked:', { 
+        hasQuestion: !!question.trim(), 
+        isLoading,
+        isStreaming,
+        question: question.substring(0, 50) + (question.length > 50 ? '...' : '')
+      });
+      return;
+    }
+
+    console.log('✅ handleSubmit proceeding with question:', question.trim());
+    
     const currentQuestion = question.trim();
+    
+    // Prevent duplicate submissions of the same question
+    if (currentQuestion === lastSubmittedQuestion) {
+      console.warn('⚠️ Duplicate question submission prevented:', currentQuestion);
+      return;
+    }
+    
+    // Additional safeguard: Check if we already have a conversation with this exact question
+    const hasExistingConversation = conversations.some(conv => 
+      conv.question.trim() === currentQuestion && 
+      (conv.isLoading || conv.answer.trim() !== '')
+    );
+    
+    if (hasExistingConversation) {
+      console.warn('⚠️ Existing conversation found, skipping submission:', currentQuestion);
+      return;
+    }
+    
+    // Track this question as submitted
+    setLastSubmittedQuestion(currentQuestion);
     const conversationId = Date.now().toString();
     
     // Create abort controller for streaming
@@ -235,6 +380,8 @@ const AskAIDrawer: React.FC<AskAIDrawerProps> = ({
 
     setConversations(prev => [...prev, loadingConversation]);
     setQuestion('');
+    // Clear the last submitted question after successful start of conversation
+    setTimeout(() => setLastSubmittedQuestion(''), 2000);
     setIsLoading(true);
     setIsStreaming(true);
 
@@ -290,44 +437,95 @@ Query: ${currentQuestion}`;
         let updateTimeout: NodeJS.Timeout | null = null;
 
         // Function to update conversation with throttling
-        const updateConversation = (newContent: string) => {
+        const updateConversation = (newContent: string, hasFinished: boolean = false) => {
           if (updateTimeout) {
             clearTimeout(updateTimeout);
           }
           
+          // Add safety check for very long content to prevent memory issues
+          const maxContentLength = 50000; // 50KB limit for UI performance
+          const safeContent = newContent.length > maxContentLength 
+            ? newContent.substring(0, maxContentLength) + '\n\n⚠️ *Response truncated due to length. Full content preserved.*'
+            : newContent;
+          
           updateTimeout = setTimeout(() => {
             setConversations(prev => prev.map(conv => 
               conv.id === conversationId 
-                ? { ...conv, answer: newContent, isLoading: false }
+                ? { 
+                    ...conv, 
+                    answer: safeContent, 
+                    isLoading: hasFinished ? false : (safeContent.trim() === '' ? true : false)
+                  }
                 : conv
             ));
           }, 50); // Throttle updates to every 50ms for smoother streaming
         };
 
-        // Set up a timeout for streaming to prevent hanging
-        const streamTimeout = setTimeout(() => {
-          console.log('⏱️ Streaming timeout reached, aborting...');
-          abortController.abort();
-        }, 30000); // 30 second timeout
+        // Buffer to accumulate partial chunks that might be split across reads
+        let partialChunk = '';
 
         try {
-          while (true) {
+          let streamFinished = false;
+          
+          // Set up a timeout for streaming to prevent hanging
+          const streamTimeout = setTimeout(() => {
+            console.log('⏱️ Streaming timeout reached, but continuing with accumulated content...');
+            // Don't abort abruptly, just mark as finished to preserve accumulated content
+            streamFinished = true;
+          }, 60000); // Increased to 60 seconds
+          let lengthWarningShown = false;
+          
+          while (true && !streamFinished) {
             // Check if streaming was aborted
             if (abortController.signal.aborted) {
               console.log('🛑 Streaming aborted by user or timeout');
+              // If we have accumulated content, preserve it
+              if (accumulatedAnswer.trim()) {
+                console.log('💾 Preserving ' + accumulatedAnswer.length + ' characters of accumulated content');
+                accumulatedAnswer += '\n\n*Note: Response was interrupted but partial content is shown above.*';
+                updateConversation(accumulatedAnswer, false);
+              }
               break;
+            }
+            
+            // Warn about long responses
+            if (!lengthWarningShown && accumulatedAnswer.length > 20000) {
+              console.log('⚠️ Response is getting quite long (' + accumulatedAnswer.length + ' chars)');
+              lengthWarningShown = true;
             }
 
             const { done, value } = await reader.read();
             
             if (done) {
-              console.log('✅ Streaming complete');
+              console.log('✅ Stream reader finished. StreamFinished flag:', streamFinished, 'Content length:', accumulatedAnswer.length);
+              // Check if we got a proper [DONE] or if stream ended unexpectedly
+              if (!streamFinished && accumulatedAnswer.trim()) {
+                console.warn('⚠️ Stream ended without [DONE] signal, but we have', accumulatedAnswer.length, 'characters of content');
+                // Don't add warning message if content looks substantial
+                if (accumulatedAnswer.length < 100) {
+                  accumulatedAnswer += '\n\n*Note: Stream ended unexpectedly - response may be incomplete.*';
+                } else {
+                  console.log('ℹ️ Content appears substantial, treating as complete');
+                }
+                updateConversation(accumulatedAnswer, false);
+              } else if (!streamFinished && !accumulatedAnswer.trim()) {
+                console.warn('❌ Stream ended with no content and no [DONE] signal');
+              } else if (streamFinished) {
+                console.log('✅ Stream completed normally with [DONE] signal');
+              }
               break;
             }
 
             const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-            console.log('📦 Received chunk with', lines.length, 'lines:', chunk.substring(0, 200));
+            
+            // Combine with any partial chunk from previous read
+            const fullChunk = partialChunk + chunk;
+            const lines = fullChunk.split('\n');
+            
+            // Keep the last line as partial if it doesn't end with newline
+            partialChunk = chunk.endsWith('\n') ? '' : lines.pop() || '';
+            
+            console.log('📦 Received chunk with', lines.length, 'lines (+ partial:', partialChunk.length, 'chars):', chunk.substring(0, 200));
 
             for (const line of lines) {
               if (line.trim() === '') continue;
@@ -338,7 +536,8 @@ Query: ${currentQuestion}`;
                   const data = line.slice(6);
                   
                   if (data === '[DONE]') {
-                    console.log('✅ Stream finished');
+                    console.log('✅ Stream finished with [DONE] signal. Total content:', accumulatedAnswer.length, 'characters');
+                    streamFinished = true;
                     break;
                   }
 
@@ -348,11 +547,26 @@ Query: ${currentQuestion}`;
                   if (parsedData.type === 'content') {
                     // Accumulate content chunks - handle both 'content' and 'text' fields
                     const contentChunk = parsedData.content || parsedData.text || '';
-                    console.log('📝 Adding chunk (length:', contentChunk.length, '):', contentChunk.substring(0, 50));
-                    accumulatedAnswer += contentChunk;
+                    console.log('📝 Adding chunk (length:', contentChunk.length, '), total will be:', accumulatedAnswer.length + contentChunk.length, 'chars. Chunk preview:', contentChunk.substring(0, 100));
                     
-                    // Update conversation with throttled streaming content
-                    updateConversation(accumulatedAnswer);
+                    // Safety check to prevent excessive memory usage
+                    if (accumulatedAnswer.length < 100000) { // 100KB limit
+                      accumulatedAnswer += contentChunk;
+                      
+                      // Update conversation with throttled streaming content
+                      updateConversation(accumulatedAnswer, false);
+                    } else if (accumulatedAnswer.length < 150000) { // Soft limit - continue but warn
+                      accumulatedAnswer += contentChunk;
+                      console.warn('⚠️ Response is getting very long (' + accumulatedAnswer.length + ' chars), but continuing...');
+                      updateConversation(accumulatedAnswer, false);
+                    } else {
+                      // Hard limit - add warning and continue to look for [DONE]
+                      if (!accumulatedAnswer.includes('⚠️ *Response truncated due to length limit.*')) {
+                        accumulatedAnswer += '\n\n⚠️ *Response truncated due to length limit. Waiting for stream to complete...*';
+                        updateConversation(accumulatedAnswer, false);
+                      }
+                      console.warn('⚠️ Hard length limit reached, ignoring further content but waiting for [DONE]');
+                    }
                   } else if (parsedData.type === 'error') {
                     console.error('❌ Streaming error:', parsedData.message);
                     throw new Error(parsedData.message);
@@ -362,15 +576,41 @@ Query: ${currentQuestion}`;
                     // Handle direct content without type wrapper (some APIs send raw content)
                     if (typeof parsedData === 'string' && parsedData.trim()) {
                       console.log('📝 Adding raw string content:', parsedData.substring(0, 50));
-                      accumulatedAnswer += parsedData;
-                      updateConversation(accumulatedAnswer);
+                      if (accumulatedAnswer.length < 100000) { // 100KB limit
+                        accumulatedAnswer += parsedData;
+                        updateConversation(accumulatedAnswer, false);
+                      } else if (accumulatedAnswer.length < 150000) { // Soft limit
+                        accumulatedAnswer += parsedData;
+                        console.warn('⚠️ Response is getting very long (' + accumulatedAnswer.length + ' chars), but continuing...');
+                        updateConversation(accumulatedAnswer, false);
+                      } else {
+                        // Hard limit - add warning and continue to look for [DONE]
+                        if (!accumulatedAnswer.includes('⚠️ *Response truncated due to length limit.*')) {
+                          accumulatedAnswer += '\n\n⚠️ *Response truncated due to length limit. Waiting for stream to complete...*';
+                          updateConversation(accumulatedAnswer, false);
+                        }
+                        console.warn('⚠️ Hard length limit reached, ignoring further content but waiting for [DONE]');
+                      }
                     } else if (parsedData.content || parsedData.text || parsedData.summary) {
                       // Handle different response formats
                       const contentChunk = parsedData.content || parsedData.text || parsedData.summary || '';
                       if (contentChunk) {
                         console.log('📝 Adding alternate format content:', contentChunk.substring(0, 50));
-                        accumulatedAnswer += contentChunk;
-                        updateConversation(accumulatedAnswer);
+                        if (accumulatedAnswer.length < 100000) { // 100KB limit
+                          accumulatedAnswer += contentChunk;
+                          updateConversation(accumulatedAnswer, false);
+                        } else if (accumulatedAnswer.length < 150000) { // Soft limit
+                          accumulatedAnswer += contentChunk;
+                          console.warn('⚠️ Response is getting very long (' + accumulatedAnswer.length + ' chars), but continuing...');
+                          updateConversation(accumulatedAnswer, false);
+                        } else {
+                          // Hard limit - add warning and continue to look for [DONE]
+                          if (!accumulatedAnswer.includes('⚠️ *Response truncated due to length limit.*')) {
+                            accumulatedAnswer += '\n\n⚠️ *Response truncated due to length limit. Waiting for stream to complete...*';
+                            updateConversation(accumulatedAnswer, false);
+                          }
+                          console.warn('⚠️ Hard length limit reached, ignoring further content but waiting for [DONE]');
+                        }
                       }
                     } else {
                       console.log('⚠️ Unknown streaming data format:', parsedData);
@@ -378,36 +618,93 @@ Query: ${currentQuestion}`;
                   }
                 }
               } catch (parseError) {
-                // Skip invalid JSON lines
-                console.warn('⚠️ Could not parse streaming data:', line);
+                // Skip invalid JSON lines but check for raw text content
+                console.warn('⚠️ Could not parse streaming data as JSON:', line.substring(0, 100));
+                
+                // Try to handle as raw text if it looks like content
+                if (line.startsWith('data: ') && !line.includes('[DONE]') && line.length > 6) {
+                  const rawText = line.slice(6);
+                  if (rawText && rawText.trim()) {
+                    if (accumulatedAnswer.length < 150000) {
+                      console.log('📝 Adding raw text fallback:', rawText.substring(0, 50));
+                      accumulatedAnswer += rawText;
+                      updateConversation(accumulatedAnswer, false);
+                    } else {
+                      console.warn('⚠️ Raw text fallback ignored due to length limit');
+                    }
+                  }
+                } else if (line.trim() && !line.startsWith('data:') && !line.includes('[DONE]') && line.length > 3) {
+                  // Handle completely raw content lines (some servers send content without SSE format)
+                  if (accumulatedAnswer.length < 150000) {
+                    console.log('📝 Adding completely raw content:', line.substring(0, 50));
+                    accumulatedAnswer += line + '\n';
+                    updateConversation(accumulatedAnswer, false);
+                  }
+                }
               }
             }
           }
-        } finally {
-          // Clear the stream timeout
-          clearTimeout(streamTimeout);
           
+          // Process any remaining partial chunk
+          if (partialChunk.trim() && !partialChunk.includes('[DONE]')) {
+            console.log('📝 Processing final partial chunk:', partialChunk.substring(0, 100));
+            try {
+              if (partialChunk.startsWith('data: ')) {
+                const data = partialChunk.slice(6);
+                const parsedData = JSON.parse(data);
+                if (parsedData.type === 'content' && (parsedData.content || parsedData.text)) {
+                  const contentChunk = parsedData.content || parsedData.text || '';
+                  if (contentChunk && accumulatedAnswer.length < 150000) {
+                    accumulatedAnswer += contentChunk;
+                    updateConversation(accumulatedAnswer, false);
+                    console.log('✅ Added final partial content chunk');
+                  }
+                }
+              } else if (accumulatedAnswer.length < 150000) {
+                // Raw content
+                accumulatedAnswer += partialChunk;
+                updateConversation(accumulatedAnswer, false);
+                console.log('✅ Added final raw partial chunk');
+              }
+            } catch (error) {
+              console.warn('⚠️ Could not parse final partial chunk:', partialChunk);
+            }
+          }
+          
+          // Clear the stream timeout when loop ends
+          clearTimeout(streamTimeout);
+        } finally {
           reader.releaseLock();
-          // Final update to ensure all content is displayed
+          
+          // Wait for any pending throttled updates to complete
           if (updateTimeout) {
             clearTimeout(updateTimeout);
           }
           
-          // Ensure we have some content, even if streaming failed
+          // Final update to ensure all content is displayed with proper state
           const finalAnswer = accumulatedAnswer.trim() || '⚠️ No response received from AI. Please try again.';
+          
+          console.log('🏁 Final answer summary:', {
+            length: finalAnswer.length,
+            wordCount: finalAnswer.split(/\s+/).length,
+            preview: finalAnswer.substring(0, 200) + (finalAnswer.length > 200 ? '...' : '')
+          });
           
           setConversations(prev => prev.map(conv => 
             conv.id === conversationId 
               ? { ...conv, answer: finalAnswer, isLoading: false }
               : conv
           ));
+          
+          // Reset streaming states after final update
+          setIsLoading(false);
+          setIsStreaming(false);
         }
 
         console.log('✅ AI streaming response completed:', accumulatedAnswer ? accumulatedAnswer.substring(0, 100) + '...' : 'No content received');
         
-        // Reset loading states immediately after streaming completes
-        setIsLoading(false);
-        setIsStreaming(false);
+        // Don't reset loading states here - let the finally block handle it
+        // to avoid race conditions with throttled updates
         
         // If streaming failed to get any content, try fallback non-streaming request
         if (!accumulatedAnswer.trim()) {
@@ -574,6 +871,12 @@ Query: ${currentQuestion}`;
         return { __html: '<p class="text-philonet-text-muted text-xs">Waiting for response...</p>' };
       }
 
+      // Safety check for content length to prevent markdown renderer issues
+      if (content.length > 50000) {
+        console.warn('⚠️ Content is very long (' + content.length + ' chars), truncating for display');
+        content = content.substring(0, 47000) + '\n\n⚠️ *Content truncated for display performance.*';
+      }
+
       // Clean up content and ensure proper markdown formatting
       const cleanContent = content
         .trim()
@@ -590,43 +893,26 @@ Query: ${currentQuestion}`;
 
       const rendered = markdownRenderer.render(cleanContent);
       
-      // Post-process rendered HTML for better display and heading styles
+      // Minimal post-processing - let CSS handle the styling
       return { 
         __html: rendered
           // Ensure proper spacing around math expressions
           .replace(/<span class="katex-display">/g, '<div class="katex-display">')
           .replace(/<\/span>(\s*<p>)/g, '</div>$1')
-          // Add better styling for inline code in paragraphs
+          // Add inline-code class for better styling
           .replace(/<code>([^<]+)<\/code>/g, '<code class="inline-code">$1</code>')
-          // Enhanced heading styles with proper spacing and visual hierarchy
-          .replace(/<h1>/g, '<h1 class="text-xl font-bold text-white mb-3 mt-4 first:mt-0 border-b border-philonet-border/30 pb-2">')
-          .replace(/<h2>/g, '<h2 class="text-lg font-semibold text-white mb-2 mt-4 first:mt-0">')
-          .replace(/<h3>/g, '<h3 class="text-base font-medium text-blue-300 mb-2 mt-3 first:mt-0">')
-          .replace(/<h4>/g, '<h4 class="text-sm font-medium text-gray-300 mb-1 mt-2 first:mt-0">')
-          .replace(/<h5>/g, '<h5 class="text-sm font-medium text-gray-400 mb-1 mt-2 first:mt-0">')
-          .replace(/<h6>/g, '<h6 class="text-xs font-medium text-gray-500 mb-1 mt-1 first:mt-0">')
-          // Better table styling
-          .replace(/<table>/g, '<table class="w-full border-collapse border border-philonet-border/30 mt-3 mb-3 text-sm">')
-          .replace(/<th>/g, '<th class="border border-philonet-border/30 bg-philonet-card/30 px-3 py-2 text-left font-semibold text-white">')
-          .replace(/<td>/g, '<td class="border border-philonet-border/30 px-3 py-2 text-philonet-text-secondary">')
-          // Better list styling
-          .replace(/<ul>/g, '<ul class="space-y-1 my-2">')
-          .replace(/<ol>/g, '<ol class="space-y-1 my-2">')
-          .replace(/<li>/g, '<li class="text-philonet-text-secondary leading-relaxed">')
-          // Paragraph spacing
-          .replace(/<p>/g, '<p class="text-philonet-text-secondary leading-relaxed mb-2 last:mb-0">')
       };
     } catch (error) {
       console.error('Markdown rendering error:', error);
-      // Fallback with basic HTML formatting and heading styles
+      // Fallback with basic HTML formatting
       return { 
         __html: (content || '')
           .replace(/\n/g, '<br>')
-          .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-white mb-3 mt-4 first:mt-0 border-b border-philonet-border/30 pb-2">$1</h1>')
-          .replace(/^## (.+)$/gm, '<h2 class="text-lg font-semibold text-white mb-2 mt-4 first:mt-0">$1</h2>')
-          .replace(/^### (.+)$/gm, '<h3 class="text-base font-medium text-blue-300 mb-2 mt-3 first:mt-0">$1</h3>')
-          .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-          .replace(/\*(.*?)\*/g, '<em class="text-blue-200">$1</em>')
+          .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+          .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+          .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.*?)\*/g, '<em>$1</em>')
           .replace(/`(.*?)`/g, '<code class="inline-code">$1</code>')
       };
     }
@@ -684,9 +970,19 @@ Query: ${currentQuestion}`;
               <h3 className={`font-semibold text-white mb-2 ${fontSize === 'large' ? 'text-xl' : fontSize === 'small' ? 'text-base' : 'text-lg'}`}>
                 Start asking questions
               </h3>
-              <p className={`text-philonet-text-muted max-w-xs ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
-                I can help explain concepts, summarize sections, or answer specific questions about the content.
+              <p className={`text-philonet-text-muted max-w-xs text-center ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
+                I can help explain concepts, summarize sections, or answer specific questions about this content.
               </p>
+              {contextTitle && (
+                <p className={`text-blue-400/70 max-w-xs text-center mt-2 ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
+                  📄 Currently analyzing: {contextTitle}
+                </p>
+              )}
+              {contextResetMessage && (
+                <p className={`text-amber-400/80 max-w-xs text-center mt-2 p-2 bg-amber-400/10 border border-amber-400/20 rounded ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
+                  🔄 {contextResetMessage}
+                </p>
+              )}
             </div>
           ) : (
             <>
@@ -709,7 +1005,8 @@ Query: ${currentQuestion}`;
                 {/* Answer */}
                 <div className="flex justify-start">
                   <div className="max-w-[85%] bg-philonet-card/60 border border-philonet-border rounded-lg rounded-tl-sm p-3 ai-response-container">
-                    {conversation.isLoading ? (
+                    {/* Show loading spinner only if no content yet */}
+                    {conversation.isLoading && (!conversation.answer || conversation.answer.trim() === '') ? (
                       <div className="flex items-center gap-3">
                         <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
                         <span className={`text-philonet-text-muted ${fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
@@ -718,25 +1015,26 @@ Query: ${currentQuestion}`;
                       </div>
                     ) : (
                       <>
-                        <div 
-                          className={`prose prose-invert max-w-none text-white [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 leading-relaxed break-words overflow-wrap-anywhere ${
-                            fontSize === 'large' ? 'prose-lg text-base' : 
-                            fontSize === 'small' ? 'prose-sm text-sm' : 
-                            'prose-sm text-sm'
-                          }`}
-                          style={{ 
-                            wordBreak: 'break-word',
-                            overflowWrap: 'anywhere',
-                            hyphens: 'auto'
-                          }}
-                          dangerouslySetInnerHTML={renderMarkdown(conversation.answer || '')}
-                        />
-                        {isStreaming && conversation.answer && (
+                        {/* Show content if we have any, even while loading/streaming */}
+                        {conversation.answer && conversation.answer.trim() !== '' && (
+                          <div 
+                            className={`prose prose-invert max-w-none ${
+                              fontSize === 'large' ? 'prose-lg' : 
+                              fontSize === 'small' ? 'prose-sm' : 
+                              'prose-sm'
+                            }`}
+                            dangerouslySetInnerHTML={renderMarkdown(conversation.answer)}
+                          />
+                        )}
+                        
+                        {/* Show streaming indicator when actively streaming and we have content */}
+                        {isStreaming && conversation.answer && conversation.answer.trim() !== '' && (
                           <div className={`flex items-center gap-2 mt-2 text-blue-400 ${fontSize === 'large' ? 'text-sm' : 'text-xs'}`}>
                             <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                             <span>Streaming...</span>
                           </div>
                         )}
+                        
                         {/* Show message if no answer and not loading */}
                         {(!conversation.answer || conversation.answer.trim() === '') && !conversation.isLoading && (
                           <div className="text-amber-400 text-xs mt-2 italic bg-amber-400/10 border border-amber-400/20 rounded p-2">

@@ -4,17 +4,22 @@ import { cn } from '@extension/ui';
 
 // Basic UI Components
 export const Button = ({ className = "", children, ...props }: any) => (
-  <button
+  <motion.button
     {...props}
+    whileTap={{ scale: 0.95 }}
+    whileHover={{ scale: 1.02 }}
+    transition={{ type: "spring", stiffness: 400, damping: 17 }}
     className={cn(
-      "inline-flex items-center justify-center select-none outline-none transition-colors",
+      "inline-flex items-center justify-center select-none outline-none transition-all duration-200",
       "rounded-2xl border border-philonet-border-light bg-transparent text-white font-light tracking-philonet-wide",
-      "hover:text-philonet-blue-500 hover:border-philonet-blue-500 focus-visible:ring-0",
+      "hover:text-philonet-blue-500 hover:border-philonet-blue-500 hover:shadow-lg hover:shadow-philonet-blue-500/20",
+      "active:shadow-inner focus-visible:ring-0",
+      "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100",
       className
     )}
   >
     {children}
-  </button>
+  </motion.button>
 );
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, any>(({ className = "", rows = 1, style = {}, ...props }, ref) => (
@@ -26,11 +31,19 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, any>(({ className 
       // Subtle scrollbar styling
       scrollbarWidth: 'thin',
       scrollbarColor: 'rgba(75, 85, 99, 0.3) transparent',
+      // Completely remove all outlines
+      outline: 'none',
+      border: 'none',
+      boxShadow: 'none',
       ...style,
     }}
     className={cn(
-      "w-full bg-transparent text-white resize-none",
-      "placeholder:text-philonet-text-subtle font-light tracking-philonet-tight leading-6 focus:outline-none",
+      "w-full bg-transparent text-white resize-none border-none",
+      "placeholder:text-philonet-text-subtle font-light tracking-philonet-tight leading-6",
+      "focus:outline-none focus:ring-0 focus:border-transparent focus:shadow-none",
+      "focus-visible:outline-none focus-visible:ring-0 focus-visible:border-transparent",
+      "active:outline-none active:ring-0 active:border-transparent",
+      "transition-all duration-200",
       // Custom webkit scrollbar styling for Chrome/Safari
       "[&::-webkit-scrollbar]:w-1",
       "[&::-webkit-scrollbar]:h-1",

@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2, MessageCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, Bot, Smile, CornerDownLeft, Loader2, MessageCircle, AlertCircle, Users, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button, Textarea } from './ui';
 import { cn } from '@extension/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import MentionSuggestions from './MentionSuggestions';
 import MentionService, { MentionSuggestion } from '../services/mentionService';
+import FriendsPicker from './FriendsPicker';
+import { TopFriend } from '../services/thoughtRoomsApi';
 
 interface ComposerFooterProps {
   composerTab: 'thoughts' | 'ai';
@@ -14,6 +16,7 @@ interface ComposerFooterProps {
   aiBusy: boolean;
   hiLiteText: string;
   isSubmittingComment: boolean;
+  isConversationStarter: boolean; // New prop for conversation starter toggle
   onTabChange: (tab: 'thoughts' | 'ai') => void;
   onCommentChange: (value: string) => void;
   onAiQuestionChange: (value: string) => void;
@@ -24,6 +27,8 @@ interface ComposerFooterProps {
   onNavigateToText?: () => void;
   onNavigateToTaggedText?: (text: string) => void;
   onOpenAskAIDrawer?: (question?: string) => void; // New prop for opening AI drawer
+  onToggleConversationStarter: (enabled: boolean) => void; // New prop for conversation starter toggle
+  onSelectedFriendsChange?: (friends: TopFriend[]) => void; // New prop for selected friends callback
   commentRef: React.RefObject<HTMLTextAreaElement>;
   fontSize?: 'small' | 'medium' | 'large'; // Font size prop
 }
@@ -36,6 +41,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   aiBusy,
   hiLiteText,
   isSubmittingComment,
+  isConversationStarter,
   onTabChange,
   onCommentChange,
   onAiQuestionChange,
@@ -46,6 +52,8 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   onNavigateToText,
   onNavigateToTaggedText,
   onOpenAskAIDrawer,
+  onToggleConversationStarter,
+  onSelectedFriendsChange,
   commentRef,
   fontSize = 'medium'
 }) => {
@@ -58,6 +66,64 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   // Validation state for thought submission
   const [validationMessage, setValidationMessage] = useState<string>('');
   const [showValidationMessage, setShowValidationMessage] = useState(false);
+  
+  // Friends picker state
+  const [showFriendsPicker, setShowFriendsPicker] = useState(false);
+  const [selectedFriends, setSelectedFriends] = useState<TopFriend[]>([]);
+  
+  // Success animation state
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  
+  // Local loading state for immediate UI feedback
+  const [isLocalSubmitting, setIsLocalSubmitting] = useState(false);
+
+  // Listen for success events
+  useEffect(() => {
+    const handleSuccess = (event: CustomEvent) => {
+      const { isConversationStarter, mentionCount, friendCount } = event.detail || {};
+      
+      // Reset local loading state
+      setIsLocalSubmitting(false);
+      
+      setShowSuccessAnimation(true);
+      
+      // Set contextual success message
+      
+      if (isConversationStarter) {
+        setSuccessMessage(
+          friendCount > 0 
+            ? `Shared with ${friendCount} friend${friendCount > 1 ? 's' : ''}! 🎉`
+            : 'Conversation started! 💫'
+        );
+      } else {
+        setSuccessMessage(
+          friendCount > 0 
+            ? `Thought posted & ${friendCount} friend${friendCount > 1 ? 's' : ''} invited! 🎯`
+            : 'Thought posted! ✨'
+        );
+      }
+      
+      // Reset animation and message after duration
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        setSuccessMessage('');
+      }, 2500);
+    };
+
+    window.addEventListener('commentSubmitSuccess' as any, handleSuccess);
+    return () => window.removeEventListener('commentSubmitSuccess' as any, handleSuccess);
+  }, [selectedFriends.length]);
+  
+  // Reset local loading state when global loading state changes
+  useEffect(() => {
+    if (!isSubmittingComment && isLocalSubmitting) {
+      // Small delay to ensure smooth transition
+      setTimeout(() => {
+        setIsLocalSubmitting(false);
+      }, 100);
+    }
+  }, [isSubmittingComment, isLocalSubmitting]);
   
   const composerRef = useRef<HTMLDivElement>(null);
 
@@ -102,6 +168,9 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
     // Clear any existing validation messages
     setShowValidationMessage(false);
     setValidationMessage('');
+    
+    // Set local loading state immediately for instant UI feedback
+    setIsLocalSubmitting(true);
     
     // Proceed with submission
     onSubmitComment();
@@ -237,6 +306,16 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
     }, 100);
   };
 
+  // Handle friends selection
+  const handleFriendsSelect = (friends: TopFriend[]) => {
+    setSelectedFriends(friends);
+    // Just store the selected friends - don't add @mentions to the comment automatically
+    // The mentions will be sent to the API when the comment is submitted
+    
+    // Notify parent component about selected friends
+    onSelectedFriendsChange?.(friends);
+  };
+
   // Handle clicking outside to close mentions
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -250,33 +329,87 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
   }, [showMentions]);
   return (
     <div ref={composerRef} className="absolute bottom-0 left-0 right-0 border-t border-philonet-border bg-philonet-panel px-4 py-3 md:px-6 md:py-4 overflow-visible" data-composer-footer>
-      {/* Tabs */}
-      <div className="flex items-center gap-2 mb-3">
-        <button
-          onClick={() => onTabChange("thoughts")}
-          className={cn(
-            'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base font-semibold transition-all duration-200',
-            composerTab === 'thoughts' 
-              ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
-              : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
-          )}
-        >
-          <MessageCircle className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
-          <span className="hidden sm:inline">Thoughts</span>
-        </button>
-        <button
-          onClick={() => onTabChange("ai")}
-          className={cn(
-            'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base font-semibold transition-all duration-200',
-            composerTab === 'ai' 
-              ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
-              : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
-          )}
-        >
-          <Bot className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
-          <span className="hidden sm:inline">Ask AI</span>
-        </button>
+      {/* Header Controls */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onTabChange("thoughts")}
+            className={cn(
+              'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base font-semibold transition-all duration-200',
+              composerTab === 'thoughts' 
+                ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
+                : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
+            )}
+          >
+            <MessageCircle className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
+            <span className="hidden sm:inline">Thoughts</span>
+          </button>
+          <button
+            onClick={() => onTabChange("ai")}
+            className={cn(
+              'rounded-full border tracking-philonet-wider flex items-center h-9 px-4 text-sm md:h-10 md:px-5 md:text-base font-semibold transition-all duration-200',
+              composerTab === 'ai' 
+                ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
+                : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
+            )}
+          >
+            <Bot className="inline mr-2 h-4 w-4 md:h-5 md:w-5" />
+            <span className="hidden sm:inline">Ask AI</span>
+          </button>
+        </div>
+        
+        {/* Top Right Controls - Add Friends & Conversation Starter */}
+        <div className="flex items-center gap-2">
+          {/* Add Friends Button - functional in both conversation starter and regular modes */}
+          <button
+            type="button"
+            onClick={() => setShowFriendsPicker(true)}
+            className={cn(
+              'rounded-full border tracking-philonet-wider flex items-center h-8 px-3 text-xs font-semibold transition-all duration-200',
+              selectedFriends.length > 0 
+                ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
+                : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
+            )}
+            title={
+              isConversationStarter 
+                ? "Add friends to mention and invite" 
+                : "Add friends to invite to this highlight"
+            }
+            disabled={isSubmittingComment}
+          >
+            <Users className={cn('h-3 w-3 mr-1.5', selectedFriends.length > 0 ? 'text-white' : 'text-philonet-text-muted')} />
+            <span className="hidden sm:inline">
+              {selectedFriends.length > 0 
+                ? `${selectedFriends.length} friend${selectedFriends.length > 1 ? 's' : ''}` 
+                : 'Add friends'
+              }
+            </span>
+          </button>
+
+          {/* Conversation Starter Toggle */}
+          <button
+            type="button"
+            onClick={() => onToggleConversationStarter?.(!isConversationStarter)}
+            className={cn(
+              'rounded-full border tracking-philonet-wider flex items-center h-8 px-3 text-xs font-semibold transition-all duration-200',
+              isConversationStarter 
+                ? 'text-white bg-gradient-to-r from-blue-500 to-blue-600 border-blue-400 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105' 
+                : 'text-philonet-text-muted border-philonet-border-light hover:text-blue-400 hover:border-blue-500/50'
+            )}
+            title={`${isConversationStarter ? 'Disable' : 'Enable'} conversation starter`}
+            disabled={isSubmittingComment}
+          >
+            {isConversationStarter ? (
+              <ToggleRight className="h-3 w-3 mr-1.5 text-white" />
+            ) : (
+              <ToggleLeft className="h-3 w-3 mr-1.5 text-philonet-text-muted" />
+            )}
+            <span className="hidden sm:inline">Starter</span>
+          </button>
+        </div>
       </div>
+
+
 
       {/* Selection tag */}
       {hiLiteText && (
@@ -325,7 +458,36 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
       {/* Content */}
       {composerTab === 'thoughts' ? (
         <div>
-          <div className={`relative border border-philonet-border-light bg-philonet-card focus-within:border-philonet-blue-500 flex items-center px-4 py-2 md:px-5 md:py-3 ${commentRows > 1 ? 'rounded-xl' : 'rounded-full'}`}>
+          {/* Success Message */}
+          <AnimatePresence>
+            {showSuccessAnimation && successMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="mb-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm px-4 py-2 rounded-lg shadow-lg border border-green-400/30 flex items-center gap-2 backdrop-blur-sm"
+              >
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                <span className="font-medium">{successMessage}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
+          <div 
+            className={`relative bg-philonet-card/20 focus-within:bg-philonet-card/40 flex items-center px-4 py-2 md:px-5 md:py-3 ${commentRows > 1 ? 'rounded-xl' : 'rounded-full'} transition-all duration-200 cursor-text`}
+            style={{
+              // Force no outlines on all children
+              outline: 'none',
+              border: 'none',
+            }}
+            onClick={(e) => {
+              // If user clicks on the container (padding area), focus the textarea
+              if (e.target === e.currentTarget && commentRef.current) {
+                commentRef.current.focus();
+              }
+            }}
+          >
             {/* Validation Hint - Top Right Corner */}
             <AnimatePresence>
               {showValidationMessage && (
@@ -358,10 +520,20 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
             
             <Textarea
               ref={commentRef}
-              placeholder={isSubmittingComment ? "Submitting your thought..." : "Add a thought… (type @ to mention users)"}
+              placeholder={
+                isSubmittingComment 
+                  ? (isConversationStarter ? "Sharing with friends..." : "Submitting your thought...")
+                  : "Add a thought… (type @ to mention users)"
+              }
               value={comment}
               rows={commentRows}
-              className={`flex-1 text-sm md:text-base ${isSubmittingComment ? 'opacity-70' : ''}`}
+              className={`flex-1 text-sm md:text-base min-h-[32px] py-1 ${isSubmittingComment ? 'opacity-70' : ''}`}
+              style={{
+                outline: 'none !important',
+                border: 'none !important',
+                boxShadow: 'none !important',
+                WebkitAppearance: 'none',
+              }}
               disabled={isSubmittingComment}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleTextChange(e.target.value, true)}
               onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
@@ -370,37 +542,76 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
                   handleSubmitWithValidation(); 
                 } 
               }}
+              onFocus={(e: React.FocusEvent<HTMLTextAreaElement>) => {
+                // Force remove any focus styles
+                e.target.style.outline = 'none';
+                e.target.style.border = 'none';
+                e.target.style.boxShadow = 'none';
+              }}
+              onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => {
+                // Ensure styles remain removed
+                e.target.style.outline = 'none';
+                e.target.style.border = 'none';
+                e.target.style.boxShadow = 'none';
+              }}
             />
-            <button
+            <motion.button
               type="button"
               title="Insert emoji"
-              className={`ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 h-9 w-9 md:h-10 md:w-10 ${isSubmittingComment ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={onInsertEmoji}
+              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: 1.1 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
+              className={`ml-2 rounded-full grid place-items-center text-philonet-text-subtle hover:text-philonet-blue-500 hover:bg-philonet-blue-500/10 h-9 w-9 md:h-10 md:w-10 transition-colors duration-200 ${isSubmittingComment ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => {
+                if ('vibrate' in navigator && !isSubmittingComment) {
+                  navigator.vibrate(30);
+                }
+                onInsertEmoji();
+              }}
               disabled={isSubmittingComment}
             >
               <Smile className="h-5 w-5 md:h-6 md:w-6" />
-            </button>
+            </motion.button>
             <Button 
-              disabled={isSubmittingComment} 
-              onClick={handleSubmitWithValidation} 
+              disabled={(isSubmittingComment || isLocalSubmitting) || !comment.trim() || (!hiLiteText || !hiLiteText.trim())} 
+              onClick={() => {
+                // Add haptic feedback on click
+                if ('vibrate' in navigator && !(isSubmittingComment || isLocalSubmitting)) {
+                  navigator.vibrate(50);
+                }
+                handleSubmitWithValidation();
+              }} 
               className={cn(
                 "ml-1 h-10 px-4 md:h-11 md:px-5 transition-all duration-200",
-                !comment.trim() || (!hiLiteText || !hiLiteText.trim())
-                  ? "opacity-50 cursor-not-allowed" 
-                  : ""
+                (isSubmittingComment || isLocalSubmitting)
+                  ? "opacity-70 cursor-not-allowed bg-philonet-blue-500/50"
+                  : !comment.trim() || (!hiLiteText || !hiLiteText.trim())
+                    ? "opacity-50 cursor-not-allowed" 
+                    : "hover:scale-105 hover:shadow-lg hover:bg-philonet-blue-500 hover:border-philonet-blue-400 active:scale-95 active:shadow-xl",
+                showSuccessAnimation && "bg-green-500 text-white scale-105 shadow-lg animate-pulse"
               )}
               title={
-                !comment.trim() 
-                  ? "Please enter some content"
-                  : !hiLiteText || !hiLiteText.trim()
-                    ? "Please select text from the article first"
-                    : "Post your thought"
+                (isSubmittingComment || isLocalSubmitting)
+                  ? (isConversationStarter ? "Sharing with friends..." : "Submitting thought...")
+                  : !comment.trim() 
+                    ? "Please enter some content"
+                    : !hiLiteText || !hiLiteText.trim()
+                      ? "Please select text from the article first"
+                      : (isConversationStarter ? "Share with friends" : "Post your thought")
               }
+              onMouseDown={() => {
+                // Add slight haptic feedback on mouse down for desktop
+                if ('vibrate' in navigator && !(isSubmittingComment || isLocalSubmitting)) {
+                  navigator.vibrate(25);
+                }
+              }}
             >
-              {isSubmittingComment ? (
+              {(isSubmittingComment || isLocalSubmitting) ? (
                 <>
-                  <Loader2 className="animate-spin h-4 w-4 md:h-5 md:w-5" />
-                  <span className="hidden sm:inline ml-2">Posting...</span>
+                  <Loader2 className="animate-spin h-4 w-4 md:h-5 md:w-5 text-white" />
+                  <span className="hidden sm:inline ml-2 text-white">
+                    {isConversationStarter ? "Sharing..." : "Posting..."}
+                  </span>
                 </>
               ) : (
                 <CornerDownLeft className="h-4 w-4 md:h-5 md:w-5" />
@@ -410,12 +621,15 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
           
           <div className="mt-2 flex justify-end">
             <span className="text-philonet-text-subtle text-sm md:text-base">
-              {isSubmittingComment ? "Submitting thought..." : `${Math.max(0, 280 - comment.length)} characters left`}
+              {isSubmittingComment 
+                ? (isConversationStarter ? "Sharing with friends..." : "Submitting thought...") 
+                : `${Math.max(0, 280 - comment.length)} characters left`
+              }
             </span>
           </div>
         </div>
       ) : (
-        <div className="rounded-philonet-lg border border-philonet-blue-500/40 bg-philonet-card/60 shadow-[0_0_0_1px_rgba(59,130,246,0.25)_inset] p-3 md:p-4">
+        <div className="rounded-philonet-lg bg-philonet-card/20 focus-within:bg-philonet-card/40 transition-all duration-200 p-3 md:p-4">
           <div className="mb-2 flex items-center gap-2 text-philonet-text-muted tracking-philonet-wider text-sm md:text-base">
             <Bot className="h-4 w-4 md:h-5 md:w-5" />
             <span>ASK AI</span>
@@ -431,12 +645,30 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleTextChange(e.target.value, false)}
             rows={3}
             className={`bg-transparent text-sm md:text-base ${aiBusy ? 'opacity-70' : ''}`}
+            style={{
+              outline: 'none !important',
+              border: 'none !important',
+              boxShadow: 'none !important',
+              WebkitAppearance: 'none',
+            }}
             disabled={aiBusy}
             onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { 
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !aiBusy) { 
                 e.preventDefault(); 
                 onAskAi(); 
               } 
+            }}
+            onFocus={(e: React.FocusEvent<HTMLTextAreaElement>) => {
+              // Force remove any focus styles
+              e.target.style.outline = 'none';
+              e.target.style.border = 'none';
+              e.target.style.boxShadow = 'none';
+            }}
+            onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => {
+              // Ensure styles remain removed
+              e.target.style.outline = 'none';
+              e.target.style.border = 'none';
+              e.target.style.boxShadow = 'none';
             }}
           />
           <div className="mt-2 flex items-center justify-between">
@@ -445,8 +677,25 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
             </span>
             <Button 
               disabled={!aiQuestion.trim() || aiBusy} 
-              onClick={onAskAi} 
-              className="h-10 px-4 md:h-11 md:px-5"
+              onClick={() => {
+                // Add haptic feedback on click
+                if ('vibrate' in navigator) {
+                  navigator.vibrate(50);
+                }
+                onAskAi();
+              }} 
+              className={cn(
+                "h-10 px-4 md:h-11 md:px-5 transition-all duration-200",
+                !aiQuestion.trim() || aiBusy
+                  ? "opacity-50 cursor-not-allowed" 
+                  : "hover:scale-105 hover:shadow-lg hover:bg-philonet-blue-500 hover:border-philonet-blue-400 active:scale-95"
+              )}
+              onMouseDown={() => {
+                // Add slight haptic feedback on mouse down for desktop
+                if ('vibrate' in navigator && !aiBusy) {
+                  navigator.vibrate(25);
+                }
+              }}
             >
               {aiBusy ? (
                 <>
@@ -473,6 +722,14 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
         position={mentionPosition}
         fontSize={fontSize}
         onSuggestionsChange={handleSuggestionsChange}
+      />
+
+      {/* Friends Picker Modal */}
+      <FriendsPicker
+        isOpen={showFriendsPicker}
+        onClose={() => setShowFriendsPicker(false)}
+        onFriendsSelect={handleFriendsSelect}
+        selectedFriends={selectedFriends}
       />
     </div>
   );

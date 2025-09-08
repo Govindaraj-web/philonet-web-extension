@@ -121,6 +121,10 @@ interface AddCommentParams {
   minimessage?: string;
   quote?: string;
   emotion?: string;
+  mentions?: Array<{
+    user_id: string;
+    position: number;
+  }>;
 }
 
 interface AddCommentResponse {
@@ -182,6 +186,21 @@ interface AIQueryResponse {
   summarymini: string;
 }
 
+interface TopFriend {
+  user_id: string;
+  name: string;
+  display_pic: string; // Changed from profile_picture to match API response
+  interaction_count: number | string; // API returns string, allow both
+  last_interaction?: string; // Optional as it might not always be present
+  is_online?: boolean; // Optional as it might not always be present
+}
+
+interface TopFriendsResponse {
+  status: string;
+  data: TopFriend[];
+  message: string;
+}
+
 const getApiUrl = (endpoint: string) => `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1${endpoint}`;
 
 const API_ENDPOINTS = {
@@ -189,7 +208,8 @@ const API_ENDPOINTS = {
   SUBCOMMENTS_NEW: '/room/subcommentsnew',
   ADD_COMMENT_NEW: '/room/addcommentnew',
   REACT: '/room/react',
-  AI_QUERY: '/users/answerprogemininew'
+  AI_QUERY: '/users/answerprogemininew',
+  TOP_FRIENDS: '/room/topfriends'
 };
 
 export class ThoughtRoomsAPI {
@@ -285,7 +305,7 @@ export class ThoughtRoomsAPI {
   }
 
   async addComment(params: AddCommentParams): Promise<AddCommentResponse> {
-    const { articleId, content, title, parentCommentId, replyMessageId, minimessage = '', quote, emotion } = params;
+    const { articleId, content, title, parentCommentId, replyMessageId, minimessage = '', quote, emotion, mentions } = params;
     
     // Get authorization token from storage
     const token = await philonetAuthStorage.getToken();
@@ -308,6 +328,7 @@ export class ThoughtRoomsAPI {
     if (replyMessageId) requestBody.replyMessageId = replyMessageId;
     if (quote) requestBody.quote = quote;
     if (emotion) requestBody.emotion = emotion;
+    if (mentions && mentions.length > 0) requestBody.mentions = mentions;
 
     try {
       const response = await fetch(getApiUrl(API_ENDPOINTS.ADD_COMMENT_NEW), {
@@ -332,6 +353,79 @@ export class ThoughtRoomsAPI {
       return data;
     } catch (error) {
       console.error('❌ Add comment API request failed:', error);
+      throw error;
+    }
+  }
+
+  async addCommentNew(params: {
+    articleId: number;
+    content: string;
+    title?: string;
+    parentCommentId?: number;
+    replyMessageId?: number;
+    quote?: string;
+    minimessage?: string;
+    emotion?: string;
+    mentions?: Array<{ user_id: string; position: number }>;
+  }): Promise<AddCommentResponse> {
+    const { 
+      articleId, 
+      content, 
+      title, 
+      parentCommentId, 
+      replyMessageId, 
+      quote, 
+      minimessage, 
+      emotion, 
+      mentions 
+    } = params;
+    
+    // Get authorization token from storage
+    const token = await philonetAuthStorage.getToken();
+    if (!token) {
+      console.error('🚫 No authorization token found in storage');
+      throw new Error('No authorization token found. Please log in.');
+    }
+    
+    console.log('💬 Adding conversation starter comment to article:', articleId);
+    
+    const requestBody: any = {
+      articleId,
+      content
+    };
+
+    // Add optional fields only if they have values
+    if (title) requestBody.title = title;
+    if (parentCommentId) requestBody.parentCommentId = parentCommentId;
+    if (replyMessageId) requestBody.replyMessageId = replyMessageId;
+    if (quote) requestBody.quote = quote;
+    if (minimessage) requestBody.minimessage = minimessage;
+    if (emotion) requestBody.emotion = emotion;
+    if (mentions && mentions.length > 0) requestBody.mentions = mentions;
+
+    try {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.ADD_COMMENT_NEW), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - token may be expired');
+          throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+        }
+        throw new Error(`Add conversation starter comment failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data: AddCommentResponse = await response.json();
+      console.log('✅ Conversation starter comment added successfully, comment ID:', data.comment?.comment_id);
+      return data;
+    } catch (error) {
+      console.error('❌ Add conversation starter comment failed:', error);
       throw error;
     }
   }
@@ -377,6 +471,42 @@ export class ThoughtRoomsAPI {
       return data;
     } catch (error) {
       console.error('❌ React to comment API request failed:', error);
+      throw error;
+    }
+  }
+
+  async topFriends(): Promise<TopFriendsResponse> {
+    // Get authorization token from storage
+    const token = await philonetAuthStorage.getToken();
+    if (!token) {
+      console.error('🚫 No authorization token found in storage');
+      throw new Error('No authorization token found. Please log in.');
+    }
+    
+    console.log('👥 Fetching top friends list');
+
+    try {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.TOP_FRIENDS), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - token may be expired');
+          throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+        }
+        throw new Error(`Top friends API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data: TopFriendsResponse = await response.json();
+      console.log('✅ Top friends fetched successfully, received', data.data?.length || 0, 'friends');
+      return data;
+    } catch (error) {
+      console.error('❌ Top friends API request failed:', error);
       throw error;
     }
   }
@@ -723,6 +853,21 @@ export const addComment = async (params: AddCommentParams) => {
   return thoughtRoomsAPI.addComment(params);
 };
 
+// Export conversation starter comment function
+export const addCommentNew = async (params: {
+  articleId: number;
+  content: string;
+  title?: string;
+  parentCommentId?: number;
+  replyMessageId?: number;
+  quote?: string;
+  minimessage?: string;
+  emotion?: string;
+  mentions?: Array<{ user_id: string; position: number }>;
+}) => {
+  return thoughtRoomsAPI.addCommentNew(params);
+};
+
 // Export react to comment function
 export const reactToComment = async (params: ReactToCommentParams) => {
   return thoughtRoomsAPI.reactToComment(params);
@@ -733,7 +878,12 @@ export const queryAI = async (params: AIQueryParams) => {
   return thoughtRoomsAPI.queryAI(params);
 };
 
+// Export top friends function
+export const fetchTopFriends = async () => {
+  return thoughtRoomsAPI.topFriends();
+};
+
 export const thoughtRoomsAPI = new ThoughtRoomsAPI();
 
 // Export types for external use
-export type { AddCommentParams, AddCommentResponse, ReactToCommentParams, ReactToCommentResponse, AIQueryParams, AIQueryResponse };
+export type { AddCommentParams, AddCommentResponse, ReactToCommentParams, ReactToCommentResponse, AIQueryParams, AIQueryResponse, TopFriend, TopFriendsResponse };

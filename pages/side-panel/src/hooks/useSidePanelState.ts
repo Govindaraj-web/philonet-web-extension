@@ -299,12 +299,18 @@ export function useSidePanelState() {
   });
 
   // Comment actions
-  const submitComment = useCallback(() => {
+  const submitComment = useCallback(async (
+    selectedFriends: any[] = [],
+    skipStateManagement: boolean = false
+  ) => {
     const text = state.comment.trim();
-    if (!text || state.isSubmittingComment) return;
+    if (!text) return;
     
-    // Set loading state
-    setState(prev => ({ ...prev, isSubmittingComment: true }));
+    // Only manage loading state if not being managed by parent
+    if (!skipStateManagement) {
+      if (state.isSubmittingComment) return;
+      setState(prev => ({ ...prev, isSubmittingComment: true }));
+    }
     
     const newComment: Comment = { 
       id: Date.now(), 
@@ -314,25 +320,68 @@ export function useSidePanelState() {
       tag: state.hiLiteText ? { text: state.hiLiteText } : null 
     };
     
-    setState(prev => ({
-      ...prev,
-      comments: [newComment, ...prev.comments],
-      comment: "",
-      commentRows: 1,
-      isSubmittingComment: false,
-    }));
-  }, [state.comment, state.hiLiteText, state.isSubmittingComment]);
+    try {
+      // Store highlight if there's tagged text and selected friends
+      if (state.hiLiteText && (selectedFriends.length > 0 || state.hiLiteText)) {
+        console.log('💾 Storing highlight with invited users:', selectedFriends.map(f => f.user_id));
+        
+        const highlightData = {
+          content: state.hiLiteText, // Use highlighted text as content for simple comments
+          highlighted_text: state.hiLiteText,
+          start_index: 0,
+          end_index: state.hiLiteText.length,
+          message: text, // The comment text becomes the message
+          url: state.currentSourceUrl || window.location.href,
+          is_private: false,
+          invited_users: selectedFriends.map(friend => friend.user_id), // Array of user ID strings
+          article_id: state.currentArticleId // Include article_id if available
+        };
+        
+        const result = await storeSmartHighlight(highlightData);
+        console.log('✅ Highlight stored successfully with invited users:', result);
+      }
+      
+      // Only update UI state if managing state locally
+      if (!skipStateManagement) {
+        setState(prev => ({
+          ...prev,
+          comments: [newComment, ...prev.comments],
+          comment: "",
+          commentRows: 1,
+          isSubmittingComment: false,
+        }));
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to store highlight with invited users:', error);
+      // Only reset loading state on error if managing state locally
+      if (!skipStateManagement) {
+        setState(prev => ({
+          ...prev,
+          comments: [newComment, ...prev.comments],
+          comment: "",
+          commentRows: 1,
+          isSubmittingComment: false,
+        }));
+      }
+    }
+  }, [state.comment, state.hiLiteText, state.isSubmittingComment, state.currentSourceUrl, state.currentArticleId]);
 
   // Enhanced comment submission with highlight storage
   const submitCommentWithHighlight = useCallback(async (
     article?: any, 
-    bodyContentRef?: React.RefObject<HTMLDivElement | null>
+    bodyContentRef?: React.RefObject<HTMLDivElement | null>,
+    selectedFriends: any[] = [],
+    skipStateManagement: boolean = false
   ) => {
     const text = state.comment.trim();
-    if (!text || state.isSubmittingComment) return;
+    if (!text) return;
     
-    // Set loading state
-    setState(prev => ({ ...prev, isSubmittingComment: true }));
+    // Only manage loading state if not being managed by parent
+    if (!skipStateManagement) {
+      if (state.isSubmittingComment) return;
+      setState(prev => ({ ...prev, isSubmittingComment: true }));
+    }
     
     const newComment: Comment = { 
       id: Date.now(), 
@@ -360,7 +409,7 @@ export function useSidePanelState() {
           message: text, // The comment text becomes the message
           url: article.url || state.currentSourceUrl,
           is_private: false, // Default to public, could be made configurable
-          invited_users: [], // Empty for now, could be made configurable
+          invited_users: selectedFriends.map(friend => friend.user_id), // Array of user ID strings
           article_id: state.currentArticleId // Include article_id if available
         };
         
@@ -369,32 +418,36 @@ export function useSidePanelState() {
         const result = await storeSmartHighlight(highlightData);
         console.log('✅ Highlight stored successfully:', result);
         
-        // Clear the comment and reset state first
-        setState(prev => ({
-          ...prev,
-          comment: "",
-          commentRows: 1,
-          isSubmittingComment: false,
-        }));
-        
-        // Refresh highlights after successful storage - this will add the comment from backend
-        if (state.currentArticleId) {
-          await refreshHighlights(state.currentArticleId);
+        // Only manage UI state if managing state locally
+        if (!skipStateManagement) {
+          setState(prev => ({
+            ...prev,
+            comment: "",
+            commentRows: 1,
+            isSubmittingComment: false,
+          }));
+          
+          // Refresh highlights after successful storage - this will add the comment from backend
+          if (state.currentArticleId) {
+            await refreshHighlights(state.currentArticleId);
+          }
         }
         
       } catch (error) {
         console.error('❌ Failed to store highlight:', error);
-        // On error, add the comment locally and reset loading state
-        setState(prev => ({
-          ...prev,
-          comments: [newComment, ...prev.comments],
-          comment: "",
-          commentRows: 1,
-          isSubmittingComment: false,
-        }));
+        // Only reset loading state on error if managing state locally
+        if (!skipStateManagement) {
+          setState(prev => ({
+            ...prev,
+            comments: [newComment, ...prev.comments],
+            comment: "",
+            commentRows: 1,
+            isSubmittingComment: false,
+          }));
+        }
       }
-    } else {
-      // No highlight to store, just add comment locally
+    } else if (!skipStateManagement) {
+      // No highlight to store, just add comment locally (only if managing state)
       setState(prev => ({
         ...prev,
         comments: [newComment, ...prev.comments],

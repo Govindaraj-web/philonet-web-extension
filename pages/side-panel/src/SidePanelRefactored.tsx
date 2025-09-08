@@ -27,7 +27,8 @@ import {
 } from './hooks';
 import { clearSelectionHighlight } from './hooks/useSelection';
 
-import { SidePanelProps, MarkdownMeta } from './types';
+import { SidePanelProps, MarkdownMeta, Comment } from './types';
+import { TopFriend } from './services/thoughtRoomsApi';
 import { SAMPLE_MARKDOWNS } from './data/sampleContent';
 import { philonetAuthStorage } from './storage/auth-storage';
 import { 
@@ -236,6 +237,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
   // Edit Profile modal state
   const [showEditProfile, setShowEditProfile] = useState(false);
+
+  // Conversation starter state - enabled by default
+  const [isConversationStarter, setIsConversationStarter] = useState(true);
+  
+  // Selected friends for conversation starter
+  const [selectedFriends, setSelectedFriends] = useState<TopFriend[]>([]);
 
   // Enhanced PDF upload state for drag & drop
   const [isDragging, setIsDragging] = useState(false);
@@ -2724,14 +2731,223 @@ ${article.description}
     adjustCommentRows(value);
   };
 
-  const handleCommentSubmit = () => {
-    // Use the enhanced function that stores highlights when available
-    if (state.hiLiteText && article && bodyContentRef) {
-      submitCommentWithHighlight(article, bodyContentRef);
-    } else {
-      submitComment();
+  const handleCommentSubmit = async () => {
+    const text = state.comment.trim();
+    if (!text || state.isSubmittingComment) return;
+
+    // Immediate visual feedback - clear input and show loading
+    const originalComment = state.comment;
+    updateState({ 
+      comment: "",
+      commentRows: 1,
+      isSubmittingComment: true 
+    });
+
+    // Add haptic feedback if available
+    if (navigator.vibrate) {
+      navigator.vibrate(50); // Subtle vibration feedback
     }
-    if (commentRef.current) commentRef.current.focus();
+
+    // If conversation starter is enabled, call BOTH APIs
+    if (isConversationStarter) {
+      try {
+        // Import the API function
+        const { addCommentNew } = await import('./services/thoughtRoomsApi');
+
+        // Store current tagged content to preserve it
+        const preservedHiLiteText = state.hiLiteText;
+        const preservedDockFilterText = state.dockFilterText;
+
+        // Create optimistic comment for immediate UI feedback
+        const optimisticComment: Comment = {
+          id: Date.now(), // Temporary ID
+          text: text,
+          author: localUser?.name || 'You',
+          ts: new Date().toISOString(),
+          tag: preservedHiLiteText ? { text: preservedHiLiteText } : null,
+          profilePic: localUser?.avatar,
+          likeCount: 0,
+          isLiked: false,
+          replyCount: 0,
+          reactions: []
+        };
+
+        // Add optimistic comment to UI immediately
+        updateState({
+          comments: [optimisticComment, ...state.comments]
+        });
+
+        // Call both APIs in parallel for conversation starter mode
+        const apiPromises = [];
+
+        // 1. Call the new comments API
+        apiPromises.push(
+          addCommentNew({
+            articleId: article?.article_id || 0, // Required: Article ID
+            content: text, // Required: Comment content (max 10,000 chars)
+            quote: preservedHiLiteText || undefined // Optional: Tagged/quoted content
+          })
+        );
+
+        // 2. Also call the regular thoughts API (skip state management since we handle it here)
+        if (state.hiLiteText && article && bodyContentRef) {
+          apiPromises.push(submitCommentWithHighlight(article, bodyContentRef, selectedFriends, true));
+        } else {
+          apiPromises.push(submitComment(selectedFriends, true));
+        }
+
+        // Wait for both API calls to complete with proper loading feedback
+        const results = await Promise.all(apiPromises);
+        
+        console.log('✅ Conversation starter APIs completed successfully:', {
+          conversationApiResponse: results[0],
+          thoughtsApiResponse: results[1],
+          selectedFriendsCount: selectedFriends.length,
+          preservedTaggedText: preservedHiLiteText
+        });
+
+        // Success feedback - haptic and visual
+        if (navigator.vibrate) {
+          navigator.vibrate([100, 50, 100]); // Success vibration pattern
+        }
+
+        // Trigger success animation in the UI
+        const successEvent = new CustomEvent('commentSubmitSuccess', {
+          detail: { 
+            isConversationStarter: true, 
+            friendCount: selectedFriends.length 
+          }
+        });
+        window.dispatchEvent(successEvent);
+
+        // Remove optimistic comment from UI
+        const realComments = state.comments.filter(c => !(c as any).isOptimistic);
+        
+        // Update UI state with success
+        updateState({
+          isSubmittingComment: false,
+          // Restore the tagged content that might have been cleared by the thoughts API
+          hiLiteText: preservedHiLiteText,
+          dockFilterText: preservedDockFilterText,
+          comments: realComments // Remove optimistic comment, real data will load from refresh
+        });
+        
+        // Refresh comments to show the new conversation starter comment
+        if (article?.article_id) {
+          await setArticleIdAndRefreshHighlights(article.article_id.toString());
+        }
+      } catch (error) {
+        console.error('❌ Failed to submit conversation starter comment:', error);
+        
+        // Error haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate([200, 100, 200]); // Error vibration pattern
+        }
+
+        // Remove optimistic comment and restore original text for retry
+        const realComments = state.comments.filter(c => !(c as any).isOptimistic);
+        
+        // Restore comment text so user can retry, show error state
+        updateState({ 
+          comment: originalComment, // Restore original text
+          isSubmittingComment: false,
+          comments: realComments // Remove optimistic comment
+        });
+        
+        // Visual error feedback - briefly highlight the input
+        if (commentRef.current) {
+          commentRef.current.style.borderColor = '#ef4444';
+          commentRef.current.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.2)';
+          setTimeout(() => {
+            if (commentRef.current) {
+              commentRef.current.style.borderColor = '';
+              commentRef.current.style.boxShadow = '';
+            }
+          }, 2000);
+        }
+        
+        // Auto-focus for retry
+        setTimeout(() => {
+          if (commentRef.current) {
+            commentRef.current.focus();
+          }
+        }, 100);
+      }
+    } else {
+      // When conversation starter is OFF, only use the original thoughts API
+      try {
+        // Add success feedback for thoughts API too (skip state management since we handle it here)
+        let apiCall;
+        if (state.hiLiteText && article && bodyContentRef) {
+          apiCall = submitCommentWithHighlight(article, bodyContentRef, selectedFriends, true);
+        } else {
+          apiCall = submitComment(selectedFriends, true);
+        }
+        
+        // Wait for completion and provide feedback
+        await apiCall;
+        
+        // Success feedback for thoughts mode
+        if (navigator.vibrate) {
+          navigator.vibrate([50, 25, 50]); // Subtle success vibration
+        }
+
+        // Trigger success animation in the UI
+        const successEvent = new CustomEvent('commentSubmitSuccess', {
+          detail: { 
+            isConversationStarter: false,
+            friendCount: selectedFriends.length 
+          }
+        });
+        window.dispatchEvent(successEvent);
+        
+        // Auto-focus for next comment with slight delay for better UX
+        setTimeout(() => {
+          if (commentRef.current) {
+            commentRef.current.focus();
+            // Add a subtle glow animation to indicate focus
+            commentRef.current.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.3)';
+            commentRef.current.style.borderColor = '#22c55e';
+            setTimeout(() => {
+              if (commentRef.current) {
+                commentRef.current.style.boxShadow = '';
+                commentRef.current.style.borderColor = '';
+              }
+            }, 1000);
+          }
+        }, 300); // Slightly longer delay to let success animation show
+        
+      } catch (error) {
+        console.error('❌ Failed to submit thought comment:', error);
+        
+        // Error feedback for thoughts mode
+        if (navigator.vibrate) {
+          navigator.vibrate([150, 75, 150]); // Error vibration
+        }
+        
+        // Restore comment and focus for retry
+        updateState({ 
+          comment: originalComment,
+          isSubmittingComment: false 
+        });
+        
+        // Auto-focus for retry
+        setTimeout(() => {
+          if (commentRef.current) {
+            commentRef.current.focus();
+            // Visual error indication
+            commentRef.current.style.borderColor = '#ef4444';
+            commentRef.current.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.2)';
+            setTimeout(() => {
+              if (commentRef.current) {
+                commentRef.current.style.borderColor = '';
+                commentRef.current.style.boxShadow = '';
+              }
+            }, 2000);
+          }
+        }, 100);
+      }
+    }
   };
 
   const handleInsertEmoji = () => {
@@ -5001,11 +5217,14 @@ ${article.description}
                 aiBusy={state.aiBusy}
                 hiLiteText={state.hiLiteText}
                 isSubmittingComment={state.isSubmittingComment}
+                isConversationStarter={isConversationStarter}
                 onTabChange={(tab: 'thoughts' | 'ai') => updateState({ composerTab: tab })}
                 onCommentChange={handleCommentChange}
                 onAiQuestionChange={(value: string) => updateState({ aiQuestion: value })}
                 onSubmitComment={handleCommentSubmit}
                 onAskAi={handleAskAi}
+                onToggleConversationStarter={setIsConversationStarter}
+                onSelectedFriendsChange={setSelectedFriends}
                 onClearSelection={() => {
                   updateState({ hiLiteText: "", dockFilterText: "" });
                   clearSelectionHighlight();
@@ -5025,35 +5244,37 @@ ${article.description}
             </div>
           )}
 
+          {/* Filter indicator - positioned above the comments dock */}
+          {state.dockFilterText && (article || state.highlightsLoading) && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 10 }}
+              className="absolute right-3 z-30 bg-blue-600/90 backdrop-blur-sm text-white text-xs px-3 py-2 rounded-lg shadow-lg border border-blue-400/30"
+              style={{ bottom: state.footerH + 332 }} // Position above the dock
+            >
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 bg-blue-300 rounded-full animate-pulse"></span>
+                <span>Filtering by: "{state.dockFilterText.substring(0, 30)}..."</span>
+                <button
+                  onClick={() => updateState({ dockFilterText: "", hiLiteText: "" })}
+                  className="ml-2 text-blue-200 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-xs text-blue-200 mt-1">
+                {dockList.length} comment{dockList.length !== 1 ? 's' : ''} found
+              </div>
+            </motion.div>
+          )}
+
           {/* Comments Dock - show when article exists or when highlights are loading independently */}
           {(article || state.highlightsLoading) && (
             <div 
               className="absolute right-3 z-30"
-              style={{ bottom: state.footerH + 12 }}
+              style={{ bottom: state.footerH + 24 }}
             >
-              {/* Filter indicator */}
-              {state.dockFilterText && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                  className="mb-2 bg-blue-600/90 backdrop-blur-sm text-white text-xs px-3 py-2 rounded-lg shadow-lg border border-blue-400/30"
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-blue-300 rounded-full animate-pulse"></span>
-                    <span>Filtering by: "{state.dockFilterText.substring(0, 30)}..."</span>
-                    <button
-                      onClick={() => updateState({ dockFilterText: "", hiLiteText: "" })}
-                      className="ml-2 text-blue-200 hover:text-white transition-colors"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="text-xs text-blue-200 mt-1">
-                    {dockList.length} comment{dockList.length !== 1 ? 's' : ''} found
-                  </div>
-                </motion.div>
-              )}
 
               {/* Highlights loading indicator - separate from article loading */}
               {state.highlightsLoading && article && (
