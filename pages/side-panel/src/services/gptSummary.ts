@@ -1293,7 +1293,7 @@ export async function storeSmartHighlight(
     url: params.url,
     is_private: params.is_private,
     invited_users: params.invited_users,
-    conversation_starter: true
+    conversation_starter: false
   };
 
   // Add article_id to payload if provided

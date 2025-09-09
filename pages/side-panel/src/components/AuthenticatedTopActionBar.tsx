@@ -60,6 +60,7 @@ interface AuthenticatedTopActionBarProps {
   shareUrl?: string;
   articleTitle?: string;
   thoughtRoomsCount?: number;
+  isLoadingConversations?: boolean;
   fontSize?: 'small' | 'medium' | 'large';
   onFontSizeChange?: (size: 'small' | 'medium' | 'large') => void;
 }
@@ -89,6 +90,7 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
   shareUrl = "",
   articleTitle = "",
   thoughtRoomsCount = 0,
+  isLoadingConversations = false,
   fontSize = 'medium',
   onFontSizeChange
 }) => {
@@ -270,10 +272,12 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                     <div className="ml-2 w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>
                   )}
                 </Button>
-                {/* Conversation count badge - only show when enabled */}
-                {article.article_id > 0 && thoughtRoomsCount > 0 && (
+                {/* Conversation count badge - show when enabled or loading */}
+                {article.article_id > 0 && (thoughtRoomsCount > 0 || isLoadingConversations) && (
                   <div className="absolute -top-1 -right-1 h-5 w-5 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center shadow-sm border border-philonet-card">
-                    {thoughtRoomsCount > 99 ? '99+' : thoughtRoomsCount}
+                    {isLoadingConversations ? (
+                      <div className="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : thoughtRoomsCount > 99 ? '99+' : thoughtRoomsCount}
                   </div>
                 )}
               </div>
@@ -452,9 +456,11 @@ const AuthenticatedTopActionBar: React.FC<AuthenticatedTopActionBarProps> = ({
                         {article.article_id <= 0 && (
                           <div className="ml-auto w-3 h-3 border border-philonet-text-muted/30 border-t-philonet-text-muted rounded-full animate-spin"></div>
                         )}
-                        {article.article_id > 0 && thoughtRoomsCount > 0 && (
+                        {article.article_id > 0 && (thoughtRoomsCount > 0 || isLoadingConversations) && (
                           <div className="ml-auto h-4 w-4 bg-philonet-blue-500 text-white text-xs rounded-full flex items-center justify-center">
-                            {thoughtRoomsCount > 9 ? '9+' : thoughtRoomsCount}
+                            {isLoadingConversations ? (
+                              <div className="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : thoughtRoomsCount > 9 ? '9+' : thoughtRoomsCount}
                           </div>
                         )}
                       </button>

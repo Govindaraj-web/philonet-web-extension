@@ -95,14 +95,35 @@ export default function App() {
       const action = isPanelOpen ? 'close' : 'open';
       console.log(`[CEB] Attempting to ${action} side panel...`);
       
-      chrome.runtime.sendMessage({ 
-        type: 'TRIGGER_EXTENSION_CLICK', 
-        action: action
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('[CEB] Extension click trigger failed:', chrome.runtime.lastError);
+      // Check if Chrome runtime is available
+      if (!chrome?.runtime?.sendMessage) {
+        console.error('[CEB] Chrome runtime not available');
+        fallbackToGuidance(action);
+        return;
+      }
+      
+      // Add timeout to handle unresponsive background script
+      let responseReceived = false;
+      const timeoutId = setTimeout(() => {
+        if (!responseReceived) {
+          console.warn('[CEB] Background script response timeout, falling back to guidance');
           fallbackToGuidance(action);
-        } else if (response && response.success) {
+        }
+      }, 3000); // 3 second timeout
+      
+      try {
+        chrome.runtime.sendMessage({ 
+          type: 'TRIGGER_EXTENSION_CLICK', 
+          action: action
+        }, (response) => {
+          responseReceived = true;
+          clearTimeout(timeoutId);
+          
+          if (chrome.runtime.lastError) {
+            console.error('[CEB] Extension click trigger failed:', chrome.runtime.lastError);
+            fallbackToGuidance(action);
+            return;
+          } else if (response && response.success) {
           console.log(`[CEB] Side panel ${action}ed successfully`);
           
           // Wait a bit for the storage to be updated by background script
@@ -128,19 +149,23 @@ export default function App() {
             }
           }, 200);
           
-        } else {
-          console.error('[CEB] Extension click trigger failed:', response?.error);
-          fallbackToGuidance(action);
-        }
-      });
-      
+          } else {
+            console.error('[CEB] Extension click trigger failed:', response?.error);
+            fallbackToGuidance(action);
+          }
+        });
+      } catch (messageError) {
+        responseReceived = true;
+        clearTimeout(timeoutId);
+        console.error('[CEB] Error sending message to background script:', messageError);
+        fallbackToGuidance(action);
+      }
+        
     } catch (error) {
       console.error('[CEB] Error in toggleSidePanel:', error);
       fallbackToGuidance(isPanelOpen ? 'close' : 'open');
     }
-  };
-
-  const fallbackToGuidance = (action: string = 'open') => {
+  };  const fallbackToGuidance = (action: string = 'open') => {
     console.log(`[CEB] ${action} action failed - user should use extension icon or Ctrl+Shift+P`);
   };
 

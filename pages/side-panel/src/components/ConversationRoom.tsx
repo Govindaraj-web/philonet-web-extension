@@ -38,13 +38,15 @@ import {
   Maximize2,
   Minimize2,
   Type,
-  Settings
+  Settings,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@extension/ui';
 import { Button, Textarea } from './ui';
 import { reactToComment, queryAI, addComment } from '../services/thoughtRoomsApi';
 import MessageWithReactions from './MessageWithReactions';
 import ReactionButton from './ReactionButton';
+import InviteUsersModal from './InviteUsersModal';
 
 interface ThoughtStarter {
   id: string;
@@ -149,6 +151,7 @@ interface ConversationRoomProps {
   onSendMessage: (message: string, thoughtId: string, replyToMessageId?: string) => void;
   onAskAI: (question: string, thoughtId: string) => void;
   onClose?: () => void; // Add close function prop for closing the entire drawer
+  onRefresh?: () => void; // Add refresh function prop for refreshing conversations and conversation room
 }
 
 /* 
@@ -278,7 +281,8 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   onThoughtSelect,
   onSendMessage,
   onAskAI,
-  onClose // Add close function prop
+  onClose, // Add close function prop
+  onRefresh // Add refresh function prop
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [messageText, setMessageText] = useState('');
@@ -316,10 +320,28 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
   const [particles, setParticles] = useState<Array<{id: number, x: number, y: number, emoji: string}>>([]);
   const [reactionError, setReactionError] = useState<string | null>(null);
   const [successPulse, setSuccessPulse] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   // Font sizing system - WhatsApp-like font preferences
   type FontSize = 'small' | 'medium' | 'large' | 'extra-large';
   const [fontSize, setFontSize] = useState<FontSize>('medium');
+  
+  // Refresh loading state
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Handle refresh with loading state
+  const handleRefresh = async () => {
+    if (!onRefresh || isRefreshing) return;
+    
+    try {
+      setIsRefreshing(true);
+      await onRefresh();
+    } catch (error) {
+      console.error('❌ Error during refresh:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
   
   // Font size configurations similar to WhatsApp
   const fontSizeConfig = {
@@ -1199,31 +1221,10 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
     }, 600);
 
     try {
-      // Add the message as a comment using the existing API (like AI messages do)
-      if (articleId && parentCommentId) {
-        console.log('📤 Adding message as comment via API:', {
-          articleId,
-          parentCommentId,
-          contentLength: messageTextToSend.length,
-          replyToMessageId: replyingToMessage?.id
-        });
-        await addComment({
-          articleId,
-          parentCommentId,
-          content: messageTextToSend,
-          title: `Message from ${currentUser.name}`,
-          minimessage: messageTextToSend.length > 50 ? messageTextToSend.substring(0, 47) + '...' : messageTextToSend,
-          ...(replyingToMessage && {
-            replyMessageId: parseInt(replyingToMessage.id, 10)
-          })
-        });
-        console.log('✅ Message added to conversation successfully via API');
-      } else {
-        console.warn('⚠️ Skipping API call for message - missing context:', {
-          articleId,
-          parentCommentId
-        });
-      }
+      // Call the parent handler immediately to handle the API call
+      // (ConversationDrawer2's handleSendMessage will make the actual API call)
+      console.log('🔄 Calling parent onSendMessage for API submission');
+      onSendMessage(messageTextToSend, selectedThought.id, replyingToMessage?.id);
 
       // Update status to sent immediately for better UX (optimistic update)
       setTimeout(() => {
@@ -1235,15 +1236,7 @@ const ConversationRoom: React.FC<ConversationRoomProps> = ({
         setTimeout(() => setSuccessPulse(null), 800);
       }, 300);
 
-      // Call the parent handler to refresh messages (significantly delayed to avoid duplicate messages)
-      setTimeout(() => {
-        try {
-          console.log('🔄 Calling parent onSendMessage for normal message refresh (final delayed call)');
-          onSendMessage(messageTextToSend, selectedThought.id, replyingToMessage?.id);
-        } catch (error) {
-          console.error('Error in parent onSendMessage:', error);
-        }
-      }, 3000); // Increased to 3 seconds to ensure no conflicts with server processing
+      // Parent handler will handle the API call and refresh
 
       // Mark as delivered after a reasonable delay (simulating real send)
       setTimeout(() => {
@@ -2124,7 +2117,7 @@ Please provide a detailed analysis and answer to the question based on the artic
       {/* Left Sidebar - Collapsible Thought Starters */}
       <div 
         className={cn(
-          "border-r border-philonet-border transition-all duration-500 ease-in-out sidebar-background relative group",
+          "border-r border-philonet-border transition-all duration-500 ease-in-out sidebar-background relative group flex flex-col h-full",
           selectedThought ? "hidden sm:block" : "w-full",
           // Responsive behavior: collapsed when conversation selected, expandable on hover
           selectedThought 
@@ -2137,7 +2130,7 @@ Please provide a detailed analysis and answer to the question based on the artic
         onMouseLeave={selectedThought ? handleSidebarMouseLeave : undefined}
       >
         {/* Adaptive Header - Collapsed/Expanded States */}
-        <div className="p-2 border-b border-philonet-border bg-philonet-background overflow-hidden">
+        <div className="p-2 border-b border-philonet-border bg-philonet-background overflow-hidden flex-shrink-0">
           {/* Collapsed State - Icon Strip */}
           {selectedThought && !isLeftSidebarHovered ? (
             <div className="flex flex-col items-center space-y-2 relative">
@@ -2233,7 +2226,14 @@ Please provide a detailed analysis and answer to the question based on the artic
         </div>
 
         {/* Adaptive Thought Starters List */}
-        <div className="overflow-y-auto flex-1 custom-scrollbar">
+        <div 
+          className="overflow-y-auto overflow-x-hidden flex-1 philonet-scrollbar min-h-0" 
+          style={{ 
+            scrollBehavior: 'smooth', 
+            touchAction: 'pan-y',
+            maxHeight: 'calc(100vh - 200px)' // Ensure container has max height for scrolling
+          }}
+        >
           {selectedThought && !isLeftSidebarHovered ? (
             /* Collapsed State - Compact Vertical Stack */
             <div className="p-2 space-y-2">
@@ -2304,7 +2304,9 @@ Please provide a detailed analysis and answer to the question based on the artic
                         <div className="text-xs font-medium text-philonet-text-primary truncate">
                           {thought.author?.name || 'Anonymous'}
                         </div>
-                        <div className="text-xs text-philonet-text-muted">2h ago</div>
+                        <div className="text-xs text-philonet-text-muted">
+                          {thought.lastActivity ? formatTime(thought.lastActivity) : 'Unknown time'}
+                        </div>
                       </div>
                     </div>
                     <div className="text-xs text-philonet-text-secondary line-clamp-3 mb-2 leading-relaxed">
@@ -2346,12 +2348,13 @@ Please provide a detailed analysis and answer to the question based on the artic
             </div>
           ) : (
             /* Expanded State - Full Cards with Smooth Layout */
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-0"
-            >
+            <div className="flex-1 min-h-0">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-0"
+              >
               {filteredThoughts.map((thought, index) => (
                 <motion.div
                   key={thought.id}
@@ -2408,7 +2411,9 @@ Please provide a detailed analysis and answer to the question based on the artic
                           {thought.author?.name || 'Anonymous'}
                         </span>
                         <span className="text-xs text-philonet-text-muted">•</span>
-                        <span className="text-xs text-philonet-text-muted">2h ago</span>
+                        <span className="text-xs text-philonet-text-muted">
+                          {thought.lastActivity ? formatTime(thought.lastActivity) : 'Unknown time'}
+                        </span>
                         <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
                       </div>
 
@@ -2458,7 +2463,8 @@ Please provide a detailed analysis and answer to the question based on the artic
                   </div>
                 </motion.div>
               ))}
-            </motion.div>
+              </motion.div>
+            </div>
           )}
         </div>
       </div>
@@ -2561,7 +2567,9 @@ Please provide a detailed analysis and answer to the question based on the artic
                         </div>
                       )}
                       <span className="text-xs text-philonet-text-muted">•</span>
-                      <span className="text-xs text-philonet-text-muted">2h ago</span>
+                      <span className="text-xs text-philonet-text-muted">
+                        {selectedThought.lastActivity ? formatTime(selectedThought.lastActivity) : 'Unknown time'}
+                      </span>
                       <span className="text-xs text-philonet-blue-400 font-medium">💭 2.14m</span>
                     </div>
 
@@ -2620,6 +2628,22 @@ Please provide a detailed analysis and answer to the question based on the artic
                     )}
                   </Button>
 
+                  {/* Refresh Conversations Button */}
+                  {onRefresh && (
+                    <Button 
+                      onClick={handleRefresh}
+                      disabled={isRefreshing}
+                      className={`h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-blue-500/20 border-0 transition-all ${
+                        isRefreshing ? 'opacity-70 cursor-not-allowed' : ''
+                      }`}
+                      title={isRefreshing ? "Refreshing conversations..." : "Refresh conversations and conversation room"}
+                    >
+                      <RefreshCw className={`w-4 h-4 text-philonet-text-secondary hover:text-philonet-blue-400 transition-colors ${
+                        isRefreshing ? 'animate-spin' : ''
+                      }`} />
+                    </Button>
+                  )}
+                  
                   {/* Font Size Picker */}
                   <div className="relative">
                     <Button 
@@ -2645,6 +2669,17 @@ Please provide a detailed analysis and answer to the question based on the artic
                       </span>
                     </Button>
                   </div>
+                  
+                  {/* Invite Users Button - only show when we have an article ID */}
+                  {articleId && (
+                    <Button 
+                      onClick={() => setShowInviteModal(true)}
+                      className="h-9 w-9 p-0 rounded-full bg-philonet-card hover:bg-philonet-blue-500/20 border-0 transition-all"
+                      title="Invite users to room"
+                    >
+                      <UserPlus className="w-4 h-4 text-philonet-text-secondary hover:text-philonet-blue-400 transition-colors" />
+                    </Button>
+                  )}
                   
                   {/* Close conversation button - moved to rightmost position */}
                   <Button 
@@ -3709,6 +3744,17 @@ Please provide a detailed analysis and answer to the question based on the artic
         )}
       </div>
 
+      {/* Invite Users Modal */}
+      {articleId && (
+        <InviteUsersModal
+          isOpen={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          articleId={articleId}
+          parentCommentId={parentCommentId}
+          articleTitle={articleTitle}
+        />
+      )}
+
       {/* Custom Scrollbar Styles */}
       <style>{`
         /* Minimal sidebar pattern */
@@ -3754,6 +3800,11 @@ Please provide a detailed analysis and answer to the question based on the artic
             );
           background-size: 30px 30px, 30px 30px, 60px 60px;
           background-position: 0 0, 0 0, 15px 15px;
+        }
+        
+        .philonet-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
         }
         
         .philonet-scrollbar::-webkit-scrollbar {

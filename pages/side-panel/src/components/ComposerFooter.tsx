@@ -381,7 +381,7 @@ const ComposerFooter: React.FC<ComposerFooterProps> = ({
             <span className="hidden sm:inline">
               {selectedFriends.length > 0 
                 ? `${selectedFriends.length} friend${selectedFriends.length > 1 ? 's' : ''}` 
-                : 'Add friends'
+                : 'Invite friends'
               }
             </span>
           </button>

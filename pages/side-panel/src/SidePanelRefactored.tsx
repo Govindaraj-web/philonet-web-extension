@@ -288,6 +288,15 @@ const SidePanel: React.FC<SidePanelProps> = ({
   // Thought Rooms drawer state
   const [showThoughtRooms, setShowThoughtRooms] = useState(false);
   
+  // Parallel conversation loading state
+  const [conversationCount, setConversationCount] = useState<number>(0);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  const [conversationsPreloaded, setConversationsPreloaded] = useState(false);
+  
+  // Refresh trigger to force conversation components to re-fetch data
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  
   // Ask AI drawer state
   const [showAskAIDrawer, setShowAskAIDrawer] = useState(false);
   const [aiDrawerInitialQuestion, setAiDrawerInitialQuestion] = useState('');
@@ -432,6 +441,112 @@ ${article.description}
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
+
+  // Combined refresh function for conversations
+  const refreshAllConversationData = async () => {
+    if (article?.article_id) {
+      console.log('🔄 Refreshing all conversation data for article:', article.article_id);
+      
+      try {
+        // 1. Refresh conversation count (existing functionality)
+        await loadConversationCount(article.article_id);
+        
+        // 2. Force refresh of conversation components data by updating a refresh key
+        // This will trigger the conversation components to re-fetch their data
+        setRefreshTrigger(prev => prev + 1);
+        
+        console.log('✅ All conversation data refresh completed');
+      } catch (error) {
+        console.error('❌ Error during conversation data refresh:', error);
+      }
+      
+    } else {
+      console.warn('⚠️ No article available to refresh conversation data');
+    }
+  };
+
+  // Parallel conversation loading function
+  const loadConversationCount = async (articleId: number) => {
+    if (!articleId || articleId <= 0) {
+      setConversationCount(0);
+      return;
+    }
+
+    try {
+      setIsLoadingConversations(true);
+      setConversationsError(null);
+      console.log('📊 Loading conversation count for article:', articleId);
+
+      // Import the API dynamically to avoid circular dependencies
+      const { ThoughtRoomsAPI } = await import('./services/thoughtRoomsApi');
+      const api = new ThoughtRoomsAPI();
+      
+      // Fetch comments listing only (non-blocking, lightweight)
+      const response = await api.fetchCommentsListingOnly({
+        articleId,
+        limit: 50 // Get a decent sample to count conversations
+      });
+
+      // Count unique top-level conversations (parent comments)
+      const topLevelComments = response.comments.filter(comment => 
+        comment.parent_comment_id === null || comment.parent_comment_id === 0
+      );
+
+      const count = topLevelComments.length;
+      setConversationCount(count);
+      setConversationsPreloaded(true);
+
+      console.log(`✅ Loaded ${count} conversations for article ${articleId}`);
+      
+    } catch (error) {
+      console.error('❌ Error loading conversation count:', error);
+      setConversationsError(error instanceof Error ? error.message : 'Failed to load conversations');
+      setConversationCount(0);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  // Parallel loading when article changes
+  useEffect(() => {
+    if (article && article.article_id > 0 && user) {
+      // Only load conversations if user is authenticated and article is ready
+      console.log('🚀 Starting parallel conversation loading for article:', article.article_id);
+      loadConversationCount(article.article_id);
+    } else {
+      // Reset conversation state when no article or user
+      setConversationCount(0);
+      setConversationsPreloaded(false);
+      setConversationsError(null);
+      setIsLoadingConversations(false);
+      
+      if (!user) {
+        console.log('👤 User not authenticated, skipping conversation loading');
+      } else if (!article) {
+        console.log('📄 No article available, resetting conversation state');
+      } else if (article.article_id <= 0) {
+        console.log('🔢 Article ID not ready, waiting for article to be saved...');
+      }
+    }
+  }, [article?.article_id, user?.id]); // Also depend on user ID changes
+
+  // Also trigger conversation loading when current URL changes (for initial page load)
+  useEffect(() => {
+    const checkForExistingArticle = async () => {
+      if (currentUrl && !article && user) {
+        console.log('🔍 Checking for existing article on URL change:', currentUrl);
+        // Try to fetch article data to get article_id
+        try {
+          // This will be handled by existing article loading logic
+          // The conversation loading will trigger via the article useEffect above
+        } catch (error) {
+          console.error('Error checking for existing article:', error);
+        }
+      }
+    };
+    
+    checkForExistingArticle();
+  }, [currentUrl, user]);
 
   // Debug logging
   console.log('📝 Using content:', article ? 'REAL ARTICLE DATA' : 'ENCOURAGING MESSAGE');
@@ -2791,9 +2906,9 @@ ${article.description}
 
         // 2. Also call the regular thoughts API (skip state management since we handle it here)
         if (state.hiLiteText && article && bodyContentRef) {
-          apiPromises.push(submitCommentWithHighlight(article, bodyContentRef, selectedFriends, true));
+          apiPromises.push(submitCommentWithHighlight(article, bodyContentRef, selectedFriends, false));
         } else {
-          apiPromises.push(submitComment(selectedFriends, true));
+          apiPromises.push(submitComment(selectedFriends, false));
         }
 
         // Wait for both API calls to complete with proper loading feedback
@@ -2805,6 +2920,16 @@ ${article.description}
           selectedFriendsCount: selectedFriends.length,
           preservedTaggedText: preservedHiLiteText
         });
+
+        // Refresh conversation room after successful addCommentNew
+        try {
+          console.log('🔄 Refreshing conversation room after conversation starter creation');
+          await refreshAllConversationData();
+          console.log('✅ Conversation room refreshed successfully');
+        } catch (refreshError) {
+          console.error('❌ Failed to refresh conversation room:', refreshError);
+          // Don't throw here - the comment was still created successfully
+        }
 
         // Success feedback - haptic and visual
         if (navigator.vibrate) {
@@ -2835,6 +2960,12 @@ ${article.description}
         // Refresh comments to show the new conversation starter comment
         if (article?.article_id) {
           await setArticleIdAndRefreshHighlights(article.article_id.toString());
+        }
+
+        // Refresh conversation count to reflect new comment
+        if (article?.article_id) {
+          console.log('🔄 Refreshing conversation count after comment submission');
+          loadConversationCount(article.article_id);
         }
       } catch (error) {
         console.error('❌ Failed to submit conversation starter comment:', error);
@@ -2879,9 +3010,9 @@ ${article.description}
         // Add success feedback for thoughts API too (skip state management since we handle it here)
         let apiCall;
         if (state.hiLiteText && article && bodyContentRef) {
-          apiCall = submitCommentWithHighlight(article, bodyContentRef, selectedFriends, true);
+          apiCall = submitCommentWithHighlight(article, bodyContentRef, selectedFriends, false);
         } else {
-          apiCall = submitComment(selectedFriends, true);
+          apiCall = submitComment(selectedFriends, false);
         }
         
         // Wait for completion and provide feedback
@@ -2900,6 +3031,12 @@ ${article.description}
           }
         });
         window.dispatchEvent(successEvent);
+
+        // Refresh conversation count to reflect new comment
+        if (article?.article_id) {
+          console.log('🔄 Refreshing conversation count after thought comment submission');
+          loadConversationCount(article.article_id);
+        }
         
         // Auto-focus for next comment with slight delay for better UX
         setTimeout(() => {
@@ -4410,7 +4547,8 @@ ${article.description}
             article={article}
             shareUrl={getShareUrl()}
             articleTitle={article?.title || pageData?.title || document.title || "Current Page"}
-            thoughtRoomsCount={state.comments.length} // Use comments count as conversations count
+            thoughtRoomsCount={conversationCount} // Use parallel-loaded conversation count
+            isLoadingConversations={isLoadingConversations}
             fontSize={settings.fontSize}
             onFontSizeChange={(size) => setSettings(prev => ({ ...prev, fontSize: size }))}
           />
@@ -5387,11 +5525,13 @@ ${article.description}
               article={article ? {
                 title: article.title,
                 content: article.description || article.summary,
-                url: article.url
+                url: article.url,
+                article_id: article.article_id // Include article_id for API calls
               } : {
                 title: pageData?.title || document.title || "Current Page",
                 content: pageData?.visibleText || "",
-                url: currentUrl
+                url: currentUrl,
+                article_id: 0
               }}
               taggedContent={state.hiLiteText ? {
                 sourceText: pageData?.visibleText || article?.description || "",
@@ -5400,6 +5540,11 @@ ${article.description}
               } : undefined}
               user={user}
               currentArticleId={state.currentArticleId} // Pass the article ID from storage
+              conversationCount={conversationCount}
+              isLoadingConversations={isLoadingConversations}
+              conversationsPreloaded={conversationsPreloaded}
+              refreshTrigger={refreshTrigger} // Pass refresh trigger to force data refresh
+              onRefreshConversations={refreshAllConversationData}
               onSendMessage={(message, thoughtId) => {
                 console.log('💬 Conversation message:', message, 'for thought:', thoughtId);
                 // You can integrate this with your existing comment system

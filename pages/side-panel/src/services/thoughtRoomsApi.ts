@@ -201,6 +201,20 @@ interface TopFriendsResponse {
   message: string;
 }
 
+interface InviteUserParams {
+  articleId: number;
+  userId: string;
+  commentid?: number;
+}
+
+interface InviteUserResponse {
+  success: boolean;
+  message: string;
+  articleId?: number;
+  articleTitle?: string;
+  error?: string;
+}
+
 const getApiUrl = (endpoint: string) => `${process.env.CEB_API_URL || 'http://localhost:3000'}/v1${endpoint}`;
 
 const API_ENDPOINTS = {
@@ -209,7 +223,8 @@ const API_ENDPOINTS = {
   ADD_COMMENT_NEW: '/room/addcommentnew',
   REACT: '/room/react',
   AI_QUERY: '/users/answerprogemininew',
-  TOP_FRIENDS: '/room/topfriends'
+  TOP_FRIENDS: '/room/topfriends',
+  INVITE_USER: '/room/inviteuser'
 };
 
 export class ThoughtRoomsAPI {
@@ -305,7 +320,7 @@ export class ThoughtRoomsAPI {
   }
 
   async addComment(params: AddCommentParams): Promise<AddCommentResponse> {
-    const { articleId, content, title, parentCommentId, replyMessageId, minimessage = '', quote, emotion, mentions } = params;
+    const { articleId, content, title, parentCommentId, replyMessageId, minimessage, quote, emotion, mentions } = params;
     
     // Get authorization token from storage
     const token = await philonetAuthStorage.getToken();
@@ -318,14 +333,14 @@ export class ThoughtRoomsAPI {
     
     const requestBody: any = {
       articleId,
-      content,
-      minimessage
+      content
     };
 
     // Add optional parameters only if they're provided
     if (title) requestBody.title = title;
     if (parentCommentId) requestBody.parentCommentId = parentCommentId;
     if (replyMessageId) requestBody.replyMessageId = replyMessageId;
+    if (minimessage) requestBody.minimessage = minimessage;
     if (quote) requestBody.quote = quote;
     if (emotion) requestBody.emotion = emotion;
     if (mentions && mentions.length > 0) requestBody.mentions = mentions;
@@ -581,7 +596,9 @@ export class ThoughtRoomsAPI {
       description: comment.content,
       category: 'Discussion',
       tags: this.extractTags(comment.content),
-      lastActivity: comment.created_at,
+      lastActivity: comment.recent_child_comments.length > 0 
+        ? comment.recent_child_comments[0].created_at  // Use most recent child comment time
+        : comment.created_at,  // Fallback to original comment time if no replies
       messageCount: comment.child_comment_count,
       participants: this.countUniqueParticipants(comment.recent_child_comments),
       isActive: true,
@@ -832,6 +849,54 @@ export class ThoughtRoomsAPI {
 
     return Array.from(uniqueUsers.values()).slice(0, 5);
   }
+
+  // Invite user to article room
+  async inviteUser(params: InviteUserParams): Promise<InviteUserResponse> {
+    const { articleId, userId, commentid } = params;
+    
+    // Get authorization token from storage
+    const token = await philonetAuthStorage.getToken();
+    if (!token) {
+      console.error('🚫 No authorization token found in storage');
+      throw new Error('No authorization token found. Please log in.');
+    }
+    
+    console.log('👥 Inviting user:', userId, 'to article:', articleId);
+    
+    const requestBody: any = {
+      articleId,
+      userId
+    };
+    
+    // Add optional commentid if provided
+    if (commentid) {
+      requestBody.commentid = commentid;
+    }
+
+    try {
+      const response = await fetch(getApiUrl(API_ENDPOINTS.INVITE_USER), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data: InviteUserResponse = await response.json();
+      
+      if (!response.ok) {
+        console.error('❌ Invite user API failed:', data.error || data.message);
+        throw new Error(data.error || data.message || `Invite user failed: ${response.status}`);
+      }
+
+      console.log('✅ User invite sent successfully:', data.message);
+      return data;
+    } catch (error) {
+      console.error('❌ Invite user API request failed:', error);
+      throw error;
+    }
+  }
 }
 
 // Export convenience functions for external use
@@ -872,6 +937,14 @@ export const addCommentNew = async (params: {
 export const reactToComment = async (params: ReactToCommentParams) => {
   return thoughtRoomsAPI.reactToComment(params);
 };
+
+// Export invite user function
+export const inviteUser = async (params: InviteUserParams) => {
+  return thoughtRoomsAPI.inviteUser(params);
+};
+
+// Export types for external use
+export type { InviteUserParams, InviteUserResponse };
 
 // Export AI query function
 export const queryAI = async (params: AIQueryParams) => {

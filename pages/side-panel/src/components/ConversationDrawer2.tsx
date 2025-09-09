@@ -12,6 +12,7 @@ interface ConversationDrawerProps {
     title: string;
     content: string;
     url: string;
+    article_id?: number; // Add article_id for API calls
   };
   taggedContent?: {
     sourceText: string;
@@ -27,6 +28,13 @@ interface ConversationDrawerProps {
   onAskAI: (question: string, thoughtId?: string) => void;
   onThoughtSelect?: (thoughtId: string) => void;
   currentArticleId?: string; // Add the current article ID from storage
+  // Parallel conversation loading state
+  conversationCount?: number;
+  isLoadingConversations?: boolean;
+  conversationsPreloaded?: boolean;
+  // External refresh functionality
+  refreshTrigger?: number; // Trigger to force refresh of conversation data
+  onRefreshConversations?: () => void;
 }
 
 const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
@@ -38,7 +46,12 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   onSendMessage,
   onAskAI,
   onThoughtSelect,
-  currentArticleId
+  currentArticleId,
+  conversationCount = 0,
+  isLoadingConversations = false,
+  conversationsPreloaded = false,
+  refreshTrigger = 0,
+  onRefreshConversations
 }) => {
   const [sidePanelWidth, setSidePanelWidth] = useState(400);
   const [drawerWidth, setDrawerWidth] = useState(480);
@@ -139,6 +152,51 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       setThoughtStarters([]);
     } finally {
       setIsLoadingThoughts(false);
+    }
+  };
+
+  // Function to refresh both conversation list and conversation room data
+  const handleRefreshConversations = async () => {
+    const articleId = getArticleId();
+    console.log('🔄 Refreshing conversations and conversation room data for article:', articleId);
+    
+    // Store the currently selected thought ID before clearing
+    const currentlySelectedThoughtId = selectedThoughtId;
+    
+    // Clear existing data first for a fresh start
+    setThoughtStarters([]);
+    setConversationDetails({});
+    setLoadingConversations({});
+    setConversationErrors({});
+    
+    // Fetch fresh thought room data
+    try {
+      await fetchThoughtRoomData(articleId);
+      console.log('✅ Successfully refreshed conversation room data');
+      
+      // If there was a selected conversation, refresh its thread as well
+      if (currentlySelectedThoughtId) {
+        console.log('🔄 Refreshing selected conversation thread:', currentlySelectedThoughtId);
+        
+        // Wait a moment for the thought starters to be loaded
+        setTimeout(async () => {
+          try {
+            const parentCommentId = parseInt(currentlySelectedThoughtId, 10);
+            if (!isNaN(parentCommentId)) {
+              await fetchConversationThread(currentlySelectedThoughtId, parentCommentId);
+              console.log('✅ Successfully refreshed selected conversation thread');
+            }
+          } catch (threadError) {
+            console.error('❌ Error refreshing selected conversation thread:', threadError);
+          }
+        }, 500); // Small delay to ensure thought starters are loaded first
+      }
+      
+      // Note: External refresh (conversation count) is handled by the parent component
+      // that triggers the refreshTrigger. No need to call onRefreshConversations here
+      // to avoid infinite loop.
+    } catch (error) {
+      console.error('❌ Error refreshing conversation room data:', error);
     }
   };
 
@@ -384,26 +442,44 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         commentId: (response as any)?.comment_id || (response as any)?.id || 'unknown'
       });
 
-      // Call the original onSendMessage callback for any additional handling
-      onSendMessage(message, thoughtId);
+      // Note: Not calling onSendMessage here since we already handled the API call
+      // This prevents duplicate API calls when ConversationRoom -> ConversationDrawer2
 
-      // Delay the refresh to avoid conflicts with optimistic updates in ConversationRoom
-      console.log('⏳ Delaying conversation refresh to avoid conflicts with optimistic updates...');
-      setTimeout(async () => {
-        try {
-          // Refresh the conversation thread to show the new message
-          if (isReply && parentCommentId) {
-            console.log('🔄 Refreshing conversation thread after normal message (delayed)');
-            await fetchConversationThread(thoughtId, parentCommentId);
-          } else {
-            // If it's a new top-level comment, refresh the entire thought starters list
-            console.log('🔄 Refreshing thought starters after normal comment (delayed)');
-            await fetchThoughtRoomData(articleId);
+      // Refresh the conversation thread to show the new message
+      if (isReply && parentCommentId) {
+        console.log('🔄 Refreshing conversation thread after normal message');
+        await fetchConversationThread(thoughtId, parentCommentId);
+      } else {
+        // If it's a new top-level comment, refresh the entire thought starters list AND parent count
+        console.log('🔄 Refreshing thought starters after normal comment');
+        await fetchThoughtRoomData(articleId);
+        
+        // Also refresh the parent conversation count to show the new count
+        if (onRefreshConversations) {
+          console.log('🔄 Triggering parent conversation count refresh');
+          try {
+            // Small delay to ensure API has processed the new comment
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await onRefreshConversations();
+            console.log('✅ Parent conversation count refreshed successfully');
+          } catch (refreshError) {
+            console.error('❌ Failed to refresh parent conversation count:', refreshError);
           }
-        } catch (refreshError) {
-          console.error('❌ Error during delayed refresh:', refreshError);
         }
-      }, 2000); // 2 second delay to allow optimistic updates to complete
+      }
+
+      // Update the local lastActivity for the conversation we just sent a message to
+      if (thoughtId && thoughtId !== 'new') {
+        const now = new Date().toISOString();
+        setThoughtStarters(prevStarters => 
+          prevStarters.map(starter => 
+            starter.id === thoughtId 
+              ? { ...starter, lastActivity: now }
+              : starter
+          )
+        );
+        console.log('⏰ Updated local lastActivity for conversation:', thoughtId, 'to:', now);
+      }
 
     } catch (error) {
       console.error('❌ Failed to send message:', error);
@@ -418,8 +494,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       
       setSendingError(errorMessage);
       
-      // Still call the original callback even if sending failed
-      onSendMessage(message, thoughtId);
+      // Note: Not calling onSendMessage on error to prevent cascading failures
     } finally {
       setSendingMessage(false);
     }
@@ -519,21 +594,45 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
 
   // Set initial selected thought ID when thought starters are loaded
   useEffect(() => {
-    if (thoughtStarters.length > 0 && !selectedThoughtId) {
-      const firstThoughtId = thoughtStarters[0]?.id;
-      if (firstThoughtId) {
-        console.log('🎯 Setting initial selected thought ID:', firstThoughtId);
-        setSelectedThoughtId(firstThoughtId);
-        
-        // Auto-load conversation for the first thought if not already loaded
-        const parentCommentId = parseInt(firstThoughtId, 10);
-        if (!conversationDetails[firstThoughtId] && !loadingConversations[firstThoughtId] && !isNaN(parentCommentId)) {
-          console.log('🚀 Auto-loading conversation for first thought');
-          fetchConversationThread(firstThoughtId, parentCommentId);
+    if (thoughtStarters.length > 0) {
+      // If no thought is selected, select the first one
+      if (!selectedThoughtId) {
+        const firstThoughtId = thoughtStarters[0]?.id;
+        if (firstThoughtId) {
+          console.log('🎯 Setting initial selected thought ID:', firstThoughtId);
+          setSelectedThoughtId(firstThoughtId);
+          
+          // Auto-load conversation for the first thought if not already loaded
+          const parentCommentId = parseInt(firstThoughtId, 10);
+          if (!conversationDetails[firstThoughtId] && !loadingConversations[firstThoughtId] && !isNaN(parentCommentId)) {
+            console.log('🚀 Auto-loading conversation for first thought');
+            fetchConversationThread(firstThoughtId, parentCommentId);
+          }
+        }
+      } else {
+        // If a thought was previously selected, check if it still exists after refresh
+        const selectedThoughtExists = thoughtStarters.some(thought => thought.id === selectedThoughtId);
+        if (!selectedThoughtExists) {
+          // Previous selection no longer exists, select the first available
+          const firstThoughtId = thoughtStarters[0]?.id;
+          if (firstThoughtId) {
+            console.log('🔄 Previous selection no longer exists, selecting first available:', firstThoughtId);
+            setSelectedThoughtId(firstThoughtId);
+          }
+        } else {
+          console.log('🎯 Restored previously selected thought after refresh:', selectedThoughtId);
         }
       }
     }
   }, [thoughtStarters, selectedThoughtId, conversationDetails, loadingConversations]);
+
+  // Watch for refresh trigger changes and refresh conversation data
+  useEffect(() => {
+    if (refreshTrigger > 0 && isOpen) {
+      console.log('🔄 Refresh trigger detected, refreshing conversation data:', refreshTrigger);
+      handleRefreshConversations();
+    }
+  }, [refreshTrigger, isOpen]);
 
   // Detect side panel width dynamically and calculate responsive drawer size
   useEffect(() => {
@@ -661,7 +760,14 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                     <div className="flex flex-col items-center space-y-3">
                       {/* Clean loading spinner - Telegram style */}
                       <div className="w-8 h-8 border-2 border-philonet-border border-t-philonet-blue-500 rounded-full animate-spin"></div>
-                      <span className="text-philonet-text-secondary text-sm">Loading conversations...</span>
+                      <span className="text-philonet-text-secondary text-sm">
+                        {isLoadingConversations ? 'Loading conversations in parallel...' : 'Loading conversations...'}
+                      </span>
+                      {conversationsPreloaded && conversationCount > 0 && (
+                        <span className="text-philonet-blue-400 text-xs">
+                          {conversationCount} conversation{conversationCount !== 1 ? 's' : ''} found
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : thoughtsError ? (
@@ -685,12 +791,31 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                       <div className="w-16 h-16 mx-auto mb-4 bg-philonet-blue-500 bg-opacity-10 rounded-full flex items-center justify-center">
                         <MessageSquare className="w-8 h-8 text-philonet-blue-500" />
                       </div>
-                      <h3 className="text-lg font-medium text-philonet-text-primary mb-2">
-                        No Conversations Yet
-                      </h3>
-                      <p className="text-philonet-text-secondary mb-4 leading-relaxed">
-                        Be the first to start a conversation! Go to the article page and share your thoughts to begin engaging with other readers.
-                      </p>
+                      {isLoadingConversations ? (
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-medium text-philonet-text-primary">
+                            Loading Conversations...
+                          </h3>
+                          <div className="w-6 h-6 mx-auto border-2 border-philonet-border border-t-philonet-blue-500 rounded-full animate-spin"></div>
+                        </div>
+                      ) : (
+                        <React.Fragment>
+                          <h3 className="text-lg font-medium text-philonet-text-primary mb-2">
+                            {conversationsPreloaded && conversationCount === 0 
+                              ? 'No Conversations Yet' 
+                              : 'No Conversations Yet'
+                            }
+                          </h3>
+                          {conversationsPreloaded && conversationCount > 0 && (
+                            <p className="text-philonet-blue-400 text-sm mb-4">
+                              {conversationCount} conversation{conversationCount !== 1 ? 's' : ''} available, but no detailed data loaded yet.
+                            </p>
+                          )}
+                          <p className="text-philonet-text-secondary mb-4 leading-relaxed">
+                            Be the first to start a conversation! Go to the article page and share your thoughts to begin engaging with other readers.
+                          </p>
+                        </React.Fragment>
+                      )}
                       <button
                         onClick={onClose}
                         className="px-4 py-2 bg-philonet-blue-500 hover:bg-philonet-blue-600 rounded-md text-white text-sm font-medium transition-colors duration-150"
@@ -721,6 +846,7 @@ const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                     )}
                     
                     <ConversationRoom
+                      onRefresh={handleRefreshConversations} // Add refresh functionality
                       thoughtStarters={
                         // Validate thoughtStarters to prevent React error #31
                         thoughtStarters.map((thought, index) => {

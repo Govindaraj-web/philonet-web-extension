@@ -22,6 +22,7 @@ export { default as ConversationRoomDemo } from './ConversationRoomDemo';
 export { default as ConversationDrawer2 } from './ConversationDrawer2';
 export { default as ThoughtRoomsIntegration2 } from './ThoughtRoomsIntegration2';
 export { default as ShareDropdown } from './ShareDropdown';
+export { default as InviteUsersModal } from './InviteUsersModal';
 
 // Re-export UI components
 export { Button, Textarea, ScrollArea, LoaderRing } from './ui';
