@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KaTeX Math Rendering Test</title>
+    <link rel="stylesheet" href="../dist/side-panel/assets/index-CaDmmviK.css">
+    <style>
+        body {
+            background: #1f2937;
+            color: #e5e7eb;
+            font-family: Inter, sans-serif;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 2rem 0;
+            padding: 1rem;
+            border: 1px solid #374151;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>KaTeX Math Rendering Test</h1>
+    
+    <div class="test-section">
+        <h2>Your Reported Formula</h2>
+        <div id="formula-test"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Simple Inline Math</h2>
+        <div id="inline-test"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Complex Display Math</h2>
+        <div id="display-test"></div>
+    </div>
+
+    <script src="../dist/side-panel/assets/katex-CsMNeiLV.js"></script>
+    <script>
+        // Test the reported formula
+        document.getElementById('formula-test').innerHTML = 
+            'The formula: ' + window.katex.renderToString('V_e = \\frac{1}{r^2} \\left( -\\Lambda_m r^2 - 4M q - \\Lambda_m r \\right) \\left( m^2 - 3k^2 \\Lambda_m \\right)', {
+                displayMode: true,
+                throwOnError: false
+            });
+
+        // Test inline math
+        document.getElementById('inline-test').innerHTML = 
+            'Einstein\\'s equation: ' + window.katex.renderToString('E = mc^2', {
+                displayMode: false,
+                throwOnError: false
+            }) + ' is famous.';
+
+        // Test complex display math
+        document.getElementById('display-test').innerHTML = 
+            window.katex.renderToString('\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}', {
+                displayMode: true,
+                throwOnError: false
+            });
+    </script>
+</body>
+</html>

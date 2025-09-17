@@ -1,0 +1,1436 @@
+import { t } from '@extension/i18n';
+import { ToggleButton } from '@extension/ui';
+import { useEffect, useState } from 'react';
+
+export default function App() {
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
+  useEffect(() => {
+    console.log('[CEB] Content ui all loaded');
+    
+    // Listen for messages from background script or popup to toggle side panel
+    const handleMessage = (request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void): boolean => {
+      console.log('[CEB] Received message:', request);
+      
+      if (request?.type === 'TOGGLE_PHILONET_SIDEPANEL') {
+        console.log('[CEB] Toggling side panel via message');
+        toggleSidePanel();
+        sendResponse({ success: true });
+        return true; // Keep the message channel open for async response
+      }
+      
+      return false; // Don't keep the message channel open for other messages
+    };
+    
+    // Make sure we're listening for chrome extension messages
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener(handleMessage);
+      console.log('[CEB] Message listener added');
+    } else {
+      console.warn('[CEB] Chrome runtime not available');
+    }
+    
+    // Listen for keyboard shortcut (Ctrl/Cmd + Shift + P)
+    const handleKeydown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'P') {
+        event.preventDefault();
+        console.log('[CEB] Keyboard shortcut triggered');
+        toggleSidePanel();
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeydown);
+    
+    return () => {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+        chrome.runtime.onMessage.removeListener(handleMessage);
+        console.log('[CEB] Message listener removed');
+      }
+      document.removeEventListener('keydown', handleKeydown);
+    };
+  }, []);
+
+  const toggleSidePanel = () => {
+    console.log('[CEB] Toggling custom side panel...');
+    setSidePanelOpen(prev => {
+      const newState = !prev;
+      console.log('[CEB] Side panel state changed to:', newState);
+      return newState;
+    });
+  };
+
+  // Shadow DOM component that renders the full Philonet side panel
+  const PhilonetShadowPanel = () => {
+    const [shadowContainer, setShadowContainer] = useState<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+      if (!sidePanelOpen) {
+        if (shadowContainer) {
+          shadowContainer.remove();
+          setShadowContainer(null);
+        }
+        return;
+      }
+
+      // Remove any existing container first to prevent duplicates
+      const existingContainer = document.querySelector('[data-philonet-shadow-container]');
+      if (existingContainer) {
+        existingContainer.remove();
+      }
+
+      // Create shadow container with unique identifier
+      const container = document.createElement('div');
+      container.setAttribute('data-philonet-shadow-container', 'true');
+      container.style.cssText = `
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        pointer-events: none !important;
+        z-index: 2147483647 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        font-family: initial !important;
+        font-size: initial !important;
+        line-height: initial !important;
+        color: initial !important;
+      `;
+
+      // Create shadow root for complete style isolation
+      const shadow = container.attachShadow({ mode: 'open' });
+      
+      // Add comprehensive CSS reset and styles for complete isolation
+      const style = document.createElement('style');
+      style.textContent = `
+        /* Complete CSS Reset for Shadow DOM isolation */
+        :host {
+          all: initial;
+          display: block;
+          contain: layout style paint;
+        }
+
+        *, *::before, *::after {
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          font-size: 100% !important;
+          font: inherit !important;
+          vertical-align: baseline !important;
+          box-sizing: border-box !important;
+          background: transparent !important;
+          color: inherit !important;
+          text-decoration: none !important;
+          list-style: none !important;
+          outline: none !important;
+          -webkit-tap-highlight-color: transparent !important;
+          -webkit-font-smoothing: antialiased !important;
+          -moz-osx-font-smoothing: grayscale !important;
+        }
+
+        /* Block-level elements reset */
+        div, span, applet, object, iframe,
+        h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+        a, abbr, acronym, address, big, cite, code,
+        del, dfn, em, img, ins, kbd, q, s, samp,
+        small, strike, strong, sub, sup, tt, var,
+        b, u, i, center,
+        dl, dt, dd, ol, ul, li,
+        fieldset, form, label, legend,
+        table, caption, tbody, tfoot, thead, tr, th, td,
+        article, aside, canvas, details, embed, 
+        figure, figcaption, footer, header, hgroup, 
+        menu, nav, output, ruby, section, summary,
+        time, mark, audio, video {
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          font-size: 100% !important;
+          font: inherit !important;
+          vertical-align: baseline !important;
+          background: transparent !important;
+          color: inherit !important;
+        }
+
+        /* HTML5 display-role reset for older browsers */
+        article, aside, details, figcaption, figure, 
+        footer, header, hgroup, menu, nav, section {
+          display: block !important;
+        }
+
+        body {
+          line-height: 1 !important;
+        }
+
+        ol, ul {
+          list-style: none !important;
+        }
+
+        blockquote, q {
+          quotes: none !important;
+        }
+
+        blockquote:before, blockquote:after,
+        q:before, q:after {
+          content: '' !important;
+          content: none !important;
+        }
+
+        table {
+          border-collapse: collapse !important;
+          border-spacing: 0 !important;
+        }
+
+        /* Input and button resets */
+        button, input, optgroup, select, textarea {
+          font-family: inherit !important;
+          font-size: 100% !important;
+          line-height: 1.15 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          background: transparent !important;
+          color: inherit !important;
+        }
+
+        button, input {
+          overflow: visible !important;
+        }
+
+        button, select {
+          text-transform: none !important;
+        }
+
+        button, [type="button"], [type="reset"], [type="submit"] {
+          -webkit-appearance: button !important;
+          appearance: button !important;
+          cursor: pointer !important;
+        }
+
+        button::-moz-focus-inner,
+        [type="button"]::-moz-focus-inner,
+        [type="reset"]::-moz-focus-inner,
+        [type="submit"]::-moz-focus-inner {
+          border-style: none !important;
+          padding: 0 !important;
+        }
+
+        /* Load Inter font directly within shadow DOM */
+        @font-face {
+          font-family: 'Inter';
+          font-style: normal;
+          font-weight: 300;
+          font-display: swap;
+          src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiJ-Ek-_EeA.woff2') format('woff2');
+        }
+        @font-face {
+          font-family: 'Inter';
+          font-style: normal;
+          font-weight: 400;
+          font-display: swap;
+          src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
+        }
+        @font-face {
+          font-family: 'Inter';
+          font-style: normal;
+          font-weight: 500;
+          font-display: swap;
+          src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiJ-Ek-_EeAo.woff2') format('woff2');
+        }
+        @font-face {
+          font-family: 'Inter';
+          font-style: normal;
+          font-weight: 600;
+          font-display: swap;
+          src: url('https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiJ-Ek-_EeAg.woff2') format('woff2');
+        }
+
+        /* Philonet Panel Styles - Completely isolated from host page */
+        .philonet-panel {
+          all: initial !important;
+          position: fixed !important;
+          top: 0 !important;
+          right: 0 !important;
+          width: 400px !important;
+          height: 100vh !important;
+          background: #0a0a0a !important;
+          color: rgba(255, 255, 255, 0.95) !important;
+          pointer-events: auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Roboto', sans-serif !important;
+          font-weight: 300 !important;
+          font-size: 14px !important;
+          line-height: 1.4 !important;
+          transform: translateX(0) !important;
+          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5) !important;
+          overflow: hidden !important;
+          -webkit-font-smoothing: antialiased !important;
+          -moz-osx-font-smoothing: grayscale !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          z-index: 2147483647 !important;
+          contain: layout style paint !important;
+        }
+
+        /* Top Action Bar */
+        .philonet-header {
+          border-bottom: 1px solid #262626 !important;
+          background: #0a0a0a !important;
+          padding: 0 !important;
+          flex-shrink: 0 !important;
+          margin: 0 !important;
+        }
+
+        .philonet-action-bar {
+          height: 68px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          padding: 0 16px !important;
+          gap: 12px !important;
+          margin: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-user-info {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          min-width: 0 !important;
+          flex-shrink: 1 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        .philonet-avatar {
+          width: 32px !important;
+          height: 32px !important;
+          border-radius: 50% !important;
+          border: 1px solid #404040 !important;
+          background: #0b0b0b !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          color: #a3a3a3 !important;
+          flex-shrink: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        .philonet-username {
+          font-size: 14px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.12em !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          max-width: 140px !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+        }
+
+        .philonet-actions {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          flex-shrink: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        .philonet-action-btn {
+          height: 36px !important;
+          padding: 0 12px !important;
+          border-radius: 20px !important;
+          border: 1px solid #404040 !important;
+          background: transparent !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          font-size: 12px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.12em !important;
+          cursor: pointer !important;
+          transition: all 0.2s !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          white-space: nowrap !important;
+          margin: 0 !important;
+          font-family: inherit !important;
+          outline: none !important;
+        }
+
+        .philonet-action-btn:hover {
+          color: #3b82f6 !important;
+          border-color: #3b82f6 !important;
+          background: transparent !important;
+        }
+
+        .philonet-action-btn span {
+          display: none !important;
+        }
+
+        @media (min-width: 420px) {
+          .philonet-action-btn span {
+            display: inline !important;
+          }
+        }
+
+        .philonet-close-btn {
+          width: 36px !important;
+          height: 36px !important;
+          border-radius: 50% !important;
+          border: 1px solid #404040 !important;
+          background: transparent !important;
+          color: #a3a3a3 !important;
+          cursor: pointer !important;
+          transition: all 0.2s !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          flex-shrink: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          outline: none !important;
+          font-family: inherit !important;
+        }
+
+        .philonet-close-btn:hover {
+          background: #262626 !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          border-color: #3b82f6 !important;
+        }
+
+        /* Content area */
+        .philonet-content {
+          flex: 1 !important;
+          overflow-y: auto !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-content::-webkit-scrollbar {
+          width: 6px !important;
+        }
+
+        .philonet-content::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+
+        .philonet-content::-webkit-scrollbar-thumb {
+          background: #262626 !important;
+          border-radius: 3px !important;
+        }
+
+        .philonet-content::-webkit-scrollbar-thumb:hover {
+          background: #404040 !important;
+        }
+
+        /* Brand Header */
+        .philonet-brand-header {
+          display: flex !important;
+          align-items: center !important;
+          gap: 12px !important;
+          margin: 0 0 24px 0 !important;
+          padding: 24px 20px 16px !important;
+          border-bottom: 1px solid rgba(38, 38, 38, 0.3) !important;
+          background: transparent !important;
+        }
+
+        .philonet-brand-logo {
+          width: 32px !important;
+          height: 32px !important;
+          object-fit: contain !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+        }
+
+        .philonet-brand-title {
+          font-size: 20px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.12em !important;
+          color: rgba(96, 165, 250, 0.9) !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+          line-height: 1.2 !important;
+        }
+
+        .philonet-brand-subtitle {
+          font-size: 12px !important;
+          color: #a3a3a3 !important;
+          letter-spacing: 0.12em !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+          line-height: 1.2 !important;
+        }
+
+        /* Cover Image */
+        .philonet-cover-container {
+          margin: 0 20px 20px 0 !important;
+          border-radius: 20px !important;
+          overflow: hidden !important;
+          border: 1px solid #262626 !important;
+          padding: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-cover-image {
+          width: 100% !important;
+          height: 180px !important;
+          object-fit: cover !important;
+          display: block !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          background: transparent !important;
+        }
+
+        /* Article Header */
+        .philonet-article-header {
+          padding: 0 20px 24px !important;
+          margin: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-article-title {
+          font-size: 28px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.14em !important;
+          color: rgba(255, 255, 255, 0.95) !important;
+          line-height: 1.2 !important;
+          margin: 0 0 12px 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+        }
+
+        @media (min-width: 768px) {
+          .philonet-article-title {
+            font-size: 32px !important;
+          }
+        }
+
+        .philonet-article-description {
+          font-size: 15px !important;
+          line-height: 1.6 !important;
+          color: rgba(255, 255, 255, 0.85) !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.06em !important;
+          max-width: 70ch !important;
+          margin: 0 0 16px 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+        }
+
+        /* Meta Tags */
+        .philonet-meta-tags {
+          display: flex !important;
+          flex-wrap: wrap !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-tag-group {
+          display: flex !important;
+          flex-wrap: wrap !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+          color: #a3a3a3 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-tag {
+          border-radius: 50px !important;
+          border: 1px solid #404040 !important;
+          padding: 4px 12px !important;
+          font-size: 12px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.14em !important;
+          color: #a3a3a3 !important;
+          transition: all 0.2s !important;
+          white-space: nowrap !important;
+          margin: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+          cursor: pointer !important;
+        }
+
+        .philonet-tag:hover {
+          color: #3b82f6 !important;
+          border-color: #3b82f6 !important;
+          background: transparent !important;
+        }
+
+        /* Article Content */
+        .philonet-article-content {
+          padding: 0 20px 24px !important;
+          margin: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-section {
+          margin: 0 0 32px 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-section-title {
+          font-size: 20px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.12em !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          margin: 0 0 12px 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+          line-height: 1.3 !important;
+        }
+
+        .philonet-section-text {
+          font-size: 14px !important;
+          line-height: 1.6 !important;
+          color: rgba(255, 255, 255, 0.85) !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.04em !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          font-family: inherit !important;
+        }
+
+        .philonet-list {
+          list-style: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          background: transparent !important;
+        }
+
+        .philonet-list li {
+          font-size: 14px !important;
+          line-height: 1.6 !important;
+          color: rgba(255, 255, 255, 0.85) !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.04em !important;
+          margin: 0 0 8px 0 !important;
+          padding: 0 0 0 16px !important;
+          position: relative !important;
+          background: transparent !important;
+          font-family: inherit !important;
+        }
+
+        .philonet-list li::before {
+          content: '•' !important;
+          color: #404040 !important;
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+        }
+
+        /* Apply strong isolation to all remaining elements */
+        .philonet-table-container,
+        .philonet-table,
+        .philonet-table th,
+        .philonet-table td,
+        .philonet-table tr,
+        .philonet-comments-section,
+        .philonet-comments-header,
+        .philonet-comments-title,
+        .philonet-comments-count,
+        .philonet-comment,
+        .philonet-comment-avatar,
+        .philonet-comment-content,
+        .philonet-comment-meta,
+        .philonet-comment-tag,
+        .philonet-comment-text,
+        .philonet-footer,
+        .philonet-tabs,
+        .philonet-tab,
+        .philonet-tab-active,
+        .philonet-composer,
+        .philonet-composer-content,
+        .philonet-composer-avatar,
+        .philonet-composer-input-container,
+        .philonet-composer-input,
+        .philonet-composer-actions,
+        .philonet-composer-emoji,
+        .philonet-composer-submit,
+        .philonet-composer-footer,
+        .philonet-char-count,
+        .philonet-animate-in {
+          all: unset !important;
+          box-sizing: border-box !important;
+          font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Roboto', sans-serif !important;
+        }
+
+        /* Table */
+        .philonet-table-container {
+          margin: 24px 0 !important;
+          border-radius: 20px !important;
+          overflow: hidden !important;
+          border: 1px solid #262626 !important;
+          display: block !important;
+        }
+
+        .philonet-table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          font-size: 13px !important;
+          display: table !important;
+        }
+
+        .philonet-table th {
+          background: #0b0b0b !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          font-weight: 400 !important;
+          letter-spacing: 0.06em !important;
+          padding: 12px 16px !important;
+          text-align: left !important;
+          border-bottom: 1px solid #262626 !important;
+          display: table-cell !important;
+        }
+
+        .philonet-table td {
+          background: #0a0a0a !important;
+          color: rgba(255, 255, 255, 0.85) !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.04em !important;
+          padding: 12px 16px !important;
+          border-bottom: 1px solid #1a1a1a !important;
+          display: table-cell !important;
+        }
+
+        .philonet-table tr:last-child td {
+          border-bottom: none !important;
+        }
+
+        /* Comments Section */
+        .philonet-comments-section {
+          margin: 48px 0 0 0 !important;
+          padding: 24px 0 0 0 !important;
+          border-top: 1px solid #262626 !important;
+          display: block !important;
+        }
+
+        .philonet-comments-header {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          margin: 0 0 16px 0 !important;
+        }
+
+        .philonet-comments-title {
+          font-size: 18px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.14em !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          margin: 0 !important;
+          display: block !important;
+        }
+
+        .philonet-comments-count {
+          font-size: 12px !important;
+          color: #a3a3a3 !important;
+          letter-spacing: 0.12em !important;
+          display: inline !important;
+        }
+
+        .philonet-comment {
+          display: flex !important;
+          align-items: flex-start !important;
+          gap: 12px !important;
+          padding: 16px !important;
+          border-radius: 16px !important;
+          border: 1px solid #262626 !important;
+          background: rgba(11, 11, 11, 0.6) !important;
+          transition: all 0.2s !important;
+          margin: 0 0 12px 0 !important;
+        }
+
+        .philonet-comment:hover {
+          border-color: #404040 !important;
+        }
+
+        .philonet-comment-avatar {
+          width: 32px !important;
+          height: 32px !important;
+          border-radius: 50% !important;
+          border: 1px solid #404040 !important;
+          background: #0b0b0b !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          color: #a3a3a3 !important;
+          font-size: 12px !important;
+          flex-shrink: 0 !important;
+        }
+
+        /* Footer */
+        .philonet-footer {
+          border-top: 1px solid #262626 !important;
+          background: #0a0a0a !important;
+          padding: 12px 16px !important;
+          flex-shrink: 0 !important;
+          display: block !important;
+        }
+
+        .philonet-tabs {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          margin: 0 0 12px 0 !important;
+        }
+
+        .philonet-tab {
+          height: 32px !important;
+          padding: 0 12px !important;
+          border-radius: 50px !important;
+          border: 1px solid #404040 !important;
+          background: transparent !important;
+          color: #a3a3a3 !important;
+          font-size: 12px !important;
+          letter-spacing: 0.14em !important;
+          cursor: pointer !important;
+          transition: all 0.2s !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+        }
+
+        .philonet-tab:hover {
+          color: rgba(255, 255, 255, 0.9) !important;
+          border-color: #3b82f6 !important;
+        }
+
+        .philonet-tab-active {
+          color: #3b82f6 !important;
+          border-color: #3b82f6 !important;
+        }
+
+        .philonet-composer {
+          margin: 8px 0 0 0 !important;
+          display: block !important;
+        }
+
+        .philonet-composer-content {
+          display: flex !important;
+          align-items: flex-start !important;
+          gap: 12px !important;
+        }
+
+        .philonet-composer-avatar {
+          width: 40px !important;
+          height: 40px !important;
+          border-radius: 50% !important;
+          border: 1px solid #404040 !important;
+          background: #0b0b0b !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          color: #a3a3a3 !important;
+          flex-shrink: 0 !important;
+        }
+
+        .philonet-composer-input-container {
+          flex: 1 !important;
+          min-width: 0 !important;
+          position: relative !important;
+          display: block !important;
+        }
+
+        .philonet-composer-input {
+          width: 100% !important;
+          background: #0b0b0b !important;
+          border: 1px solid #404040 !important;
+          border-radius: 50px !important;
+          padding: 12px 16px !important;
+          color: rgba(255, 255, 255, 0.95) !important;
+          font-size: 14px !important;
+          font-weight: 300 !important;
+          letter-spacing: 0.04em !important;
+          resize: none !important;
+          transition: all 0.2s !important;
+          display: block !important;
+          outline: none !important;
+        }
+
+        .philonet-composer-input:focus {
+          border-color: #3b82f6 !important;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+        }
+
+        .philonet-composer-input::placeholder {
+          color: #525252 !important;
+        }
+
+        .philonet-composer-actions {
+          display: flex !important;
+          align-items: center !important;
+          gap: 4px !important;
+          position: absolute !important;
+          right: 8px !important;
+          top: 50% !important;
+          transform: translateY(-50%) !important;
+        }
+
+        .philonet-composer-emoji,
+        .philonet-composer-submit {
+          width: 32px !important;
+          height: 32px !important;
+          border-radius: 50% !important;
+          border: none !important;
+          background: transparent !important;
+          color: #737373 !important;
+          cursor: pointer !important;
+          transition: all 0.2s !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          font-size: 14px !important;
+        }
+
+        .philonet-composer-emoji:hover,
+        .philonet-composer-submit:hover {
+          color: #3b82f6 !important;
+          background: rgba(59, 130, 246, 0.1) !important;
+        }
+
+        .philonet-composer-footer {
+          display: flex !important;
+          justify-content: flex-end !important;
+          margin: 4px 0 0 0 !important;
+        }
+
+        .philonet-char-count {
+          font-size: 11px !important;
+          color: #737373 !important;
+          display: inline !important;
+        }
+
+        /* Animation */
+        .philonet-animate-in {
+          animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          display: flex !important;
+        }
+
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%) !important;
+            opacity: 0 !important;
+          }
+          to {
+            transform: translateX(0) !important;
+            opacity: 1 !important;
+          }
+        }
+
+        /* Text selection styling */
+        *::selection {
+          background: rgba(59, 130, 246, 0.2) !important;
+        }
+
+        /* Responsive adjustments */
+        @media (min-width: 480px) {
+          .philonet-panel {
+            width: 420px !important;
+          }
+        }
+
+        /* SVG icon styling */
+        svg {
+          display: inline-block !important;
+          fill: none !important;
+          stroke: currentColor !important;
+          stroke-width: 2 !important;
+          stroke-linecap: round !important;
+          stroke-linejoin: round !important;
+        }
+      `;
+
+      // Create the panel HTML with actual SidePanel content
+      const panel = document.createElement('div');
+      panel.className = 'philonet-panel philonet-animate-in';
+      
+      // Sample markdown content from SidePanel
+      const sampleMarkdown = `# The Humane Interface of Philonet
+
+![cover](https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=1200&q=80)
+
+A minimalist, high-contrast reading surface with humane spacing and subtle blue affordances.
+
+**Categories:** Design, Systems, Product
+**Tags:** philonet, ui, reading, dark-mode
+
+## Introduction
+Philonet emphasizes clarity, legibility, and rhythm in digital reading experiences.
+
+## Details
+- Lightweight typography with generous scale
+- Neutral grays for clear hierarchy
+- Blue accents for interactive elements
+- Responsive layout patterns
+
+## Conclusion
+Design for the eyes first, then optimize for everything else.
+
+| Element   | Purpose         | Implementation |
+|-----------|-----------------|----------------|
+| Spacing   | Comfort         | 8px grid       |
+| Contrast  | Readability     | WCAG AA        |
+| Motion    | Feedback        | Subtle spring  |
+`;
+
+      // Parse the markdown content (simplified version)
+      const parseMarkdown = (md: string) => {
+        const lines = md.split('\n');
+        let title = '', description = '', categories: string[] = [], tags: string[] = [], body = '';
+        
+        // Extract title
+        const titleMatch = lines.find((line: string) => line.startsWith('# '));
+        if (titleMatch) title = titleMatch.replace('# ', '');
+        
+        // Extract description (first paragraph after title)
+        const descIndex = lines.findIndex((line: string) => line.trim() && !line.startsWith('#') && !line.startsWith('!') && !line.startsWith('**'));
+        if (descIndex > -1) description = lines[descIndex];
+        
+        // Extract categories and tags
+        const catMatch = lines.find((line: string) => line.startsWith('**Categories:**'));
+        if (catMatch) categories = catMatch.replace('**Categories:**', '').split(',').map((c: string) => c.trim());
+        
+        const tagMatch = lines.find((line: string) => line.startsWith('**Tags:**'));
+        if (tagMatch) tags = tagMatch.replace('**Tags:**', '').split(',').map((t: string) => t.trim());
+        
+        // Extract body content
+        const bodyStart = lines.findIndex((line: string) => line.startsWith('## Introduction'));
+        if (bodyStart > -1) body = lines.slice(bodyStart).join('\n');
+        
+        return { title, description, categories, tags, body };
+      };
+      
+      const meta = parseMarkdown(sampleMarkdown);
+      
+      panel.innerHTML = `
+        <!-- Top Action Bar -->
+        <div class="philonet-header">
+          <div class="philonet-action-bar">
+            <div class="philonet-user-info">
+              <div class="philonet-avatar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+              <span class="philonet-username">Philonet User</span>
+            </div>
+            <div class="philonet-actions">
+              <button class="philonet-action-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m15 5 4 4L7 21l-4 1 1-4L16 6"/>
+                </svg>
+                <span>Share</span>
+              </button>
+              <button class="philonet-action-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                </svg>
+                <span>Save</span>
+              </button>
+              <button class="philonet-action-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="1"/>
+                  <circle cx="19" cy="12" r="1"/>
+                  <circle cx="5" cy="12" r="1"/>
+                </svg>
+                <span>More</span>
+              </button>
+            </div>
+            <button class="philonet-close-btn" onclick="this.dispatchEvent(new CustomEvent('close-panel', { bubbles: true }))">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m18 6-12 12"/>
+                <path d="m6 6 12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="philonet-content">
+          <!-- Philonet Header -->
+          <div class="philonet-brand-header">
+            <img src="${chrome.runtime.getURL('philonet.png')}" alt="Philonet" class="philonet-brand-logo" onerror="this.style.display='none'">
+            <div>
+              <h1 class="philonet-brand-title">Philonet</h1>
+              <p class="philonet-brand-subtitle">Knowledge Network</p>
+            </div>
+          </div>
+
+          <!-- Cover Image -->
+          <div class="philonet-cover-container">
+            <img src="https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=1200&q=80" 
+                 alt="${meta.title}" 
+                 class="philonet-cover-image"
+                 onerror="this.parentElement.style.display='none'">
+          </div>
+
+          <!-- Article Header -->
+          <div class="philonet-article-header">
+            <h2 class="philonet-article-title">${meta.title}</h2>
+            <p class="philonet-article-description">${meta.description}</p>
+            
+            <!-- Categories & Tags -->
+            <div class="philonet-meta-tags">
+              ${meta.categories.length > 0 ? `
+                <div class="philonet-tag-group">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  ${meta.categories.map((cat: string) => `<span class="philonet-tag">${cat}</span>`).join('')}
+                </div>
+              ` : ''}
+              
+              ${meta.tags.length > 0 ? `
+                <div class="philonet-tag-group">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 7V5C3 3.89543 3.89543 3 5 3H8.5L10 5H19C20.1046 5 21 5.89543 21 7V11"/>
+                  </svg>
+                  ${meta.tags.map((tag: string) => `<span class="philonet-tag">#${tag.replace(/^#/, '')}</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Article Content -->
+          <div class="philonet-article-content">
+            <div class="philonet-section">
+              <h3 class="philonet-section-title">Introduction</h3>
+              <p class="philonet-section-text">Philonet emphasizes clarity, legibility, and rhythm in digital reading experiences.</p>
+            </div>
+
+            <div class="philonet-section">
+              <h3 class="philonet-section-title">Details</h3>
+              <ul class="philonet-list">
+                <li>Lightweight typography with generous scale</li>
+                <li>Neutral grays for clear hierarchy</li>
+                <li>Blue accents for interactive elements</li>
+                <li>Responsive layout patterns</li>
+              </ul>
+            </div>
+
+            <div class="philonet-section">
+              <h3 class="philonet-section-title">Conclusion</h3>
+              <p class="philonet-section-text">Design for the eyes first, then optimize for everything else.</p>
+            </div>
+
+            <!-- Implementation Table -->
+            <div class="philonet-table-container">
+              <table class="philonet-table">
+                <thead>
+                  <tr>
+                    <th>Element</th>
+                    <th>Purpose</th>
+                    <th>Implementation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Spacing</td>
+                    <td>Comfort</td>
+                    <td>8px grid</td>
+                  </tr>
+                  <tr>
+                    <td>Contrast</td>
+                    <td>Readability</td>
+                    <td>WCAG AA</td>
+                  </tr>
+                  <tr>
+                    <td>Motion</td>
+                    <td>Feedback</td>
+                    <td>Subtle spring</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Recent Comments -->
+            <div class="philonet-comments-section">
+              <div class="philonet-comments-header">
+                <h4 class="philonet-comments-title">Recent Comments</h4>
+                <span class="philonet-comments-count">1 comment</span>
+              </div>
+              <div class="philonet-comment">
+                <div class="philonet-comment-avatar">Y</div>
+                <div class="philonet-comment-content">
+                  <div class="philonet-comment-meta">You • ${new Date().toLocaleTimeString()}</div>
+                  <div class="philonet-comment-tag">Tagged excerpt: "Philonet emphasizes clarity, legibility, and rhythm"</div>
+                  <div class="philonet-comment-text">Great design principles for modern reading interfaces.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Composer Footer -->
+        <div class="philonet-footer">
+          <!-- Tabs -->
+          <div class="philonet-tabs">
+            <button class="philonet-tab philonet-tab-active" data-tab="comments">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+              </svg>
+              Comments
+            </button>
+            <button class="philonet-tab" data-tab="ai">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect width="16" height="16" x="4" y="4" rx="2"/>
+                <rect width="6" height="6" x="9" y="9" rx="1"/>
+                <path d="m15 2 5 5m-5 0v6h6"/>
+              </svg>
+              Ask AI
+            </button>
+          </div>
+
+          <!-- Comment Composer -->
+          <div class="philonet-composer">
+            <div class="philonet-composer-content">
+              <div class="philonet-composer-avatar">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+              <div class="philonet-composer-input-container">
+                <textarea 
+                  class="philonet-composer-input" 
+                  placeholder="Add a comment…"
+                  rows="1"
+                ></textarea>
+                <div class="philonet-composer-actions">
+                  <button class="philonet-composer-emoji">😊</button>
+                  <button class="philonet-composer-submit">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="m3 8 4-4 4 4"/>
+                      <path d="M7 4v16"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="philonet-composer-footer">
+              <span class="philonet-char-count">280 characters left</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Add event listeners
+      panel.addEventListener('close-panel', () => {
+        setSidePanelOpen(false);
+      });
+
+      // Add interactive functionality for tabs and composer
+      const commentTab = panel.querySelector('[data-tab="comments"]');
+      const aiTab = panel.querySelector('[data-tab="ai"]');
+      const composerInput = panel.querySelector('.philonet-composer-input');
+      const submitButton = panel.querySelector('.philonet-composer-submit');
+      const charCount = panel.querySelector('.philonet-char-count');
+
+      // Tab switching
+      if (commentTab && aiTab) {
+        commentTab.addEventListener('click', () => {
+          commentTab.classList.add('philonet-tab-active');
+          aiTab.classList.remove('philonet-tab-active');
+        });
+
+        aiTab.addEventListener('click', () => {
+          aiTab.classList.add('philonet-tab-active');
+          commentTab.classList.remove('philonet-tab-active');
+        });
+      }
+
+      // Character count and input handling
+      if (composerInput && charCount) {
+        composerInput.addEventListener('input', (e) => {
+          const input = e.target as HTMLTextAreaElement;
+          const remaining = Math.max(0, 280 - input.value.length);
+          charCount.textContent = `${remaining} characters left`;
+          
+          // Auto-resize textarea
+          input.style.height = 'auto';
+          input.style.height = input.scrollHeight + 'px';
+        });
+
+        composerInput.addEventListener('keydown', (e) => {
+          const keyEvent = e as KeyboardEvent;
+          if (keyEvent.key === 'Enter' && !keyEvent.shiftKey) {
+            keyEvent.preventDefault();
+            const input = keyEvent.target as HTMLTextAreaElement;
+            if (input.value.trim()) {
+              console.log('[Philonet] Comment submitted:', input.value);
+              input.value = '';
+              input.style.height = 'auto';
+              charCount.textContent = '280 characters left';
+            }
+          }
+        });
+      }
+
+      // Submit button
+      if (submitButton && composerInput) {
+        submitButton.addEventListener('click', () => {
+          const input = composerInput as HTMLTextAreaElement;
+          if (input.value.trim()) {
+            console.log('[Philonet] Comment submitted:', input.value);
+            input.value = '';
+            input.style.height = 'auto';
+            if (charCount) charCount.textContent = '280 characters left';
+          }
+        });
+      }
+
+      // Append to shadow DOM with proper event binding
+      shadow.appendChild(style);
+      shadow.appendChild(panel);
+      
+      // Add to document body
+      document.body.appendChild(container);
+      setShadowContainer(container);
+
+      // Cleanup function to prevent memory leaks
+      return () => {
+        try {
+          // Remove event listeners from panel elements
+          const buttons = panel.querySelectorAll('button');
+          buttons.forEach(button => {
+            button.replaceWith(button.cloneNode(true));
+          });
+          
+          // Remove from DOM
+          if (container && container.parentNode) {
+            container.parentNode.removeChild(container);
+          }
+          
+          setShadowContainer(null);
+        } catch (error) {
+          console.warn('[CEB] Cleanup error:', error);
+        }
+      };
+    }, [sidePanelOpen]);
+
+    return null;
+  };
+
+  return (
+    <>
+      {/* Debug info */}
+      <div style={{
+        position: 'fixed',
+        top: '10px',
+        left: '10px',
+        background: 'green',
+        color: 'white',
+        padding: '4px 8px',
+        fontSize: '12px',
+        zIndex: 2147483647,
+        borderRadius: '4px',
+        fontFamily: 'Arial, sans-serif'
+      }}>
+        Philonet Shadow Panel Ready - {sidePanelOpen ? 'OPEN' : 'CLOSED'}
+      </div>
+
+      {/* Shadow DOM Side Panel */}
+      <PhilonetShadowPanel />
+
+      {/* Floating trigger button with enhanced visibility */}
+      <div 
+        style={{
+          position: 'fixed',
+          top: '60px',
+          right: '20px',
+          zIndex: 2147483647,
+          backgroundColor: '#ffffff',
+          border: '3px solid #3b82f6',
+          borderRadius: '50%',
+          padding: '12px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(59, 130, 246, 0.5)',
+          cursor: 'pointer',
+          transition: 'all 0.3s ease',
+          width: '60px',
+          height: '60px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transform: 'scale(1)',
+          animation: 'pulse 2s infinite'
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('[CEB] Button clicked! Opening side panel...');
+          toggleSidePanel();
+        }}
+        title="Toggle Philonet Side Panel"
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = '#f0f9ff';
+          e.currentTarget.style.transform = 'scale(1.1)';
+          e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(59, 130, 246, 0.8)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = '#ffffff';
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(59, 130, 246, 0.5)';
+        }}
+      >
+        <img 
+          src={chrome.runtime.getURL('philonet.png')} 
+          alt="P" 
+          style={{
+            width: '36px',
+            height: '36px',
+            objectFit: 'contain',
+            pointerEvents: 'none'
+          }}
+          onError={(e) => {
+            console.error('[CEB] Image failed to load, using fallback');
+            const target = e.currentTarget as HTMLImageElement;
+            target.style.display = 'none';
+            const parent = target.parentElement!;
+            parent.innerHTML = '<div style="color: #3b82f6; font-weight: bold; font-size: 24px; pointer-events: none;">P</div>';
+          }}
+          onLoad={() => {
+            console.log('[CEB] Philonet image loaded successfully');
+          }}
+        />
+      </div>
+
+      {/* CSS Animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(59, 130, 246, 0.5);
+          }
+          50% {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 4px rgba(59, 130, 246, 0.3);
+          }
+        }
+      `}</style>
+    </>
+  );
+}

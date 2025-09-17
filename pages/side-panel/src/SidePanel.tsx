@@ -1,28 +1,37 @@
-import '@src/SidePanel.css';
-import { t } from '@extension/i18n';
-import { PROJECT_URL_OBJECT, useStorage, withErrorBoundary, withSuspense } from '@extension/shared';
-import { exampleThemeStorage } from '@extension/storage';
-import { cn, ErrorDisplay, LoadingSpinner, ToggleButton } from '@extension/ui';
+import React from "react";
+import { AppProvider } from './context';
+import AuthenticatedSidePanel from './components/AuthenticatedSidePanel';
+import { withErrorBoundary, withSuspense } from '@extension/shared';
+import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
 
-const SidePanel = () => {
-  const { isLight } = useStorage(exampleThemeStorage);
-  const logo = isLight ? 'side-panel/logo_vertical.svg' : 'side-panel/logo_vertical_dark.svg';
-
-  const goGithubSite = () => chrome.tabs.create(PROJECT_URL_OBJECT);
+// Main SidePanel component with Google authentication integrated
+const SidePanel: React.FC = () => {
+  const apiConfig = {
+    baseUrl: process.env.CEB_API_URL || 'http://localhost:3000',
+    timeout: 10000
+  };
 
   return (
-    <div className={cn('App', isLight ? 'bg-slate-50' : 'bg-gray-800')}>
-      <header className={cn('App-header', isLight ? 'text-gray-900' : 'text-gray-100')}>
-        <button onClick={goGithubSite}>
-          <img src={chrome.runtime.getURL(logo)} className="App-logo" alt="logo" />
-        </button>
-        <p>
-          Edit <code>pages/side-panel/src/SidePanel.tsx</code>
-        </p>
-        <ToggleButton onClick={exampleThemeStorage.toggle}>{t('toggleTheme')}</ToggleButton>
-      </header>
-    </div>
+    <AppProvider defaultApiConfig={apiConfig}>
+      <AuthenticatedSidePanel />
+    </AppProvider>
   );
 };
 
 export default withErrorBoundary(withSuspense(SidePanel, <LoadingSpinner />), ErrorDisplay);
+
+// Note: This SidePanel includes the complete modular architecture with:
+// ✅ Google OAuth authentication integration
+// ✅ Modular components for easy maintenance
+// ✅ Custom hooks for reusable logic  
+// ✅ Service layer ready for API integration
+// ✅ Context providers for global state
+// ✅ TypeScript types for better development experience
+// ✅ Utility functions for common operations
+// ✅ Authentication and user management
+// ✅ Extensible architecture for future features
+//
+// ⚠️ IMPORTANT: Google authentication requires Chrome extension environment
+// The Google OAuth flow uses chrome.identity API which is only available in Chrome extensions.
+// Users can sign in with Google by clicking on the user icon/name in the top left.
+// Outside of Chrome extension context, Google auth will show an appropriate error message.

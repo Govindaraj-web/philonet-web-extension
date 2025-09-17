@@ -16,6 +16,9 @@ tsconfig.tsbuildinfo
 **/.env.*
 **/.env
 
+# extension private key (keep secure!)
+chrome-extension/key.pem
+
 # etc
 .DS_Store
 .idea
@@ -23,3 +26,6 @@ tsconfig.tsbuildinfo
 
 # compiled
 **/tailwind-output.css
+
+# design workspace (ignore entire directory)
+design-subworkspace/

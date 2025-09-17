@@ -1,21 +1,21 @@
 {
   "extensionDescription": {
     "description": "Extension description",
-    "message": "Chrome extension boilerplate developed with Vite, React and Typescript"
+    "message": "PhiloNet – Your gateway to exploring big ideas, deep questions, and critical thinking across the web."
   },
   "extensionName": {
     "description": "Extension name",
-    "message": "Chrome extension boilerplate"
+    "message": "PhiloNet"
   },
   "toggleTheme": {
-    "message": "Toggle theme"
+    "message": "Switch theme"
   },
   "injectButton": {
-    "message": "Click to inject Content Scripts"
+    "message": "Unveil philosophical insights"
   },
   "greeting": {
     "description": "Greeting message",
-    "message": "Hello, My name is $NAME$",
+    "message": "Greetings, $NAME$! Ready to embark on your next journey of thought?",
     "placeholders": {
       "name": {
         "content": "$1",
@@ -25,21 +25,21 @@
   },
   "hello": {
     "description": "Placeholder example",
-    "message": "Hello $1"
+    "message": "Hello $1 — let's question, reason, and reflect!"
   },
   "displayErrorInfo": {
-    "message": "Error occur"
+    "message": "Insight retrieval error"
   },
   "displayErrorDescription": {
-    "message": "Sorry, something went wrong while loading the page."
+    "message": "Something interrupted our philosophical quest."
   },
   "displayErrorDetailsInfo": {
-    "message": "Error details:"
+    "message": "More details:"
   },
   "displayErrorUnknownErrorInfo": {
-    "message": "Unknown error"
+    "message": "The mystery deepens — unknown error"
   },
   "displayErrorReset": {
-    "message": "Run Again"
+    "message": "Try again and seek clarity"
   }
 }

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { ManifestType } from '@extension/shared';
+import env from '@extension/env';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
 
@@ -22,6 +23,7 @@ const manifest = {
   manifest_version: 3,
   default_locale: 'en',
   name: '__MSG_extensionName__',
+  key: readFileSync('./key.pem', 'utf8'),
   browser_specific_settings: {
     gecko: {
       id: 'example@example.com',
@@ -30,8 +32,8 @@ const manifest = {
   },
   version: packageJson.version,
   description: '__MSG_extensionDescription__',
-  host_permissions: ['<all_urls>'],
-  permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel'],
+  host_permissions: ['<all_urls>', 'file:///*/*'],
+  permissions: ['storage', 'scripting', 'tabs', 'notifications', 'sidePanel', 'activeTab', 'identity'],
   options_page: 'options/index.html',
   background: {
     service_worker: 'background.js',
@@ -41,11 +43,17 @@ const manifest = {
     default_popup: 'popup/index.html',
     default_icon: 'icon-34.png',
   },
-  chrome_url_overrides: {
-    newtab: 'new-tab/index.html',
-  },
   icons: {
     '128': 'icon-128.png',
+  },
+  commands: {
+    'toggle-side-panel': {
+      suggested_key: {
+        default: 'Ctrl+Shift+P',
+        mac: 'Command+Shift+P'
+      },
+      description: 'Toggle Philonet Side Panel'
+    }
   },
   content_scripts: [
     {
@@ -72,12 +80,19 @@ const manifest = {
   devtools_page: 'devtools/index.html',
   web_accessible_resources: [
     {
-      resources: ['*.js', '*.css', '*.svg', 'icon-128.png', 'icon-34.png'],
+      resources: ['*.js', '*.css', '*.svg', 'icon-128.png', 'icon-34.png', 'philonet.png'],
       matches: ['*://*/*'],
     },
   ],
   side_panel: {
     default_path: 'side-panel/index.html',
+  },
+  oauth2: {
+    client_id: env.CEB_GOOGLE_CLIENT_ID || 'your-google-client-id.apps.googleusercontent.com',
+    scopes: ['openid', 'email', 'profile']
+  },
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'; img-src 'self' data: https: http:; media-src 'self' data: blob:; connect-src 'self' https: http: ws: wss:;"
   },
 } satisfies ManifestType;
 
